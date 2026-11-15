@@ -1,0 +1,19 @@
+--- 2026-11-15T09:31:22.703Z ONLY=b1,b7,k2,k3,k4
+
+[문제]
+없음
+--- 2026-11-15T09:31:48.511Z ONLY=box,contract
+b1-odds | 상자 탭 "확률 보기"를 눌러 뜬 상자 확률 창
+b2-open-1 | 상자 탭에서 1개 열기 결과
+b3-open-10 | 상자 탭에서 10개 열기 결과
+b4-box-sets | 상자 탭 위쪽(세트 완성 줄 + 세트 보기 버튼, 세트 목록은 없음)
+b5-set-view | "세트 보기"를 눌러 도감의 세트 효과로 이동한 화면
+b6-dex-tab | 도감 탭(가득 찬 도감) 390x844
+b7-dex-detail | 도감 칸 상세
+k1-contract-sheet | 약정 창(종류 3택)
+k2-contract-card | 약정 중 카드(남은 시간 표시, 서비스 0·1)
+k3-penalty-confirm | 약정 중 이사 누름 -> 위약금 확인 창
+k4-bundle-open | 결합 줄 펼침(처음 aria-expanded=false)
+k5-bundle-closed | 결합 줄 접힘(비교용)
+[문제]
+없음

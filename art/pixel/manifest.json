@@ -1,0 +1,1882 @@
+{
+ "keys": {
+  "magenta": "#FF00FF",
+  "green": "#00FF00"
+ },
+ "assets": {
+  "room/blue": {
+   "w": 180,
+   "h": 130,
+   "bundle": "B1",
+   "kind": "background",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "cream wallpaper room, wood plank floor, one window centered at top, low kitchen counter on the right, no shelf, top 30 dots plain wall",
+   "handFixed": true,
+   "floorY": 80,
+   "counterTop": 58,
+   "window": {
+    "x": 61,
+    "y": 31,
+    "w": 58,
+    "h": 33
+   },
+   "counter": {
+    "x": 124,
+    "y": 58,
+    "w": 45,
+    "h": 22,
+    "frontY": 66
+   },
+   "note": "바닥선 y80(원본 최강 경계 자동 정렬). 창 틀 위쪽 2행(y29~30)을 손질로 지워 위 30도트(y0~29)가 빈 벽. 창 프레임 안 유리 b3 y33~57. B6: 가운데 바닥에 b4/b3 러그 추가(px-b6.py).",
+   "rug": {
+    "x": 44,
+    "y": 92,
+    "w": 93,
+    "h": 29
+   }
+  },
+  "item/fridge": {
+   "w": 22,
+   "h": 44,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a tall two-door refrigerator"
+  },
+  "item/washer": {
+   "w": 28,
+   "h": 30,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a front-loading washing machine"
+  },
+  "item/smart_tv": {
+   "w": 32,
+   "h": 24,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a flat-screen TV on a low stand, blank screen"
+  },
+  "item/fan": {
+   "w": 14,
+   "h": 28,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a pedestal electric fan"
+  },
+  "item/rice_cooker": {
+   "w": 14,
+   "h": 12,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "an electric rice cooker",
+   "handFixed": true
+  },
+  "item/kettle": {
+   "w": 12,
+   "h": 12,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "an electric kettle"
+  },
+  "item/air_purifier": {
+   "w": 14,
+   "h": 26,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a tall air purifier tower"
+  },
+  "item/coffee_machine": {
+   "w": 16,
+   "h": 18,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a coffee machine"
+  },
+  "box/small-1": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a small closed cardboard moving box with tape"
+  },
+  "box/normal-1": {
+   "w": 40,
+   "h": 40,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a medium closed cardboard moving box with tape"
+  },
+  "box/big-1": {
+   "w": 52,
+   "h": 52,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a big closed cardboard moving box with tape and two straps"
+  },
+  "tool/gloves": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a pair of work gloves, no hands"
+  },
+  "ui/wall-phone": {
+   "w": 20,
+   "h": 20,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a wall-mounted telephone"
+  },
+  "icon/svc-internet": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a Wi-Fi router"
+  },
+  "icon/svc-water": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B1",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a water purifier dispenser (jug on top; body hand-drawn)",
+   "handFixed": true
+  },
+  "box/small-2": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "small box, damaged stage 2",
+   "handFixed": true
+  },
+  "box/small-3": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "small box, damaged stage 3",
+   "handFixed": true
+  },
+  "box/normal-2": {
+   "w": 40,
+   "h": 40,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "medium box stage 2",
+   "handFixed": true
+  },
+  "box/normal-3": {
+   "w": 40,
+   "h": 40,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "medium box stage 3",
+   "handFixed": true
+  },
+  "box/big-2": {
+   "w": 52,
+   "h": 52,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "big box stage 2",
+   "handFixed": true
+  },
+  "box/big-3": {
+   "w": 52,
+   "h": 52,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "big box stage 3",
+   "handFixed": true
+  },
+  "box/big-4": {
+   "w": 52,
+   "h": 52,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "big box stage 4",
+   "handFixed": true
+  },
+  "tool/cutter": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a utility box cutter knife (horizontal, hand-drawn)",
+   "handFixed": true
+  },
+  "tool/hammer": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a claw hammer"
+  },
+  "tool/drill": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a cordless power drill"
+  },
+  "tool/robot-arm": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a robot arm with gripper claw",
+   "handFixed": true
+  },
+  "icon/svc-air": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a tall air purifier filling the whole canvas",
+   "handFixed": true
+  },
+  "icon/svc-phone": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a smartphone seen from the front filling the whole canvas"
+  },
+  "icon/svc-clean": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a cleaning set filling the whole canvas"
+  },
+  "icon/svc-interior": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a cozy sofa filling the whole canvas"
+  },
+  "icon/svc-robot": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a round robot vacuum cleaner filling the whole canvas, seen from slightly above"
+  },
+  "icon/svc-home": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a house with a key filling the whole canvas"
+  },
+  "icon/coin": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a single round gold coin seen from the front filling the whole canvas, thick outer rim in darker gold, inner face lighter gold with one plain bold star shape embossed in the middle. No letters, no numbers, no currency symbol."
+  },
+  "icon/coin-pile": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a small pile of gold coins filling the whole canvas",
+   "handFixed": true
+  },
+  "icon/fever": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a single chunky flame filling the whole canvas",
+   "handFixed": true
+  },
+  "icon/crit": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a bursting star filling the whole canvas",
+   "handFixed": true
+  },
+  "icon/contract": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a rolled scroll of paper filling the whole canvas"
+  },
+  "icon/bundle": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "two thick interlocking chain rings filling the whole canvas",
+   "handFixed": true
+  },
+  "icon/perk": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a gold trophy cup filling the whole canvas",
+   "handFixed": true
+  },
+  "icon/box-closed": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a closed gift box filling the whole canvas",
+   "handFixed": true
+  },
+  "icon/box-open": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "an open gift box filling the whole canvas",
+   "handFixed": true
+  },
+  "icon/parcel": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B3",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a cardboard parcel box with two small white feathered wings on its left and right sides, filling the whole canvas"
+  },
+  "icon/ui-settings": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a thick gear cog",
+   "handFixed": true
+  },
+  "icon/ui-dex": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a collection book with gold badge",
+   "handFixed": true
+  },
+  "icon/ui-rocket": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a vertical rocket",
+   "handFixed": true
+  },
+  "icon/ui-event": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a megaphone",
+   "handFixed": true
+  },
+  "icon/ui-move": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a moving truck",
+   "handFixed": true
+  },
+  "icon/bundle-comm": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a satellite dish",
+   "handFixed": true
+  },
+  "icon/bundle-thrifty": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a basket with fruit",
+   "handFixed": true
+  },
+  "icon/bundle-rental": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a ribbon-tied cardboard appliance box",
+   "handFixed": true
+  },
+  "icon/bundle-chores": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a sponge and a bucket",
+   "handFixed": true
+  },
+  "icon/bundle-newhome": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a gold key tied with a red ribbon",
+   "handFixed": true
+  },
+  "ui/gift-closed": {
+   "w": 40,
+   "h": 40,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a large wrapped gift box, closed",
+   "handFixed": true
+  },
+  "ui/gift-open": {
+   "w": 40,
+   "h": 40,
+   "bundle": "B4",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a large gift box with lid lifted off, gold coin inside",
+   "handFixed": true
+  },
+  "icon/perk-tap_power": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a red boxing glove",
+   "handFixed": true
+  },
+  "icon/perk-crit": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a target with a dart",
+   "handFixed": true
+  },
+  "icon/perk-fever_long": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a flame hourglass",
+   "handFixed": true
+  },
+  "icon/perk-svc_power": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a wrench and a gear",
+   "handFixed": true
+  },
+  "icon/perk-offline_rate": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "an armchair",
+   "handFixed": true
+  },
+  "icon/perk-offline_cap": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a travel suitcase",
+   "handFixed": true
+  },
+  "icon/perk-box_discount": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a star coupon ticket",
+   "handFixed": true
+  },
+  "icon/perk-parcel_freq": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a parcel delivery truck",
+   "handFixed": true
+  },
+  "icon/perk-bundle_boost": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a ribbon bow",
+   "handFixed": true
+  },
+  "icon/perk-contract_slot": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a clipboard with a star",
+   "handFixed": true
+  },
+  "icon/perk-penalty_cut": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "scissors and a scroll",
+   "handFixed": true
+  },
+  "icon/perk-tap_crit_power": {
+   "w": 16,
+   "h": 16,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "a star burst",
+   "handFixed": true
+  },
+  "ui/wall-phone-ring": {
+   "w": 20,
+   "h": 20,
+   "bundle": "B5",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "wall phone, handset lifted, ring marks",
+   "handFixed": true
+  },
+  "room/mint": {
+   "w": 180,
+   "h": 130,
+   "bundle": "B6",
+   "kind": "background",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "mint two-room: green wall, light plank floor, two windows with potted plants",
+   "handFixed": true,
+   "floorY": 80,
+   "counterTop": 58,
+   "counter": {
+    "x": 124,
+    "y": 58,
+    "w": 45,
+    "h": 22,
+    "frontY": 66
+   },
+   "windows": [
+    {
+     "x": 56,
+     "y": 33,
+     "w": 25,
+     "h": 26
+    },
+    {
+     "x": 99,
+     "y": 33,
+     "w": 25,
+     "h": 26
+    }
+   ],
+   "rug": {
+    "x": 44,
+    "y": 92,
+    "w": 93,
+    "h": 29
+   },
+   "note": "art/tools/px-b6.py 손도트. 바닥선 y80~81(k1 2행), 윗면 y58, 위 30도트 빈 벽. 러그 사다리꼴(k1 외곽선)."
+  },
+  "room/sunset": {
+   "w": 180,
+   "h": 130,
+   "bundle": "B6",
+   "kind": "background",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "sunset apartment: ochre wall, wood floor, sunset window over a sofa",
+   "handFixed": true,
+   "floorY": 80,
+   "counterTop": 56,
+   "counter": {
+    "x": 124,
+    "y": 56,
+    "w": 45,
+    "h": 24,
+    "frontY": 64
+   },
+   "windows": [
+    {
+     "x": 62,
+     "y": 31,
+     "w": 52,
+     "h": 30
+    }
+   ],
+   "rug": {
+    "x": 44,
+    "y": 92,
+    "w": 93,
+    "h": 29
+   },
+   "note": "art/tools/px-b6.py 손도트. 바닥선 y80~81(k1 2행), 윗면 y56, 위 30도트 빈 벽. 러그 사다리꼴(k1 외곽선).",
+   "sofa": {
+    "x": 66,
+    "y": 63,
+    "w": 47,
+    "h": 17
+   }
+  },
+  "room/night": {
+   "w": 180,
+   "h": 130,
+   "bundle": "B6",
+   "kind": "background",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "penthouse: slate wall, dark wood floor, wide night city window",
+   "handFixed": true,
+   "floorY": 80,
+   "counterTop": 54,
+   "counter": {
+    "x": 124,
+    "y": 54,
+    "w": 45,
+    "h": 26,
+    "frontY": 62
+   },
+   "windows": [
+    {
+     "x": 36,
+     "y": 31,
+     "w": 86,
+     "h": 24
+    }
+   ],
+   "rug": {
+    "x": 44,
+    "y": 92,
+    "w": 93,
+    "h": 29
+   },
+   "note": "art/tools/px-b6.py 손도트. 바닥선 y80~81(k1 2행), 윗면 y54, 위 30도트 빈 벽. 러그 사다리꼴(k1 외곽선)."
+  },
+  "room/moon": {
+   "w": 180,
+   "h": 130,
+   "bundle": "B6",
+   "kind": "background",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "moon base: metal panels, round porthole showing Earth",
+   "handFixed": true,
+   "floorY": 80,
+   "counterTop": 58,
+   "counter": {
+    "x": 124,
+    "y": 58,
+    "w": 45,
+    "h": 22,
+    "frontY": 66
+   },
+   "windows": [
+    {
+     "x": 72,
+     "y": 31,
+     "w": 35,
+     "h": 35
+    }
+   ],
+   "rug": {
+    "x": 44,
+    "y": 92,
+    "w": 93,
+    "h": 29
+   },
+   "note": "art/tools/px-b6.py 손도트. 바닥선 y80~81(k1 2행), 윗면 y58, 위 30도트 빈 벽. 러그 사다리꼴(k1 외곽선). 둥근 창 중심(89,48) 반지름 17(프레임 포함)."
+  },
+  "room/mars": {
+   "w": 180,
+   "h": 130,
+   "bundle": "B6",
+   "kind": "background",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "mars annex: brown wall, red metal floor, red desert window",
+   "handFixed": true,
+   "floorY": 80,
+   "counterTop": 56,
+   "counter": {
+    "x": 124,
+    "y": 56,
+    "w": 45,
+    "h": 24,
+    "frontY": 64
+   },
+   "windows": [
+    {
+     "x": 62,
+     "y": 32,
+     "w": 56,
+     "h": 26
+    }
+   ],
+   "rug": {
+    "x": 44,
+    "y": 92,
+    "w": 93,
+    "h": 29
+   },
+   "note": "art/tools/px-b6.py 손도트. 바닥선 y80~81(k1 2행), 윗면 y56, 위 30도트 빈 벽. 러그 사다리꼴(k1 외곽선)."
+  },
+  "room/jupiter": {
+   "w": 180,
+   "h": 130,
+   "bundle": "B6",
+   "kind": "background",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "jupiter moon complex: orange wall, striped planet window",
+   "handFixed": true,
+   "floorY": 80,
+   "counterTop": 58,
+   "counter": {
+    "x": 124,
+    "y": 58,
+    "w": 45,
+    "h": 22,
+    "frontY": 66
+   },
+   "windows": [
+    {
+     "x": 40,
+     "y": 31,
+     "w": 84,
+     "h": 28
+    }
+   ],
+   "rug": {
+    "x": 44,
+    "y": 92,
+    "w": 93,
+    "h": 29
+   },
+   "note": "art/tools/px-b6.py 손도트. 바닥선 y80~81(k1 2행), 윗면 y58, 위 30도트 빈 벽. 러그 사다리꼴(k1 외곽선)."
+  },
+  "room/nebula": {
+   "w": 180,
+   "h": 130,
+   "bundle": "B6",
+   "kind": "background",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "galaxy housing: dark wall, purple floor, nebula window",
+   "handFixed": true,
+   "floorY": 80,
+   "counterTop": 54,
+   "counter": {
+    "x": 124,
+    "y": 54,
+    "w": 45,
+    "h": 26,
+    "frontY": 62
+   },
+   "windows": [
+    {
+     "x": 34,
+     "y": 31,
+     "w": 90,
+     "h": 28
+    }
+   ],
+   "rug": {
+    "x": 44,
+    "y": 92,
+    "w": 93,
+    "h": 29
+   },
+   "note": "art/tools/px-b6.py 손도트. 바닥선 y80~81(k1 2행), 윗면 y54, 위 30도트 빈 벽. 러그 사다리꼴(k1 외곽선)."
+  },
+  "room/edge": {
+   "w": 180,
+   "h": 130,
+   "bundle": "B6",
+   "kind": "background",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "edge of space: blue wall, full-width starfield window",
+   "handFixed": true,
+   "floorY": 80,
+   "counterTop": 52,
+   "counter": {
+    "x": 120,
+    "y": 52,
+    "w": 51,
+    "h": 28,
+    "frontY": 60
+   },
+   "windows": [
+    {
+     "x": 12,
+     "y": 31,
+     "w": 156,
+     "h": 28
+    }
+   ],
+   "rug": {
+    "x": 44,
+    "y": 92,
+    "w": 93,
+    "h": 29
+   },
+   "note": "art/tools/px-b6.py 손도트. 바닥선 y80~81(k1 2행), 윗면 y52, 위 30도트 빈 벽. 러그 사다리꼴(k1 외곽선)."
+  },
+  "col/fan": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a small desktop (table) electric fan seen from the front-side"
+  },
+  "col/fan-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/fan-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/kettle": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "an electric kettle"
+  },
+  "col/kettle-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/kettle-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/toaster": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a two-slot bread toaster"
+  },
+  "col/toaster-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/toaster-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/heating_pad": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a folded electric heating blanket pad"
+  },
+  "col/heating_pad-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/heating_pad-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/hair_dryer": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a hair dryer shown from the side"
+  },
+  "col/hair_dryer-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/hair_dryer-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/humidifier": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a tabletop humidifier"
+  },
+  "col/humidifier-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/humidifier-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/rice_cooker": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "an electric rice cooker"
+  },
+  "col/rice_cooker-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/rice_cooker-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/water_purifier": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a countertop water purifier dispenser"
+  },
+  "col/water_purifier-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/water_purifier-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/air_purifier": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "an air purifier tower"
+  },
+  "col/air_purifier-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/air_purifier-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/air_fryer": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "an air fryer"
+  },
+  "col/air_fryer-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/air_fryer-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/vacuum": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "green",
+   "anchor": "bottom",
+   "target": "a canister vacuum cleaner"
+  },
+  "col/vacuum-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "green",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/vacuum-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "green",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/coffee_machine": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "an espresso coffee machine"
+  },
+  "col/coffee_machine-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/coffee_machine-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/dishwasher": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a dishwasher"
+  },
+  "col/dishwasher-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/dishwasher-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B7v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/air_conditioner": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a wall air conditioner"
+  },
+  "col/air_conditioner-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/air_conditioner-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/washer": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a washing machine"
+  },
+  "col/washer-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/washer-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/smart_tv": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a smart TV"
+  },
+  "col/smart_tv-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/smart_tv-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/fridge": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a refrigerator",
+   "handFixed": true
+  },
+  "col/fridge-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/fridge-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/massage_chair": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "a massage chair"
+  },
+  "col/massage_chair-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/massage_chair-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/robot_vacuum": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8",
+   "kind": "sprite",
+   "key": "green",
+   "anchor": "bottom",
+   "target": "a robot vacuum"
+  },
+  "col/robot_vacuum-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "green",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/robot_vacuum-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "green",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/space_purifier": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8",
+   "kind": "sprite",
+   "key": "green",
+   "anchor": "bottom",
+   "target": "a space water purifier with a Saturn ring"
+  },
+  "col/space_purifier-gold": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "green",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "col/space_purifier-rainbow": {
+   "w": 32,
+   "h": 32,
+   "bundle": "B8v",
+   "kind": "sprite",
+   "key": "green",
+   "anchor": "bottom",
+   "target": "variant"
+  },
+  "icon/house-blue": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B9",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "house stage blue",
+   "handFixed": true
+  },
+  "icon/house-mint": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B9",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "house stage mint",
+   "handFixed": true
+  },
+  "icon/house-sunset": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B9",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "house stage sunset",
+   "handFixed": true
+  },
+  "icon/house-night": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B9",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "house stage night",
+   "handFixed": true
+  },
+  "icon/house-moon": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B9",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "house stage moon",
+   "handFixed": true
+  },
+  "icon/house-mars": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B9",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "house stage mars",
+   "handFixed": true
+  },
+  "icon/house-jupiter": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B9",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "house stage jupiter",
+   "handFixed": true
+  },
+  "icon/house-nebula": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B9",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "house stage nebula",
+   "handFixed": true
+  },
+  "icon/house-edge": {
+   "w": 24,
+   "h": 24,
+   "bundle": "B9",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "center",
+   "target": "house stage edge",
+   "handFixed": true
+  },
+  "box/small-open": {
+   "w": 32,
+   "h": 32,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "open small box, flaps folded out",
+   "handFixed": true
+  },
+  "box/normal-open": {
+   "w": 40,
+   "h": 40,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "open normal box, flaps folded out",
+   "handFixed": true
+  },
+  "box/big-open": {
+   "w": 52,
+   "h": 52,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "open big box, flaps and straps broken",
+   "handFixed": true
+  },
+  "box/flat": {
+   "w": 32,
+   "h": 10,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "flat folded cardboard",
+   "handFixed": true
+  },
+  "item/fridge-silver": {
+   "w": 22,
+   "h": 44,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/fridge-gold": {
+   "w": 22,
+   "h": 44,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/fridge-rainbow": {
+   "w": 22,
+   "h": 44,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/washer-silver": {
+   "w": 28,
+   "h": 30,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/washer-gold": {
+   "w": 28,
+   "h": 30,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/washer-rainbow": {
+   "w": 28,
+   "h": 30,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/smart_tv-silver": {
+   "w": 32,
+   "h": 24,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/smart_tv-gold": {
+   "w": 32,
+   "h": 24,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/smart_tv-rainbow": {
+   "w": 32,
+   "h": 24,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/fan-silver": {
+   "w": 14,
+   "h": 28,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/fan-gold": {
+   "w": 14,
+   "h": 28,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/fan-rainbow": {
+   "w": 14,
+   "h": 28,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/rice_cooker-silver": {
+   "w": 14,
+   "h": 12,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/rice_cooker-gold": {
+   "w": 14,
+   "h": 12,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/rice_cooker-rainbow": {
+   "w": 14,
+   "h": 12,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/kettle-silver": {
+   "w": 12,
+   "h": 12,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/kettle-gold": {
+   "w": 12,
+   "h": 12,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/kettle-rainbow": {
+   "w": 12,
+   "h": 12,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/air_purifier-silver": {
+   "w": 14,
+   "h": 26,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/air_purifier-gold": {
+   "w": 14,
+   "h": 26,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/air_purifier-rainbow": {
+   "w": 14,
+   "h": 26,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/coffee_machine-silver": {
+   "w": 16,
+   "h": 18,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/coffee_machine-gold": {
+   "w": 16,
+   "h": 18,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  },
+  "item/coffee_machine-rainbow": {
+   "w": 16,
+   "h": 18,
+   "bundle": "U2",
+   "kind": "sprite",
+   "key": "magenta",
+   "anchor": "bottom",
+   "target": "variant",
+   "handFixed": true
+  }
+ }
+}

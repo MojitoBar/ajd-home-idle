@@ -1,0 +1,118 @@
+/* ---------- 이삿짐 상자 풀기: 방 안 연출. 그림은 px/room.css, 색은 palette.css 토큰 ---------- */
+.un-dock-tool, .un-tool-ico { display: none; line-height: 1; }
+body.un-mode .dock-phone .un-dock-tool { display: block; pointer-events: none; }
+body.un-mode .tap-card .card-icon .un-tool-ico { display: block; }
+
+@media (max-height: 700px) {
+  body.un-mode .speed-title { display: none; }
+}
+
+/* 방 안 누르는 면: 기존 .phone 버튼을 투명 판으로 쓴다(클래스·이벤트 그대로) */
+body.un-mode .phone, body.un-mode .phone:active, body.un-mode.fever .phone, body.un-mode.fever .phone:active {
+  position: absolute; border: 0; background: none; box-shadow: none; filter: none; z-index: 4;
+}
+body.un-mode .phone:focus { outline: none; }
+body.un-mode .phone .phone-ico { display: none; }
+body.un-mode .phone.crit-flash, body.un-mode .phone.near { animation: none; }
+
+/* 무대: 바닥선 가운데가 원점 */
+.un-stage { position: absolute; left: 50%; top: var(--un-floor); width: 0; height: 0; pointer-events: none; --un-s: calc(var(--b0, 64) * 1px); }
+.un-box { --s: calc(var(--b, 64) * 1px); position: absolute; left: calc(var(--s) / -2); top: calc(var(--s) * -1); width: var(--s); height: var(--s); transform-origin: 50% 100%; }
+.un-box[data-pos='0'] { z-index: 3; }
+.un-box[data-pos='1'] { z-index: 2; }
+.un-box[data-pos='2'] { z-index: 1; }
+.un-box.enter { animation: un-enter 0.25s steps(2, end); }
+@keyframes un-enter { 0% { translate: 0 8px; } 100% { translate: 0 0; } }
+.un-body { position: absolute; inset: 0; transform-origin: 50% 100%; }
+
+/* 도구 휘두름·먼지·조각 */
+.un-swing { position: absolute; left: 6px; top: calc(var(--un-s) * -1 - 6px); visibility: hidden; z-index: 6; }
+.un-piece, .un-bit { position: absolute; z-index: 5; pointer-events: none; font-style: normal; }
+.un-bit { left: -6px; width: 12px; height: 12px; margin-top: -6px; background: var(--g2); }
+.un-bit.sq { left: -2px; width: 4px; height: 4px; margin-top: -2px; background: var(--p1); }
+.un-bit.item { left: -14px; width: 28px; height: 28px; margin-top: -14px; background-color: transparent; background-size: contain; background-position: center; background-repeat: no-repeat; box-shadow: none; image-rendering: pixelated; }
+
+/* 벽 전화: 이벤트 전화가 오면 2프레임 교대(벨 그림이 있으면 그림 교대, 없으면 같은 그림을 2px 흔든다) */
+.un-wall { position: absolute; border: 0; background: none; z-index: 5; touch-action: manipulation; --ring-dx: 2px; }
+.un-wall.ring2 { --ring-dx: 0px; }
+.un-wall .un-wall-b { display: none; position: absolute; left: 0; top: 0; }
+.room:has(.event-call:not([hidden])) .un-wall { animation: un-ring 0.32s steps(1, end) infinite; }
+.room:has(.event-call:not([hidden])) .un-wall.ring2 .un-wall-a { animation: un-ring-a 0.32s steps(1, end) infinite; }
+.room:has(.event-call:not([hidden])) .un-wall.ring2 .un-wall-b { display: block; animation: un-ring-b 0.32s steps(1, end) infinite; }
+@keyframes un-ring { 0% { translate: 0 0; } 50% { translate: var(--ring-dx) 0; } }
+@keyframes un-ring-a { 0% { visibility: visible; } 50% { visibility: hidden; } }
+@keyframes un-ring-b { 0% { visibility: hidden; } 50% { visibility: visible; } }
+
+/* 연출: 치명타 별·도구 전환·방 반짝 */
+.un-tool-out { position: absolute; }
+.un-ring { position: absolute; inset: -4px; border: 4px solid var(--g3); pointer-events: none; }
+.un-glint { position: absolute; inset: 0; visibility: hidden; box-sizing: border-box; border: 8px solid var(--g3); pointer-events: none; z-index: 7; }
+
+/* 움직임 줄이기: 흔들림·비행 없이 찌그러짐과 칸 채움만 */
+body.reduce-motion .un-body, body.reduce-motion .un-wall, body.reduce-motion .un-wall img, body.reduce-motion .un-box { animation: none !important; }
+body.reduce-motion .un-box, body.reduce-motion .un-colw { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .un-body, .un-wall, .un-wall img, .un-box { animation: none !important; }
+  .un-box, .un-colw { transition: none; }
+}
+.toast.gold { background: var(--g2); color: var(--k0); font-weight: 700; box-shadow: 0 0 0 2px var(--k0), 0 4px 0 2px var(--g1); }
+.toast.open { box-shadow: 0 0 0 2px var(--k0), 0 0 0 4px var(--or); }
+
+/* 터짐 장면: 짐 더미·납작 상자·터짐 숫자 */
+.un-pile { position: absolute; z-index: 0; pointer-events: none; }
+.un-pile .px-img, .un-flat .px-img { display: block; }
+.un-flat { position: absolute; left: -32px; top: -20px; z-index: 2; pointer-events: none; }
+.un-box.jump { transition: none; }
+.un-gain { position: absolute; left: -120px; width: 240px; text-align: center; white-space: nowrap; z-index: 6; pointer-events: none; font-style: normal; font-weight: 700; font-family: 'Galmuri11', monospace; color: var(--g2); text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
+
+/* 살림 손질: 받침 색 = 단계, 다음 손질 칸 깜빡, 손질 반짝·Lv 글자 */
+html:root .un-slot[data-tier='0']::before { background: var(--k3); }
+html:root .un-slot[data-tier='1']::before { background: var(--k5); }
+html:root .un-slot[data-tier='2']::before { background: var(--g2); }
+html:root .un-slot[data-tier='3']::before { background: var(--pk); }
+html:root .un-slot[data-tier='4']::before { background: var(--g3); animation: un-base-spark 0.6s steps(1, end) infinite; }
+html:root .un-slot.nc::before { animation: un-base-nc 0.6s steps(1, end) infinite; }
+@keyframes un-base-nc { 0% { visibility: visible; } 50% { visibility: hidden; } }
+@keyframes un-base-spark { 0% { background: var(--g3); } 50% { background: var(--g2); } }
+/* 손질 별: 12px 십자(큰) + 4px 점(작은), 모두 k0 1도트 테두리. 색은 --sc */
+.un-bit.sd { background: var(--sc); }
+.un-bit.sd.s6 { left: -2px; width: 4px; height: 4px; margin-top: -2px; box-shadow: 4px 0 0 0 var(--sc), -4px 0 0 0 var(--sc), 0 4px 0 0 var(--sc), 0 -4px 0 0 var(--sc), 4px 0 0 2px var(--k0), -4px 0 0 2px var(--k0), 0 4px 0 2px var(--k0), 0 -4px 0 2px var(--k0), 0 0 0 2px var(--k0); }
+.un-bit.sd.s4 { left: -2px; width: 4px; height: 4px; margin-top: -2px; box-shadow: 0 0 0 2px var(--k0); }
+.un-bit.cg2 { --sc: var(--g2); }
+.un-bit.cg3 { --sc: var(--g3); }
+.un-bit.ck5 { --sc: var(--k5); }
+.un-lv { position: absolute; left: -60px; width: 120px; text-align: center; white-space: nowrap; z-index: 6; pointer-events: none; font-style: normal; font-weight: 700; font-size: 15px; line-height: 15px; font-family: 'Galmuri11', monospace; color: var(--g3); text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
+body.reduce-motion .un-slot::before { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  html:root .un-slot::before { animation: none !important; }
+}
+
+/* 방 완성 큰 글자 */
+
+/* 단계 외곽선: 번짐 0 단색 1도트(2px) 4방향 */
+html:root .un-slot[data-tier='1'] { filter: drop-shadow(2px 0 0 var(--k5)) drop-shadow(-2px 0 0 var(--k5)) drop-shadow(0 2px 0 var(--k5)) drop-shadow(0 -2px 0 var(--k5)); }
+html:root .un-slot[data-tier='2'] { filter: drop-shadow(2px 0 0 var(--g2)) drop-shadow(-2px 0 0 var(--g2)) drop-shadow(0 2px 0 var(--g2)) drop-shadow(0 -2px 0 var(--g2)); }
+html:root .un-slot[data-tier='3'] { animation: un-ol-rb 1.2s steps(1, end) infinite; }
+html:root .un-slot[data-tier='4'] { animation: un-ol-sp 0.6s steps(1, end) infinite; }
+@keyframes un-ol-rb {
+  0% { filter: drop-shadow(2px 0 0 var(--or)) drop-shadow(-2px 0 0 var(--or)) drop-shadow(0 2px 0 var(--or)) drop-shadow(0 -2px 0 var(--or)); }
+  17% { filter: drop-shadow(2px 0 0 var(--g2)) drop-shadow(-2px 0 0 var(--g2)) drop-shadow(0 2px 0 var(--g2)) drop-shadow(0 -2px 0 var(--g2)); }
+  34% { filter: drop-shadow(2px 0 0 var(--gn)) drop-shadow(-2px 0 0 var(--gn)) drop-shadow(0 2px 0 var(--gn)) drop-shadow(0 -2px 0 var(--gn)); }
+  51% { filter: drop-shadow(2px 0 0 var(--b3)) drop-shadow(-2px 0 0 var(--b3)) drop-shadow(0 2px 0 var(--b3)) drop-shadow(0 -2px 0 var(--b3)); }
+  68% { filter: drop-shadow(2px 0 0 var(--pu)) drop-shadow(-2px 0 0 var(--pu)) drop-shadow(0 2px 0 var(--pu)) drop-shadow(0 -2px 0 var(--pu)); }
+  85% { filter: drop-shadow(2px 0 0 var(--pk)) drop-shadow(-2px 0 0 var(--pk)) drop-shadow(0 2px 0 var(--pk)) drop-shadow(0 -2px 0 var(--pk)); }
+}
+@keyframes un-ol-sp {
+  0% { filter: drop-shadow(2px 0 0 var(--g3)) drop-shadow(-2px 0 0 var(--g3)) drop-shadow(0 2px 0 var(--g3)) drop-shadow(0 -2px 0 var(--g3)); }
+  50% { filter: drop-shadow(2px 0 0 var(--k5)) drop-shadow(-2px 0 0 var(--k5)) drop-shadow(0 2px 0 var(--k5)) drop-shadow(0 -2px 0 var(--k5)); }
+}
+/* 반짝 단계: 항상 보이는 별 알갱이 깜빡임 */
+.un-tw { position: absolute; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--g3); z-index: 3; pointer-events: none; box-shadow: 4px 0 0 0 var(--g3), -4px 0 0 0 var(--g3), 0 4px 0 0 var(--g3), 0 -4px 0 0 var(--g3), 4px 0 0 2px var(--k0), -4px 0 0 2px var(--k0), 0 4px 0 2px var(--k0), 0 -4px 0 2px var(--k0), 0 0 0 2px var(--k0); animation: un-tw 0.8s steps(1, end) infinite; }
+@keyframes un-tw { 0% { visibility: visible; } 50% { visibility: hidden; } }
+body.reduce-motion .un-slot, body.reduce-motion .un-tw { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { html:root .un-slot, .un-tw { animation: none !important; } }
+
+/* 놓을 자리: 실루엣 둘레 k3 1도트 점선 */
+html:root .un-slot.cur::after { content: ''; position: absolute; inset: -6px; pointer-events: none; background: repeating-linear-gradient(90deg, var(--k3) 0 4px, transparent 4px 8px) top / 100% 2px no-repeat, repeating-linear-gradient(90deg, var(--k3) 0 4px, transparent 4px 8px) bottom / 100% 2px no-repeat, repeating-linear-gradient(0deg, var(--k3) 0 4px, transparent 4px 8px) left / 2px 100% no-repeat, repeating-linear-gradient(0deg, var(--k3) 0 4px, transparent 4px 8px) right / 2px 100% no-repeat; }
+/* 조리대 살림 칸은 바깥 여백 1도트(바닥 살림은 3도트) */
+html:root .un-slot.cur[data-on='counter']::after { inset: -2px; }

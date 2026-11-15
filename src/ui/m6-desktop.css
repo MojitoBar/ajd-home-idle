@@ -1,0 +1,128 @@
+/* ---------- PC 버전(폭 900 이상): 왼쪽 단(전화·방) + 오른쪽 단(탭 줄·목록). 모바일은 래퍼가 display: contents라 그대로 ---------- */
+.col-play, .col-list { display: contents; }
+.key-hint { display: none; }
+
+@media (min-width: 900px) {
+  :root { --dock-h: 0px; }
+  #app { max-width: 1180px; padding: 0 var(--s5); }
+  .page { display: grid; grid-template-columns: 400px minmax(0, 1fr); column-gap: var(--s5); align-items: start; }
+  .col-play { display: flex; flex-direction: column; min-height: 100dvh; box-sizing: border-box; padding: 10px 0 12px; }
+  .col-play > * { flex: none; }
+  .col-list { display: block; min-width: 0; position: sticky; top: 0; height: 100dvh; overflow-y: auto; scrollbar-gutter: stable; box-sizing: border-box; }
+  .col-play { --strip-w: 364px; }
+  .col-play .top { height: 48px; padding: 0; }
+  /* 왼쪽 단의 줄은 모두 방 틀(.px-strip)과 같은 폭·같은 좌우선. 묶음은 위로 붙이고 키 안내만 맨 아래 */
+  .col-play > .top, .col-play > .hero, .col-play > .move-block, .col-play > .key-hint { width: var(--strip-w); margin-left: auto; margin-right: auto; box-sizing: border-box; }
+  .col-play .speed-num { position: relative; }
+  .col-play .speed-unit { position: absolute; left: 100%; bottom: 10px; margin-left: var(--s1); white-space: nowrap; }
+  /* 속도 숫자 폭과 무관하게 같은 자리: 숫자 줄 오른쪽 고정 좌표 */
+  .col-play .speed-wrap { position: static; }
+  .col-play .speed-title { margin-top: 2px; }
+  .col-play .info-btn { left: calc(50% + 120px); margin-left: 0; top: 4px; translate: none; }
+  .room { height: min(320px, 40dvh); }
+  .phone { width: 140px; height: 140px; margin-top: 80px; }
+  .phone:active { margin-top: 85px; }
+  .key-hint { display: flex; align-items: center; justify-content: center; gap: 12px; white-space: nowrap; margin: 0; font: 700 var(--fs-s)/var(--lh-s) var(--f-bold); color: var(--on-bg-dim); }
+  .key-hint kbd { display: inline-block; margin-right: 2px; padding: 2px 4px; font: inherit; color: var(--k1); background: var(--k5); box-shadow: 0 0 0 1px var(--k1); }
+  .key-hint kbd:last-of-type { margin-right: 0; }
+  .key-hint .kh { display: inline-flex; align-items: center; gap: 6px; }
+  @media (max-width: 1099px) { .key-hint { gap: 8px; } }
+  .mult-pop { left: var(--s5); right: auto; width: 400px; }
+
+  /* 독 → 오른쪽 단 맨 위의 sticky 탭 줄(종이 어두운 면 + k1 테두리, 선택 탭은 p1 면 + 위 2px b2 띠) */
+  .dock { position: sticky; top: 10px; z-index: 5; left: auto; right: auto; bottom: auto; max-width: none; margin: 10px 2px 0; display: flex; align-items: center; gap: var(--s2); height: 76px; padding: 0 var(--s2); background: var(--p2); box-shadow: 0 0 0 2px var(--k1), 0 4px 0 2px var(--k1); }
+  .dock::before { content: ''; position: absolute; left: -2px; right: -2px; top: -10px; height: 8px; background: var(--bg); }
+  .dock-tabs { order: 1; flex: 1; width: auto; min-width: 0; height: 68px; padding: 0; background: none; }
+  .dock-band { display: none; }
+  .dock-pts, .dock-phone, .tab-gap { display: none; }
+  .dock .tab { min-height: 68px; margin: 0; }
+  .dock .tab:not(.active) { color: var(--k2); }
+  .seg { width: 152px; margin-left: auto; }
+  .seg .chip { min-height: 36px; }
+
+  /* 서비스 탭 맨 위의 한 줄: 약정 칸 · 결합 · (오른쪽 끝) 수량 칩. 스크롤해도 탭 줄 아래에 고정, 결합 카드는 그 줄 아래 */
+  .strat-top:not([hidden]) { display: contents; }
+  .strat-line { position: sticky; top: 107px; z-index: 4; height: 36px; margin: 0 0 15px; padding: 0 2px; box-sizing: border-box; justify-content: flex-start; background: var(--bg); }
+  .strat-line::before { content: ''; position: absolute; left: 0; right: 0; top: -15px; height: 15px; background: var(--bg); }
+  .strat-line::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 6px; background: var(--bg); box-shadow: 0 2px 0 0 var(--k1); }
+  .strat-top .chip.bundle-toggle { margin-bottom: 0; }
+  .strat-line .chip.bundle-toggle { height: 36px; min-height: 36px; box-sizing: border-box; }
+  .strat-line .slots-pill { height: 44px; min-height: 44px; }
+  .bundle-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px var(--s2); overflow: visible; margin: 0; padding: 4px 2px 8px; scroll-snap-type: none; }
+  .bchip { width: auto; max-width: none; min-width: 0; padding: var(--s2); }
+  .bc-name-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bc-ico-img { display: none; }
+  .col-play > .key-hint { margin-top: auto; }
+  .panel { padding-bottom: var(--s5); }
+  .panel.surface { margin-bottom: var(--s5); }
+  .col-list .panel { padding-top: var(--s3); }
+  .col-list { padding: 0 4px 32px; }
+  .dock { margin-bottom: 9px; }
+
+  /* 도트 스크롤바: 폭 8px, 손잡이 k2, 길 k4, 모서리 0 */
+  ::-webkit-scrollbar { width: 8px; height: 8px; background: var(--k4); }
+  ::-webkit-scrollbar-track { background: var(--k4); border-radius: 0; }
+  ::-webkit-scrollbar-thumb { background: var(--k2); border-radius: 0; }
+  ::-webkit-scrollbar-corner { background: var(--k4); }
+}
+
+@media (min-width: 1280px) {
+  .card-list { display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--s2); align-items: stretch; }
+}
+
+/* hover · 키보드 focus (마우스·키보드가 있는 넓은 화면) */
+@media (min-width: 900px) {
+  button:focus-visible, input:focus-visible, textarea:focus-visible, [role='switch']:focus-visible { outline: 3px solid var(--blue-300); outline-offset: 2px; }
+}
+@media (min-width: 900px) and (hover: hover) {
+  .btn:hover:not(:disabled), .chip:hover { transform: translateY(-2px); }
+  .btn:active:not(:disabled), .chip:active:not(:disabled) { transform: translateY(var(--press)); }
+  .dock .tab:hover:not(.active) { color: var(--k1); }
+  .dock .tab:active, .seg .chip:active:not(:disabled) { transform: none; }
+}
+
+/* 큰 PC 화면(폭 1280 이상, 높이 820 이상): 방을 2배(도트 1칸 = 4px, 방 폭 720)로. 방·띠를 transform으로 키우고 늘어난 세로만큼 자리를 비워 둔다 */
+@media (min-width: 1280px) and (min-height: 900px) {
+  #app { max-width: 1480px; }
+  .page { grid-template-columns: 736px minmax(0, 1fr); column-gap: var(--s5); }
+  .col-play { --strip-w: 728px; }
+  .col-list { max-width: 680px; }
+  .card-list { grid-template-columns: 1fr; }
+  html:root body.un-mode .col-play .room { transform: scale(2); transform-origin: 50% 0; margin-bottom: var(--room-h); }
+  html:root body.un-mode .col-play .px-strip { transform: scale(2); transform-origin: 50% 0; margin-bottom: calc(32px + var(--s2)); }
+  .toast { height: 72px; line-height: 72px; font-size: 30px; padding: 0 24px; gap: var(--s3); }
+  .toast .toast-ico { width: 48px; height: 48px; }
+  html:root body.un-mode .col-play .fever-gauge { transform: scale(2); transform-origin: 50% 0; margin: 10px var(--edge-m) 18px; }
+}
+/* 방 2배 화면에서 방 아래 이사 줄도 2배(글자 24·30px). 높이 1040 이상은 특전 막대(2배 96px)가 떠도 들어가 항상 2배.
+   높이 944~1039는 막대가 없을 때만 2배(내용 944 필요)이고, 막대가 뜨면 1배(기본)로 둔다. 944 미만은 스크롤이 생겨 1배 */
+@media (min-width: 1280px) and (min-height: 1040px) {
+  html:root body.un-mode .col-play > .move-block { zoom: 2; width: calc(var(--strip-w) / 2); }
+}
+@media (min-width: 1280px) and (min-height: 944px) and (max-height: 1039px) {
+  html:root body.un-mode .col-play:not(:has(.perk-alert:not([hidden]))) > .move-block { zoom: 2; width: calc(var(--strip-w) / 2); }
+}
+@media (min-width: 1700px) and (min-height: 820px) {
+  #app { max-width: 1720px; }
+  .col-list { max-width: 940px; }
+  .card-list { grid-template-columns: 1fr 1fr; }
+}
+
+/* 방 1배 화면(폭 < 1280 또는 높이 < 900): 왼쪽 단 폭 = 방 폭 + 좌우 16px, 남는 폭은 오른쪽 단. 화면 왼쪽 가장자리 빈 곳 16px */
+@media (min-width: 900px) and (max-width: 1279px), (min-width: 900px) and (max-height: 899px) {
+  html:root #app { max-width: none; padding: 0 var(--s5) 0 0; }
+  html:root .page { grid-template-columns: 396px minmax(0, 1fr); }
+  html:root .col-play { padding-left: 16px; padding-right: 16px; }
+  html:root .col-list { max-width: none; }
+}
+
+@media (min-width: 900px) {
+  .col-play:has(.perk-alert:not([hidden])) .key-hint { display: none; }
+}
+
+/* 방 2배인데 높이가 900~943(예: 1440×900)이고 특전 막대가 떠 있으면 왼쪽 단이 넘친다(이사 줄 1배 기준 24px): 막대를 낮추고(48→36) 바닥 여백·막대 위 간격을 줄여 머리·방 자리는 그대로 두고 맞춘다 */
+@media (min-width: 1280px) and (min-height: 900px) and (max-height: 943px) {
+  .col-play:has(.perk-alert:not([hidden])) { padding-bottom: 0; }
+  .col-play:has(.perk-alert:not([hidden])) .move-extra { margin-top: 4px; }
+  .col-play .perk-alert { height: 36px; min-height: 36px; }
+}

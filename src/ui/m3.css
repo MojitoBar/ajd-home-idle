@@ -1,0 +1,71 @@
+/* 탭 변주(치명타·피버·택배)와 피버·마일스톤·택배 상자. 도트 규칙: 단색 면, 번짐 0, steps()만 */
+.fx-float.damped { font-family: var(--f-bold); font-size: var(--fs-s); color: var(--k4); }
+.fx-float.t1 { color: var(--g3); }
+.fx-float.t2 { color: var(--or); }
+.fx-float.t3 { color: var(--k5); }
+.fx-float.fever { color: var(--g3); }
+.fx-float.crit { color: var(--g2); font-size: var(--fs-l); line-height: 1.1; text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
+.fx-float.crit.fever { color: var(--or); }
+.fx-float.parcel-gain { font-family: var(--f-bold); font-size: var(--fs-xl); color: var(--g2); }
+.fx-float.box-gain { font-family: var(--f-bold); font-size: var(--fs-xl); color: var(--g2); text-shadow: 2px 0px 0 var(--k0), -2px 0px 0 var(--k0), 0px 2px 0 var(--k0), 0px -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
+.fx-float.buy-gain { font-size: var(--fs-m); color: var(--g2); background: var(--k0); padding: 2px 4px; }
+
+.phone.crit-flash { animation: critflash 0.17s steps(1, end); }
+@keyframes critflash { 0% { box-shadow: 0 0 0 4px var(--g2); } 100% { box-shadow: none; } }
+.phone.near { animation: phonetremble 0.17s steps(1, end) infinite; }
+@keyframes phonetremble { 0%, 100% { translate: -2px 0; } 50% { translate: 2px 0; } }
+
+/* 피버 게이지: 방 아래 가로 한 줄. `피버` 라벨(k2) + 8px 틀(k1) 20칸(빈 칸 k4·찬 칸 or·피버 중 g2). 0%여도 틀은 보인다 */
+.fever-gauge { width: var(--edge-w); height: 12px; margin: 4px var(--edge-m) 2px; display: flex; align-items: center; gap: var(--s1); pointer-events: none; }
+body:has(.overlay.cut-gauge) .fever-gauge { visibility: hidden; }
+.fv-lbl { flex: none; font-family: var(--f-bold); font-size: var(--fs-s); line-height: 12px; font-weight: 700; color: var(--on-bg-dim); }
+.fv-bar { flex: 1; min-width: 0; height: 8px; padding: 2px; box-sizing: border-box; background: var(--k1); display: grid; grid-template-columns: repeat(20, 1fr); }
+.fv-cell { background: var(--k4); border-right: 2px solid var(--k1); background-clip: padding-box; }
+.fv-cell:last-child { border-right: 0; }
+.fv-cell.on { background: var(--or); background-clip: padding-box; }
+body.fever .fv-cell.on { background: var(--g2); background-clip: padding-box; }
+.fever-gauge.near .fv-cell.on { animation: fvnear 0.33s steps(1, end) infinite; }
+@keyframes fvnear { 0% { background-color: var(--or); } 50% { background-color: var(--g2); } }
+.fever-tag { position: absolute; right: 8px; bottom: 6px; min-width: 66px; display: flex; align-items: center; justify-content: center; gap: 2px; text-align: center; font-family: var(--f-bold); font-size: var(--fs-s); font-weight: 700; color: var(--g2); background: var(--k0); border: 2px solid var(--k1); padding: 2px 6px; pointer-events: none; white-space: nowrap; }
+.fever-tag.blank { display: none; }
+.fever-tag .tag-fire { width: 16px; height: 16px; }
+.fever-tag .tag-fire[hidden] { display: none; }
+.fever-tag.near { color: var(--or); }
+.fever-tag.active { color: var(--g2); font-size: var(--fs-m); }
+.fever-tag.lock { color: var(--k3); }
+.x3-badge { margin-left: 6px; padding: 1px 6px; font-family: var(--f-bold); font-size: var(--fs-s); font-weight: 700; color: var(--k0); background: var(--or); box-shadow: 0 0 0 2px var(--r1); vertical-align: 1px; }
+.x3-badge[hidden] { display: none; }
+
+/* 피버 화면 테두리: 4px 단색, 색이 or·g2로 번갈아 바뀐다 */
+.fever-frame { position: fixed; inset: 0; z-index: 80; pointer-events: none; visibility: hidden; box-sizing: border-box; border: 4px solid var(--or); }
+body.fever .fever-frame { visibility: visible; animation: feverframe 0.33s steps(1, end) infinite; }
+@keyframes feverframe { 0% { border-color: var(--or); } 50% { border-color: var(--g2); } }
+body.fever .house-name { animation: feverhead 0.33s steps(1, end) infinite; text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
+@keyframes feverhead { 0% { color: var(--or); } 50% { color: var(--g2); } }
+body.fever .phone { background: var(--or); box-shadow: 0 6px 0 var(--r1); }
+body.fever .phone:active { box-shadow: 0 1px 0 var(--r1); }
+body.fever-end .fever-frame, body.fever-end .fever-tag.active, body.fever-end .house-name { animation: feverwarn 0.33s steps(1, end) infinite; }
+@keyframes feverwarn { 0% { visibility: visible; } 50% { visibility: hidden; } }
+body.fever-end .house-name { animation-name: feverwarnname; }
+@keyframes feverwarnname { 0% { color: var(--or); } 50% { color: var(--k3); } }
+
+/* 방 테두리 2px 대각 줄무늬: 피버 중에만 보이고 steps()로 흐른다 */
+.room::after { content: ''; position: absolute; inset: 0; z-index: 9; pointer-events: none; visibility: hidden; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Crect width='8' height='8' fill='%23ff8a1f'/%3E%3Cg fill='%23ffc83d'%3E%3Crect x='0' y='0' width='2' height='2'/%3E%3Crect x='2' y='0' width='2' height='2'/%3E%3Crect x='0' y='2' width='2' height='2'/%3E%3Crect x='6' y='2' width='2' height='2'/%3E%3Crect x='4' y='4' width='2' height='2'/%3E%3Crect x='6' y='4' width='2' height='2'/%3E%3Crect x='2' y='6' width='2' height='2'/%3E%3Crect x='4' y='6' width='2' height='2'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 8px 8px; clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, 4px 4px, 4px calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 4px, 4px 4px); }
+body.fever .room::after { visibility: visible; animation: feverstripe 0.4s steps(4, end) infinite; }
+@keyframes feverstripe { 0% { background-position: 0 0; } 100% { background-position: 8px 0; } }
+body.fever-end .room::after { animation: feverwarn 0.33s steps(1, end) infinite; }
+
+.parcel { position: absolute; left: 0; top: 0; z-index: 7; width: 64px; height: 64px; padding: 0; border: 0; background: none; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+.parcel[hidden] { display: none; }
+.parcel-emoji { font-size: 48px; line-height: 1; pointer-events: none; display: flex; }
+.parcel-emoji .ico { pointer-events: none; image-rendering: pixelated; }
+.parcel.blink .parcel-emoji { animation: parcelblink 0.33s steps(1, end) infinite; }
+@keyframes parcelblink { 0% { visibility: visible; } 50% { visibility: hidden; } }
+
+body.reduce-motion .fever-tag.active, body.reduce-motion .phone.near, body.reduce-motion .fever-gauge.near .fv-cell, body.reduce-motion .fever-frame, body.reduce-motion .room::after, body.reduce-motion .house-name { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  body.fever-end .fever-tag.active, .phone.near, .fever-gauge.near .fv-cell, .fever-frame, .room::after, body.fever .house-name, .parcel.blink .parcel-emoji { animation: none !important; }
+}
+
+/* 마일스톤 카드: 테두리 점멸(JS)과 배율 도장 */
+.ms-stamp { position: absolute; right: 128px; top: 6px; z-index: 7; pointer-events: none; padding: 1px 8px; background: var(--p1); color: var(--r2); font: 700 var(--fs-l)/1.15 var(--f-bold); box-shadow: 0 0 0 4px var(--r2); }

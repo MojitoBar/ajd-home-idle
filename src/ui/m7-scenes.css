@@ -1,0 +1,73 @@
+/* ---------- 이사 장면(전체 화면, 도트). 단색 면·정수 배율·steps()만 쓴다. 상자 열기 장면은 col.css ---------- */
+.move-scene { position: fixed; inset: 0; z-index: 95; color: var(--p1); background: var(--b3); overflow: hidden; touch-action: manipulation; font-family: var(--f-body); }
+.move-scene .sc-in { position: absolute; inset: -8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+.move-scene.dark { background: var(--k0); }
+.move-scene .ico { image-rendering: pixelated; display: block; max-width: none; }
+.sc-ground { position: absolute; left: 0; right: 0; top: 62%; bottom: 0; background: var(--k2); }
+.sc-ground { overflow: hidden; }
+.sc-gdots { position: absolute; left: 0; width: 100%; height: 4px; }
+.sc-gdots.r0 { top: 112px; }
+.sc-gdots.r1 { top: 144px; left: 24px; }
+.sc-gdot { position: absolute; top: 0; width: 8px; height: 4px; background: var(--k1); }
+.sc-gdots.run { animation: sc-dash 0.2s steps(4, end) infinite; }
+.sc-road { position: absolute; left: 0; right: 0; top: 62%; height: 80px; background: var(--k1); border-top: 4px solid var(--k0); border-bottom: 4px solid var(--k0); overflow: hidden; }
+.sc-dashes { position: absolute; left: 0; top: 48px; width: 100%; height: 4px; }
+.sc-dash { position: absolute; top: 0; width: 24px; height: 4px; background: var(--k3); }
+.sc-dashes.run { animation: sc-dash 0.2s steps(4, end) infinite; }
+@media (max-width: 899px) {
+  .sc-ground, .sc-road { top: 72%; }
+}
+@keyframes sc-dash { from { translate: 0 0; } to { translate: -48px 0; } }
+/* 도트 구름: k5 사각 3개를 겹친 모양, 왼쪽으로 steps()로 천천히 흐른다 */
+.sc-cloud { position: absolute; left: 0; width: 80px; height: 16px; background: var(--k5); animation: sc-cloud 30s steps(60, end) infinite; pointer-events: none; }
+.sc-cloud::before, .sc-cloud::after { content: ''; position: absolute; background: var(--k5); }
+.sc-cloud::before { left: 16px; top: -16px; width: 48px; height: 16px; }
+.sc-cloud::after { left: 32px; top: -32px; width: 16px; height: 16px; }
+/* 구름 행은 글자 띠(.sc-label, top 12%, 높이 52px·PC 112px) 위아래로 피한다. 구름 그림은 top-32 ~ top+16이라 위쪽 행은 글자 위 10px, 아래 행은 글자 아래 12px 이상 */
+.sc-cloud:nth-child(1) { top: calc(12% + 96px); animation-delay: -4s; }
+.sc-cloud:nth-child(2) { top: calc(12% + 140px); animation-duration: 40s; animation-delay: -22s; }
+.sc-cloud:nth-child(3) { top: calc(12% - 26px); animation-duration: 50s; animation-delay: -38s; }
+@media (min-width: 900px) {
+  .sc-cloud:nth-child(1) { top: calc(12% + 152px); }
+  .sc-cloud:nth-child(2) { top: calc(12% + 198px); }
+}
+.move-scene.dark .sc-cloud { display: none; }
+@keyframes sc-cloud { from { translate: 100vw 0; } to { translate: -120px 0; } }
+@media (prefers-reduced-motion: reduce) { .sc-cloud { animation: none; translate: 40vw 0; } }
+.sc-white { position: absolute; inset: 0; background: var(--p1); visibility: hidden; pointer-events: none; z-index: 3; }
+.sc-label { font: 700 30px/32px var(--f-bold); color: var(--k5); text-shadow: -2px -2px 0 var(--k0), 0 -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 0 0 var(--k0), 2px 0 0 var(--k0), -2px 2px 0 var(--k0), 0 2px 0 var(--k0), 2px 2px 0 var(--k0); position: absolute; top: 12%; left: 0; right: 0; text-align: center; }
+.sc-label.go { font-size: 48px; line-height: 52px; }
+@media (min-width: 900px) { .sc-label.go { font-size: 96px; line-height: 100px; } }
+.sc-truck { position: absolute; left: 0; bottom: calc(38% - 36px); }
+@media (max-width: 899px) { .sc-truck { bottom: calc(28% - 36px); } }
+.sc-bump { position: relative; animation: sc-bump 0.24s steps(1, end) infinite; }
+.sc-bump img { position: absolute; left: 0; top: 0; }
+.sc-truck-f2 { animation: sc-frame 0.24s steps(1, end) infinite; }
+@keyframes sc-frame { 0% { visibility: hidden; } 50% { visibility: visible; } }
+@keyframes sc-bump { 0% { translate: 0 0; } 50% { translate: 0 -4px; } }
+.sc-result { position: absolute; inset: 0; visibility: hidden; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 0 16px; display: flex; }
+.sc-result.on { visibility: visible; }
+.sc-houses { display: flex; align-items: center; gap: 16px; }
+.sc-pad { box-sizing: border-box; width: 112px; height: 112px; display: flex; align-items: center; justify-content: center; background: var(--k1); border: 4px solid var(--k2); }
+.sc-pad.new { border-color: var(--g2); }
+.sc-arrow { font: 700 var(--fs-l)/28px var(--f-bold); color: var(--g2); }
+.sc-arrive { position: absolute; inset: 0; visibility: hidden; flex-direction: column; align-items: center; justify-content: center; gap: 24px; text-align: center; display: flex; }
+.sc-arrive.on { visibility: visible; }
+.sc-arrive-name { font: 700 36px/40px var(--f-bold); color: var(--g2); word-break: keep-all; }
+.sc-from { font: 400 var(--fs-m)/20px var(--f-body); color: var(--k4); word-break: keep-all; }
+.sc-mult { display: flex; flex-direction: column; align-items: center; color: var(--k0); background: var(--g2); border: 4px solid var(--g0); box-shadow: 0 4px 0 var(--g1); padding: 8px 24px 4px; font-variant-numeric: tabular-nums; }
+.sc-mult-l { font: 700 15px/20px var(--f-bold); }
+.sc-mult-n { font: 700 48px/52px var(--f-bold); }
+.sc-go { --line: transparent; min-width: 200px; margin-top: 8px; }
+.sc-skip { position: absolute; left: 0; right: 0; bottom: 32px; text-align: center; font: 400 15px/20px var(--f-bold); color: var(--k5); text-shadow: -2px -2px 0 var(--k0), 0 -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 0 0 var(--k0), 2px 0 0 var(--k0), -2px 2px 0 var(--k0), 0 2px 0 var(--k0), 2px 2px 0 var(--k0); }
+
+body.reduce-motion .move-scene *, body.reduce-motion .move-scene { animation: none !important; transition: none !important; }
+
+@media (min-width: 900px) {
+  .sc-pad { width: 208px; height: 208px; }
+  .sc-pad img { width: 192px; height: 192px; }
+  .sc-houses { gap: 32px; }
+}
+
+/* 전면 장면이 떠 있는 동안 페이지 스크롤바(8px)가 덮개 오른쪽을 비우지 않게 한다 */
+html:has(.move-scene), html:has(.box-scene) { overflow: hidden; scrollbar-width: none; }

@@ -1,0 +1,36 @@
+수치 점검 2026-11-15T14:12:41.036Z (SEED 중반: 서비스 4종, 상자 45)
+
+[1] 스크롤 높이
+1440x900: documentElement.scrollHeight=900 innerHeight=900 차이=0 body.scrollHeight=900 넘침 없음
+1280x880: documentElement.scrollHeight=880 innerHeight=880 차이=0 body.scrollHeight=880 넘침 없음
+1440x960: documentElement.scrollHeight=960 innerHeight=960 차이=0 body.scrollHeight=960 넘침 없음
+1024x768: documentElement.scrollHeight=768 innerHeight=768 차이=0 body.scrollHeight=768 넘침 없음
+
+[2] 좌우 정렬(getBoundingClientRect left/right)
+390폭: room=L15/R375(w360)  unbar=L99/R307(w208)  unrow=L13/R377(w364)  unchip=없음  moverow=L13/R377(w364)  bar=L15/R174(w159)  phone=L123/R267(w144)
+   방 대비 상자 막대줄 left차=84.00 right차=-68.00
+   방 대비 상자 막대 부모(px-strip un-only) left차=-2.00 right차=2.00
+   방 대비 이사 줄 left차=-2.00 right차=2.00
+   상자 막대줄 대비 이사 줄 left차=-86.00 right차=70.00
+1440폭: room=L32/R752(w720)  unbar=L200/R616(w416)  unrow=L28/R756(w728)  unchip=없음  moverow=L28/R756(w728)  bar=L30/R553(w523)  phone=L248/R536(w288)
+   방 대비 상자 막대줄 left차=168.00 right차=-136.00
+   방 대비 상자 막대 부모(px-strip un-only) left차=-4.00 right차=4.00
+   방 대비 이사 줄 left차=-4.00 right차=4.00
+   상자 막대줄 대비 이사 줄 left차=-172.00 right차=140.00
+1024폭: room=L18/R378(w360)  unbar=L102/R310(w208)  unrow=L16/R380(w364)  unchip=없음  moverow=L16/R380(w364)  bar=L18/R177(w159)  phone=L126/R270(w144)
+   방 대비 상자 막대줄 left차=84.00 right차=-68.00
+   방 대비 상자 막대 부모(px-strip un-only) left차=-2.00 right차=2.00
+   방 대비 이사 줄 left차=-2.00 right차=2.00
+   상자 막대줄 대비 이사 줄 left차=-86.00 right차=70.00
+
+[3] 도감에서 scrollWidth > clientWidth 인 칸(.dex-cell) 수 (일부 수집 / 가득 수집, 칸 안 자식 요소 넘침 별도)
+360폭 일부: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 
+360폭 가득: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 
+390폭 일부: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 
+390폭 가득: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 
+430폭 일부: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 
+430폭 가득: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 
+1024폭 일부: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 
+1024폭 가득: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 
+1440폭 일부: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 
+1440폭 가득: 칸 80개 중 넘침 0칸 (자식 요소가 넘치는 칸 0) 

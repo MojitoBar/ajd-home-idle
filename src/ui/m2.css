@@ -1,0 +1,12 @@
+/* M2: 이벤트 배지·상단 줄 (상자·도감 화면은 col.css) */
+.tab { position: relative; }
+.dot[hidden] { display: none; }
+@keyframes dotpulse { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+
+.event-badge { background: var(--g2); color: var(--g0); white-space: nowrap; box-shadow: 0 0 0 var(--d) var(--g0) inset; flex: none; }
+.event-badge[hidden], .event-call[hidden] { display: none; }
+.event-badge.ending { animation: evblink 0.8s steps(1, end) infinite; }
+@keyframes evblink { 0%, 49.9% { background: var(--g2); } 50%, 100% { background: var(--g3); } }
+.top { flex-wrap: nowrap; }
+.top .house-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.small { font-family: var(--f-bold); font-size: var(--fs-s); }

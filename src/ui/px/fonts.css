@@ -1,0 +1,23 @@
+/* Galmuri(SIL OFL 1.1) 원본 woff2 그대로. 서브셋 금지(Reserved Font Name). 라이선스: public/licenses/galmuri-OFL.txt */
+/* Galmuri14는 굵기 400~900을 한 파일로 받는다(가짜 굵게 방지). 굵은 12px 글자는 Galmuri11 Bold */
+@font-face {
+  font-family: 'Galmuri14';
+  src: url('/fonts/Galmuri14.woff2') format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Galmuri11';
+  src: url('/fonts/Galmuri11.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Galmuri11';
+  src: url('/fonts/Galmuri11-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

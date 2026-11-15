@@ -1,0 +1,30 @@
+export type PerkCategory = 'tap' | 'idle' | 'luck' | 'strategy';
+
+export interface PerkDef {
+  id: string;
+  name: string;
+  emoji: string;
+  category: PerkCategory;
+  /** 한 레벨당 효과 설명 */
+  desc: string;
+  maxLevel: number;
+  /** 레벨당 효과량 (perks.ts의 perkEffects가 해석) */
+  per: number;
+}
+
+export const PERK_OFFER_SIZE = 3;
+
+export const PERKS: readonly PerkDef[] = [
+  { id: 'tap_power', name: '손목 단련', emoji: '', category: 'tap', desc: '탭 수익 +110%', maxLevel: 5, per: 1.1 },
+  { id: 'crit', name: '촉이 좋은 손가락', emoji: '', category: 'tap', desc: '치명타 확률 +3%', maxLevel: 5, per: 0.03 },
+  { id: 'fever_long', name: '오래가는 열기', emoji: '', category: 'tap', desc: '피버 지속 +4초', maxLevel: 4, per: 4 },
+  { id: 'svc_power', name: '서비스 정기 점검', emoji: '', category: 'idle', desc: '서비스 수익 +20%', maxLevel: 5, per: 0.2 },
+  { id: 'offline_rate', name: '느긋한 귀가', emoji: '', category: 'idle', desc: '오프라인 효율 +10%', maxLevel: 3, per: 0.1 },
+  { id: 'offline_cap', name: '넉넉한 부재중', emoji: '', category: 'idle', desc: '오프라인 최대 시간 +2시간', maxLevel: 3, per: 7200 },
+  { id: 'box_discount', name: '상자 단골 쿠폰', emoji: '', category: 'luck', desc: '상자 가격 -8%', maxLevel: 4, per: 0.08 },
+  { id: 'parcel_freq', name: '택배 기사님 친구', emoji: '', category: 'luck', desc: '택배 상자 등장 간격 -15%', maxLevel: 3, per: 0.15 },
+  { id: 'bundle_boost', name: '결합 달인', emoji: '', category: 'strategy', desc: '결합 보너스 +25% (x2\u00a0→\u00a0x2.25)', maxLevel: 4, per: 0.25 },
+  { id: 'contract_slot', name: '약정 칸 넓히기', emoji: '', category: 'strategy', desc: '약정 칸 +1', maxLevel: 2, per: 1 },
+  { id: 'penalty_cut', name: '위약금 협상', emoji: '', category: 'strategy', desc: '위약금 -20%', maxLevel: 3, per: 0.2 },
+  { id: 'tap_crit_power', name: '대박 한 방', emoji: '', category: 'tap', desc: '치명타 배율 +1 (기본 x6)', maxLevel: 3, per: 1 },
+];

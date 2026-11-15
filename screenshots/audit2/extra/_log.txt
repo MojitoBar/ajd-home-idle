@@ -1,0 +1,80 @@
+--- 2026-11-15T08:38:10.818Z ONLY=new,fever,tap,room
+n00-new-start | 새 게임 시작(탭 전, 방+서비스 카드 2장, 잠긴 탭 자물쇠)
+n01-first-tap | 첫 탭 직후
+n02-first-buy | 첫 구매 직후
+n03-unlock-1-real | 실제 진행으로 열림 토스트: 새로 열렸어요 · 공구 강화 (경과 26초)
+n03-unlock-2-real | 실제 진행으로 열림 토스트: 새로 열렸어요 · 상자 (경과 93초)
+n03-unlock-3-real | 실제 진행으로 열림 토스트: 새로 열렸어요 · 도감 (경과 94초)
+n03-unlock-4-seeded-bundle | 시드로 건너뛰어 연 단계(bundle): 새로 열렸어요 · 도감
+n03-unlock-5-seeded-perk | 시드로 건너뛰어 연 단계(perk): 새로 열렸어요 · 결합
+n03-unlock-6-seeded-move | 시드로 건너뛰어 연 단계(move): 새로 열렸어요 · 이사
+n03-unlock-7-seeded-contract | 시드로 건너뛰어 연 단계(contract): 새로 열렸어요 · 약정
+(새 게임 마지막 unlocked: tap,box,dex,mult,bundle,perk,move,contract)
+f1-m-gauge50 | 피버 게이지 약 50%(피버 전) 390x844
+f2-m-start | 피버 시작 순간(피버! 글자) 390x844
+f3-m-active | 피버 진행 중(탭 직후) 390x844
+f1-pc-gauge50 | 피버 게이지 약 50%(피버 전) 1440x900
+f2-pc-start | 피버 시작 순간(피버! 글자) 1440x900
+f3-pc-active | 피버 진행 중(탭 직후) 1440x900
+t1-crit | 치명타 타격 순간(.fx-float.crit 1개)
+t2-damped | 감쇠(초당 6회 초과) 타격 순간(.fx-float.damped 1개)
+r1-roomdone-1s | 방 완성 1.3초 뒤(토스트: 커피머신을 놓았어요)
+r2-roomdone-3_5s | 방 완성(80번째 상자) 이후 3.5초(토스트: )
+r3-free-box-result | 방 완성 무료 사은품 상자가 열린 결과 화면
+r3b-after-close | 사은품 결과를 닫은 0.9초 뒤(토스트: 이제 살림을 손질해요)
+r4-tierup-toast | 단계 상승 직후 토스트 보이는 순간(토스트: 냉장고가 은빛이 됐어요)
+r5-tierup-free-box | 단계 상승 무료 사은품 결과 화면
+[문제]
+없음
+--- 2026-11-15T08:40:06.216Z ONLY=care,box,contract,modal,house,pc
+c-m-silver-lv3 | 살림 8칸 모두 Lv 3 390x844
+c-m-gold-lv12 | 살림 8칸 모두 Lv 12 390x844
+c-m-rainbow-lv48 | 살림 8칸 모두 Lv 48 390x844
+c-m-sparkle-lv192 | 살림 8칸 모두 Lv 192 390x844
+c-m-mixed | 살림 8칸 섞임 1/3/12/48/192/5/20/2 390x844
+c-pc-silver-lv3 | 살림 8칸 모두 Lv 3 1440x900
+c-pc-gold-lv12 | 살림 8칸 모두 Lv 12 1440x900
+c-pc-rainbow-lv48 | 살림 8칸 모두 Lv 48 1440x900
+c-pc-sparkle-lv192 | 살림 8칸 모두 Lv 192 1440x900
+c-pc-mixed | 살림 8칸 섞임 1/3/12/48/192/5/20/2 1440x900
+k1-contract-sheet | 약정 창(종류 3택)
+k2-contract-card | 약정 중 카드(남은 시간 표시, 서비스 0·1)
+k3-penalty-confirm | 약정 중 이사 누름 -> 위약금 확인 창
+k4-bundle-open | 결합 줄 펼침(처음 aria-expanded=false)
+k5-bundle-closed | 결합 줄 접힘(비교용)
+m1-perk-list | 특전 창(보유 특전 목록)
+m2-house-table | 집 단계 창
+m3-move-confirm | 이사 확인 창
+m4-move-mid | 이사 장면 중간 1장(1.1초)
+m5-after-move | 이사 직후 방(투룸)
+m6-settings | 설정 창
+m7-info-mult | 위쪽 i 상세(배율 내역 팝오버)
+m9-offline | 오프라인 보상 창(3시간)
+m10-event-alert | 이벤트 알림(전화 울림, 아직 안 누름)
+m11-tap-popover | 공구 강화 탭 "탭 1회" 줄 내역 팝오버(.mult-pop 보임=1)
+h1-oneroom | 집 방 화면: 원룸(moves=0) 390x844
+h2-tworoom | 집 방 화면: 투룸(moves=1) 390x844
+h3-apt | 집 방 화면: 아파트(moves=2) 390x844
+h4-penthouse | 집 방 화면: 펜트하우스(moves=3) 390x844
+h5-moon | 집 방 화면: 달 기지(moves=4) 390x844
+p01-new | PC 1440x900 새 게임
+p02-mid | PC 1440x900 중반
+p03-tool-tab | PC 1440x900 공구 강화 탭
+p04-box-tab | PC 1440x900 상자 탭
+p05-dex-tab | PC 1440x900 도감 탭
+p06-contract-modal | PC 1440x900 약정 창
+p07-mid-1280x720 | PC 1280x720 중반
+p08-mid-1024x768 | PC 1024x768 중반
+[문제]
+[box] 실패 locator.scrollIntoViewIfNeeded: Timeout 30000ms exceeded.
+trophy: 트로피 창 없음(본문 '트로피/업적' 글자 없음, .badge 클릭해도 창 안 뜸)
+--- 2026-11-15T08:40:42.430Z ONLY=box
+b1-odds | 상자 탭 "확률 보기"를 눌러 뜬 상자 확률 창
+b2-open-1 | 상자 탭에서 1개 열기 결과
+b3-open-10 | 상자 탭에서 10개 열기 결과
+b4-box-sets | 상자 탭 위쪽(세트 완성 줄 + 세트 보기 버튼, 세트 목록은 없음)
+b5-set-view | "세트 보기"를 눌러 도감의 세트 효과로 이동한 화면
+b6-dex-tab | 도감 탭(가득 찬 도감) 390x844
+b7-dex-detail | 도감 칸 상세
+[문제]
+없음

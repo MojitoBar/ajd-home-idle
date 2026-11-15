@@ -1,0 +1,87 @@
+/* 도트 방. 모든 그림은 자연 크기 x 2(도트 1칸 = 2px), 위치·크기는 짝수 px. 색은 palette.css 토큰만. */
+html:root { --room-w: 360px; --room-h: 260px; --px-floor: 228px; --edge-w: calc(min(var(--room-w), round(down, 100%, 2px)) + 4px); --edge-m: calc((100% - var(--edge-w)) / 2); }
+html:root .px-img, html:root .un-col, html:root .un-sil, html:root .un-box-img { image-rendering: pixelated; max-width: none; }
+html:root body.un-mode { --un-floor: var(--px-floor); --un-k: 1; }
+
+/* 방: 360x260 고정, 좁으면 가운데 기준으로 양옆만 잘린다. 테두리는 밖으로 2px 남색 */
+html:root body.un-mode .room {
+  box-sizing: content-box; display: block; width: min(var(--room-w), round(down, 100%, 2px)); height: var(--room-h);
+  margin: var(--s2) auto 0; border: 0; border-radius: 0; box-shadow: 0 0 0 2px var(--k1);
+  background: var(--p1) url('/assets/px/room/blue.png') center / var(--room-w) var(--room-h) no-repeat; image-rendering: pixelated;
+  font-family: 'Galmuri11', monospace; font-synthesis: none; -webkit-font-smoothing: none;
+}
+html:root body.fever.un-mode .room { border-color: transparent; box-shadow: 0 0 0 2px var(--or); }
+
+/* 누르는 면(보이지 않는 판): 바닥선 자리 상자 위 */
+html:root body.un-mode .phone, html:root body.un-mode .phone:active, html:root body.un-mode.fever .phone, html:root body.un-mode.fever .phone:active {
+  left: 50%; top: var(--un-floor); width: 144px; height: 144px; margin: -136px 0 0 -72px; border-radius: 0;
+}
+
+/* 상자 */
+html:root .un-stage::before { display: none; }
+html:root .un-box { filter: none; transition: transform 0.2s steps(4, end); }
+html:root .un-box[data-pos='1'], html:root .un-box[data-pos='2'] { transform: translate(var(--wx, 0px), var(--wy)); }
+html:root .un-box::before { content: ''; position: absolute; left: round(15%, 2px); right: round(15%, 2px); bottom: -2px; height: 4px; background: var(--w1); }
+html:root .un-box-img { position: absolute; left: 0; top: 0; display: none; }
+html:root .un-box-img.on, html:root .un-box-img.open { display: block; }
+html:root .un-tag { display: none; }
+html:root .un-dust { border-radius: 0; }
+
+/* 살림: 방 안 제자리(left·top·크기는 JS가 rooms.ts 표와 그림 자연 크기에서 넣는다) */
+html:root .un-slots { display: contents; }
+html:root .un-slot { position: absolute; border: 0; border-radius: 0; z-index: 0; box-sizing: content-box; }
+html:root .un-slot::before { content: ''; position: absolute; left: round(15%, 2px); right: round(15%, 2px); bottom: -2px; height: 4px; background: var(--w1); }
+html:root .un-slot[data-on='counter']::before { background: var(--w2); }
+html:root .un-slot img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+html:root .un-sil { position: absolute; inset: 0; filter: none; opacity: 1; background: var(--k4); mask-size: 100% 100%; mask-repeat: no-repeat; -webkit-mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; }
+/* 실루엣 k1 1도트 외곽선: 번짐 0 그림자 4방향. 밝은 벽(원룸·민트·노을)에서 묻히지 않게 */
+html:root .un-silw { position: absolute; inset: 0; filter: drop-shadow(2px 0 0 var(--k3)) drop-shadow(-2px 0 0 var(--k3)) drop-shadow(0 2px 0 var(--k3)) drop-shadow(0 -2px 0 var(--k3)); }
+/* C: 지금 채우는 칸 1개만 실루엣. 나머지는 바닥 받침(::before)만 */
+html:root .un-slot:not(.cur) .un-silw { display: none; }
+html:root .un-colw { position: absolute; left: 0; right: 0; bottom: 0; height: 0; overflow: hidden; }
+html:root .un-slot .un-colw img { position: absolute; left: 0; top: auto; bottom: 0; width: 100%; height: var(--h); image-rendering: pixelated; max-width: none; }
+
+/* 서비스 선반: 벽 위 판자(CSS) 위에 아이콘 24도트 8종(숫자 없음). 판자 윗면이 아이콘 바닥 */
+html:root .px-shelf { position: absolute; z-index: 1; pointer-events: none; left: 0; right: 0; top: calc(var(--y) * 1px); height: 8px; }
+/* 판자: 방 가운데 기준. 방이 그림보다 좁게 보이면(360) 양 끝이 안쪽 가장자리에서 4px씩 떨어지게 좌우 모두 줄인다 */
+html:root .px-pl { position: absolute; top: 0; height: 8px; width: min(calc(var(--w) * 1px), calc(100% - 8px)); left: calc(50% + var(--x) * 1px - min(calc(var(--w) * 1px), calc(100% - 8px)) / 2); }
+html:root .px-plank { position: absolute; left: 0; right: 0; top: 0; height: 4px; border-bottom: 4px solid var(--plank, var(--w1)); background: var(--p2); }
+html:root .px-sup { position: absolute; top: 8px; width: 4px; height: 6px; background: var(--plank, var(--w1)); }
+html:root .px-sup.l { left: 0; }
+html:root .px-sup.r { right: 0; }
+html:root .px-svc { position: absolute; display: block; }
+html:root .px-svc .px-img { display: block; }
+
+/* 벽 전화(자리는 JS가 rooms.ts 표에서 넣는다), 독·카드·휘두름의 도구 그림은 48px 그대로 */
+html:root .un-wall { right: auto; width: 40px; height: 40px; padding: 0; display: block; }
+html:root .un-wall .px-img { display: block; }
+/* 짧은 전화기(rooms.ts의 short): 줄 3행(20행 중 15%)만 잘라낸다. 몸통 아래 외곽선은 그대로 */
+html:root .un-wall.short { height: 34px; }
+html:root .un-wall.short .px-img { clip-path: inset(0 0 15% 0); }
+/* 평소에는 벨 그림을 숨긴다. 전화가 울릴 때만 2프레임 교대(m8-unpack.css) */
+html:root .un-wall .un-wall-b { display: none; }
+html:root .room:has(.event-call:not([hidden])) .un-wall.ring2 .un-wall-b { display: block; }
+html:root .un-dock-tool .px-img, html:root .un-tool-ico .px-img, html:root .un-swing .px-img { display: block; }
+html:root .un-dock-tool.un-tool-out { left: 50%; top: 50%; margin: -24px 0 0 -24px; }
+html:root .un-swing { filter: none; font-size: 0; }
+
+/* 택배: 누름 영역 64(56 이상), 그림 48(24도트)이 1도트씩 위아래로 */
+html:root .parcel-emoji { filter: none; font-size: 0; }
+html:root .parcel .px-img { animation: px-bob 0.5s steps(1, end) infinite alternate; }
+@keyframes px-bob { 0% { translate: 0 0; } 100% { translate: 0 -2px; } }
+body.reduce-motion .parcel .px-img { animation: none; }
+
+/* 방 띠: 방 바로 아래 붙은 종이 띠(높이 28 + 테두리 2x2 = 32) */
+html:root .px-strip {
+  box-sizing: border-box; width: var(--edge-w); height: 32px; margin: 0 var(--edge-m) var(--s4);
+  border: 2px solid var(--k1); background: var(--p1); display: flex; align-items: center; gap: 8px; position: relative; z-index: 1;
+  font: 700 12px/12px 'Galmuri11', monospace; color: var(--k1); font-synthesis: none; -webkit-font-smoothing: none; white-space: nowrap;
+}
+html:root .px-count { margin-left: 8px; font-variant-numeric: tabular-nums; }
+html:root .px-strip .un-bar { flex: 1 1 96px; min-width: 80px; width: auto; height: 12px; box-sizing: border-box; border: 2px solid var(--k1); border-radius: 0; background: var(--k4); box-shadow: none; overflow: hidden; }
+html:root .px-strip .un-bar-fill { display: block; height: 100%; width: round(down, calc(var(--r, 1) * 100%), 2px); border-radius: 0; background: var(--w2); transition: none; }
+html:root .px-strip .un-bar.care .un-bar-fill { background: var(--b2); }
+html:root .px-strip .tap-hint { position: static; transform: none; margin: 0 8px 0 0; padding: 0; border-radius: 0; background: none; box-shadow: none; color: var(--b2); font: 700 12px/12px 'Galmuri11', monospace; display: block; visibility: visible; }
+html:root .px-done { height: 16px; padding: 0 4px; box-sizing: border-box; line-height: 12px; border: 2px solid var(--k1); background: var(--g2); color: var(--g0); }
+html:root .px-done[hidden] { display: none; }
+html:root .px-strip.short .px-item, html:root .px-strip.tiny .tap-hint { display: none; }

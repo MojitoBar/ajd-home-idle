@@ -1,0 +1,22 @@
+--- 2026-11-15T06:05:05.389Z ONLY=fever,tap
+f1-m-gauge50 | 피버 게이지 약 50%(피버 전) 390x844
+f2-m-start | 피버 시작 순간(피버! 글자) 390x844
+f3-m-active | 피버 진행 중(탭 직후) 390x844
+f1-pc-gauge50 | 피버 게이지 약 50%(피버 전) 1440x900
+f2-pc-start | 피버 시작 순간(피버! 글자) 1440x900
+f3-pc-active | 피버 진행 중(탭 직후) 1440x900
+t1-crit | 치명타 타격 순간(.fx-float.crit 1개)
+t2-damped | 감쇠(초당 6회 초과) 타격 순간(.fx-float.damped 1개)
+[문제]
+없음
+--- 2026-11-15T06:07:09.656Z ONLY=fever,tap
+f1-m-gauge50 | 피버 게이지 약 50%(피버 전) 390x844
+f2-m-start | 피버 시작 순간(피버! 글자) 390x844
+f3-m-active | 피버 진행 중(탭 직후) 390x844
+f1-pc-gauge50 | 피버 게이지 약 50%(피버 전) 1440x900
+f2-pc-start | 피버 시작 순간(피버! 글자) 1440x900
+f3-pc-active | 피버 진행 중(탭 직후) 1440x900
+t1-crit | 치명타 타격 순간(.fx-float.crit 1개)
+t2-damped | 감쇠(초당 6회 초과) 타격 순간(.fx-float.damped 1개)
+[문제]
+없음

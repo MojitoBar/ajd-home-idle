@@ -1,0 +1,27 @@
+/* 24색 고정. art/pixel/palette.json과 같은 값 */
+:root {
+  --k0: #0d1430;
+  --k1: #16224a;
+  --k2: #3b4a7a;
+  --k3: #8a96b8;
+  --k4: #d6dcec;
+  --k5: #ffffff;
+  --p1: #fff3d6;
+  --p2: #ecd3a0;
+  --w1: #8a4f24;
+  --w2: #d08a4a;
+  --b1: #0b3aa0;
+  --b2: #145ce6;
+  --b3: #5b9bff;
+  --b4: #bcd6ff;
+  --g0: #7a4a00;
+  --g1: #c98a00;
+  --g2: #ffc83d;
+  --g3: #ffeaa0;
+  --r1: #a8142d;
+  --r2: #e9304b;
+  --or: #ff8a1f;
+  --gn: #2fb36b;
+  --pu: #8d5cf6;
+  --pk: #ff6fb0;
+}

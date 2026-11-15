@@ -1,0 +1,37 @@
+/* ---------- 모바일 배치(폭 900 미만): 위쪽 P 줄은 독과 중복이라 숨기고 줄 사이 여백을 줄인다 ---------- */
+.tap-info-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); cursor: pointer; }
+.tap-info-row .card-info.key { min-width: 0; }
+.i-chip { flex: none; display: flex; align-items: center; justify-content: center; width: 12px; height: 12px; margin-right: 1px; background: var(--k5); color: var(--k1); box-shadow: 0 0 0 1px var(--k1); }
+.i-chip .glyph { display: block; }
+
+/* 배율 내역 창: 아이콘 5개가 한 줄 */
+.mult-pop.in-modal { position: static; z-index: auto; padding: 0; background: none; box-shadow: none; }
+.mult-pop.in-modal .mp-targets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s1); }
+.mult-pop.in-modal .mp-t { min-width: 0; padding-left: 0; padding-right: 0; }
+
+@media (max-width: 899px) {
+  /* 페이지 스크롤바(오른쪽 가장자리 세로 띠)는 숨긴다. 스크롤은 그대로 된다 */
+  html { scrollbar-width: none; }
+  html::-webkit-scrollbar { display: none; }
+  .hero .points { position: absolute; left: 0; top: var(--s2); margin: 0; }
+  .hero .points > :not(.x3-badge) { display: none; }
+  html:root body .px-strip { margin-bottom: var(--s2); }
+  .top { padding: var(--s1) 0 0; }
+  .move-row { box-sizing: border-box; width: var(--edge-w); margin-inline: var(--edge-m); }
+  .strat-top { padding-bottom: var(--s2); }
+  .strat-line { margin-bottom: 0; }
+  .strat-line:has(+ .bundle-row:not([hidden])) { margin-bottom: var(--s2); }
+  .chip.bundle-toggle { margin-bottom: 0; }
+  /* 피버 테두리는 독 위쪽에만 그려 탭 라벨을 가리지 않는다 */
+  .fever-frame { bottom: var(--dock-h); border-bottom-width: 0; }
+}
+/* 작은 폰(높이 760 이하): 카드가 1장 이상 보이도록 회선 이름 줄을 접고 방을 4px 올린다 */
+@media (max-width: 899px) and (max-height: 760px) {
+  .hero .speed-title { display: none; }
+  html:root body .room { margin-top: var(--s1); }
+  .strat-top { padding-bottom: var(--s1); }
+  html:root body .px-strip { margin-bottom: var(--s1); }
+}
+@media (max-width: 380px) {
+  .card { column-gap: var(--s2); grid-template-columns: 52px minmax(0, 1fr) 92px; }
+}
