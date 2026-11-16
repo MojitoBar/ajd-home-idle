@@ -2,6 +2,8 @@ type BuyMode = 1 | 10 | 'max';
 
 interface KeyHandlers {
   tap: () => void;
+  /** Space·Enter를 뗐을 때(누르고 있기 = 모으기) */
+  release: () => void;
   tab: (index: number) => void;
   mode: (m: BuyMode) => void;
 }
@@ -56,6 +58,7 @@ export function initKeys(h: KeyHandlers): void {
     if ((e.key === ' ' || e.key === 'Enter') && tapKeyDown) {
       tapKeyDown = false;
       e.preventDefault();
+      h.release();
     }
   });
 }

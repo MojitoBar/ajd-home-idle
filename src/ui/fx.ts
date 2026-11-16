@@ -13,6 +13,7 @@
  *  조합: tapBurst, combo, moveScene, setReduced
  */
 import { formatNumber } from '../logic/format';
+import { comboTier } from '../logic/combo';
 import { sfx } from './sound';
 import { houseIcon, iconImg, iconUrl, readyIcon, type IconName } from './icons';
 import { vibrate } from './prefs';
@@ -345,17 +346,17 @@ function base(kind: Kind, x: number, y: number, o: Partial<Particle>): Particle 
 export function burst(
   x: number,
   y: number,
-  o: { n?: number; colors?: string[]; kind?: Kind; speed?: number; gravity?: number; size?: number; up?: boolean; lift?: number; life?: number; clip?: boolean; avoid?: DOMRect; bounds?: Particle['bounds']; tag?: string; floor?: number; top?: number; dir?: number } = {},
+  o: { n?: number; colors?: string[]; kind?: Kind; speed?: number; gravity?: number; size?: number; up?: boolean; lift?: number; life?: number; clip?: boolean; avoid?: DOMRect; bounds?: Particle['bounds']; tag?: string; floor?: number; top?: number; dir?: number; ring?: boolean } = {},
 ): void {
   if (reduced()) return;
   const kind = o.kind ?? 'dot';
   const n = Math.min(o.n ?? 8, kind === 'coin' ? 12 : 16);
   const colors = snapAll(o.colors ?? [TOKENS.g2, TOKENS.g3, TOKENS.k5]);
   const speed = o.speed ?? 260;
-  const lift = o.lift ?? (speed > 0 ? -80 : 0);
+  const lift = o.lift ?? (speed > 0 && !o.ring ? -80 : 0);
   for (let i = 0; i < n; i++) {
-    const a = o.dir !== undefined ? o.dir + rnd(-0.6, 0.6) : o.up ? rnd(-Math.PI * 0.95, -Math.PI * 0.05) : rnd(0, 6.283);
-    const s = rnd(0.4, 1) * speed;
+    const a = o.ring ? (i / n) * 6.283 + 0.2 : o.dir !== undefined ? o.dir + rnd(-0.6, 0.6) : o.up ? rnd(-Math.PI * 0.95, -Math.PI * 0.05) : rnd(0, 6.283);
+    const s = (o.ring ? 1 : rnd(0.4, 1)) * speed;
     const sz = even((o.size ?? 4) * rnd(0.8, 1.25), 4);
     addParticle(
       base(kind, x, y, {
@@ -376,6 +377,20 @@ export function burst(
   }
 }
 
+/** 한 점으로 빨려 드는 입자: 반지름 r 둘레에서 시작해 (x, y)로 모인다 */
+export function suck(x: number, y: number, r: number, o: { n?: number; colors?: string[]; size?: number; life?: number } = {}): void {
+  if (reduced()) return;
+  const n = Math.min(o.n ?? 4, 8);
+  const colors = snapAll(o.colors ?? [TOKENS.g2, TOKENS.k5]);
+  const life = o.life ?? 0.32;
+  for (let i = 0; i < n; i++) {
+    const a = rnd(0, 6.283);
+    const d = r * rnd(0.8, 1.15);
+    const s = (d / life) * 1.5;
+    addParticle(base('dot', x + Math.cos(a) * d, y + Math.sin(a) * d, { vx: -Math.cos(a) * s, vy: -Math.sin(a) * s, g: 0, life, size: even((o.size ?? 4) * rnd(0.8, 1.25), 4), color: colors[(Math.random() * colors.length) | 0] }));
+  }
+}
+
 /** 태그가 붙은 입자를 모두 지운다 */
 export function clearTagged(tag: string): void {
   for (let i = particles.length - 1; i >= 0; i--) if (particles[i].tag === tag) particles.splice(i, 1);
@@ -386,10 +401,10 @@ export function twinkle(x: number, y: number, color: string = TOKENS.g3, size = 
   burst(x, y, { n: 1, kind: 'star', colors: [color], speed: 0, gravity: 0, size, life });
 }
 
-export function confetti(x: number, y: number, n = 40, o: { clip?: boolean; life?: number; avoid?: DOMRect; floor?: number; scale?: number } = {}): void {
+export function confetti(x: number, y: number, n = 40, o: { clip?: boolean; life?: number; avoid?: DOMRect; floor?: number; scale?: number; colors?: string[] } = {}): void {
   if (reduced()) return;
   const count = Math.min(n, 40);
-  const palette = document.body.classList.contains('fever') ? FEVER_CONFETTI_COLORS : CONFETTI_COLORS;
+  const palette = o.colors ? o.colors.map((t) => TOKENS[t]) : document.body.classList.contains('fever') ? FEVER_CONFETTI_COLORS : CONFETTI_COLORS;
   for (let i = 0; i < count; i++) {
     const a = rnd(-Math.PI * 0.95, -Math.PI * 0.05);
     const s = rnd(260, 620);
@@ -594,18 +609,19 @@ export function floatText(x: number, y: number, text: string, o: { scale?: numbe
 let bannerEl: HTMLDivElement | null = null;
 export const bannerActive = (): boolean => bannerEl !== null;
 /** 방 안 큰 글자(배너) 한 가지 자리 규칙: 방 안쪽 폭(좌우 12px 여백)을 넘지 않고, 토스트 띠(윗변 84px) 아래에서 시작해, 부제까지 방 아랫변 위 8px 안에 든다 */
-export function banner(text: string, o: { sub?: string; tone?: 'gold' | 'red' | 'blue'; ms?: number } = {}): void {
+export function banner(text: string, o: { sub?: string; tone?: 'gold' | 'red' | 'blue'; ms?: number; color?: string; cls?: string; subGold?: boolean } = {}): void {
   ensure();
   bannerEl?.remove();
   const e = document.createElement('div');
-  e.className = `fx-banner ${o.tone ?? 'gold'}`;
+  e.className = `fx-banner ${o.tone ?? 'gold'}${o.cls ? ` ${o.cls}` : ''}`;
+  if (o.color) e.style.setProperty('--bcol', snapHex(o.color));
   const big = document.createElement('div');
   big.className = 'fx-banner-big';
   big.textContent = text;
   e.append(big);
   if (o.sub) {
     const sub = document.createElement('div');
-    sub.className = 'fx-banner-sub';
+    sub.className = o.subGold ? 'fx-banner-sub gold' : 'fx-banner-sub';
     sub.textContent = o.sub;
     e.append(sub);
   }
@@ -864,50 +880,11 @@ export function countUp(el: HTMLElement, to: number, ms: number, format: (v: num
   requestAnimationFrame(stepFn);
 }
 
-// ---------- 콤보(표시 전용) ----------
-const COMBO_GAP = 700;
-let comboN = 0;
-let comboLast = 0;
-let comboEl: HTMLElement | null = null;
-let comboTimer = 0;
-export const combo = {
-  attach(host: HTMLElement): void {
-    comboEl = document.createElement('div');
-    comboEl.className = 'combo';
-    host.append(comboEl);
-  },
-  hit(): number {
-    const now = performance.now();
-    comboN = now - comboLast <= COMBO_GAP ? comboN + 1 : 1;
-    comboLast = now;
-    const el = comboEl;
-    if (el) {
-      if (comboN >= 3) {
-        const tier = comboN >= 40 ? 3 : comboN >= 20 ? 2 : comboN >= 10 ? 1 : 0;
-        el.dataset.tier = String(tier);
-        el.replaceChildren(Object.assign(document.createElement('div'), { textContent: `${comboN}연타`, className: 'combo-n' }));
-        (el.firstChild as HTMLElement).style.fontSize = `${[24, 30, 36][Math.min(tier, 2)]}px`;
-        el.classList.add('on');
-        if (!reduced()) {
-          pxFrames(el, [{ translate: '0 -4px' }, { translate: '0 0' }], 83);
-          if (tier >= 1) shake(el, 2 + tier * 2, 200);
-        }
-      }
-      clearTimeout(comboTimer);
-      comboTimer = window.setTimeout(() => {
-        el.classList.remove('on');
-        comboN = 0;
-      }, COMBO_GAP + 200);
-    }
-    return comboN;
-  },
-};
-
 // ---------- 조합 ----------
 export function tapBurst(x: number, y: number, amount: number, comboN_ = 1, pointsEl?: Element): void {
-  const tier = comboN_ >= 40 ? 3 : comboN_ >= 20 ? 2 : comboN_ >= 10 ? 1 : 0;
-  const colors = [TOKENS.g2, TOKENS.g3, tier >= 2 ? TOKENS.r2 : TOKENS.b3, TOKENS.k5];
-  floatText(x, y - 20, `+${formatNumber(amount)}`, { scale: 1 + tier * 0.25, color: tier >= 2 ? TOKENS.pk : undefined });
+  const tier = comboTier(comboN_);
+  const colors = [TOKENS.g2, TOKENS.g3, tier >= 2 ? TOKENS.or : TOKENS.b3, TOKENS.k5];
+  floatText(x, y - 20, `+${formatNumber(amount)}`, { scale: 1 + tier * 0.25, color: tier >= 3 ? TOKENS.pk : undefined });
   burst(x, y, { n: 4 + tier * 2, colors, kind: Math.random() < 0.25 ? 'star' : 'dot', speed: 240 + tier * 60, size: 6 });
   if (pointsEl) absorb({ x, y }, pointsEl, 2 + tier);
   if (tier >= 2) shake(document.getElementById('app')!, tier * 2, 160);

@@ -12,6 +12,8 @@ import './m10-mobile.css';
 import './m7-scenes.css';
 import './m8-unpack.css';
 import './m9-unlock.css';
+import './m11-charge.css';
+import './m12-weak.css';
 import './px/room.css';
 import { SERVICES, SERVICE_MILESTONES, TAP_MILESTONES } from '../data/services';
 import { MOON_STAGE } from '../data/houses';
@@ -36,6 +38,14 @@ import {
   tick,
 } from '../logic/economy';
 import { tapAndHit } from '../logic/unpack';
+import { addEarned, comboAdd, comboBonus, comboExpired, comboHit, comboMult, comboTier, comboWindowMs, initialCombo, type ComboState } from '../logic/combo';
+import * as comboUi from './comboUi';
+import * as chargeUi from './chargeUi';
+import * as weakUi from './weakUi';
+import { advanceWeak, hitWeak, initialWeak, weakVisible, type WeakState } from '../logic/weak';
+import { chargeZoneAt, releaseCharge, rollChargeZone, type ChargeZone, CHARGE_ZONE_DEFAULT } from '../logic/charge';
+import { advanceHeat, heatAdd, heatDamped, heatStrikeMult, heatTap, heatTapMult, heatZone, HEAT_WEAK, initialHeat, ventHeat, type HeatAdd, type HeatState } from '../logic/heat';
+import * as heatUi from './heatUi';
 import { formatDuration, formatNumber, speedTitle } from '../logic/format';
 import { applyOffline, offlineCapSec, type OfflineResult } from '../logic/offline';
 import { houseInfo, move, moveProgress, moveStatus, permMultAfterMove } from '../logic/prestige';
@@ -49,13 +59,13 @@ import { clearSave, readSave, writeBackup, writeSave } from './storage';
 import * as fx from './fx';
 import { sfx } from './sound';
 import { getPrefs, hapticsSupported, setPrefs, vibrate } from './prefs';
-import { boxAnchor, boxCenter, dockToolEl, initUnpack, makeToolEl, roomStrip, shelfItemEl, syncUnpack, unpackHit } from './unpackUi';
+import { boxAnchor, boxCenter, dockToolEl, initUnpack, makeToolEl, roomStrip, shelfItemEl, syncUnpack, unpackHeavy, unpackHit } from './unpackUi';
 import { fresh, type UiCtx } from './collectUi';
 import { canBuyBox, initBox, panel as boxPanel, updateBox } from './box';
 import { initDex, panel as dexPanel, renderDex, updateDex } from './dex';
 import { badge as feverBadge, gauge as feverGauge, initFever, syncFever } from './feverUi';
 import { initParcel, syncParcel } from './parcelUi';
-import { tapEffect } from './tapFx';
+import { dropTapNumber, tapEffect } from './tapFx';
 import * as strat from './strategyUi';
 import { nextUnlock, UNLOCK_NAME } from '../logic/unlock';
 import { clearNewTabDot, hasNewTabDot, initUnlock, syncUnlock, tabOpen } from './unlockUi';
@@ -74,6 +84,24 @@ let closeModal: (() => void) | null = null;
 let moving = false;
 let snapNext = true;
 let pendingReward = 0;
+let combo: ComboState = initialCombo();
+/** 이 콤보가 시작될 때의 최고 기록(정산 때 넘겼는지 가리는 기준) */
+let comboBest0 = 0;
+/** 연속 퍼펙트 수(저장하지 않는 실행 중 상태) */
+let chargeStreak = 0;
+let chargeTipDone = false;
+let weak: WeakState = initialWeak(Math.random);
+let lastTapMs = 0;
+let weakTipDone = false;
+/** 디버그: 급소가 저절로 뜨지 않게(기본 꺼짐, __ajd.weakAuto(true)로 켠다) / 띄운 급소의 시간을 멈춘다 */
+let weakAuto = !location.search.includes('debug');
+let weakPin = false;
+/** 열기·이번 스윙의 정타 구간(저장하지 않음). 디버그에서는 열기가 오르지 않고 구간이 고정(기본 꺼짐, __ajd.heatAuto/zoneAuto(true)로 켠다) */
+let heat: HeatState = initialHeat();
+let chargeZone: ChargeZone = CHARGE_ZONE_DEFAULT;
+let heatTipPending = false;
+let heatAuto = !location.search.includes('debug');
+let zoneAuto = !location.search.includes('debug');
 let lastTitle = '';
 let lastP = 0;
 let lastReady: boolean | null = null;
@@ -250,7 +278,10 @@ function build(): void {
   refs.phone.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     doTap(e.clientX, e.clientY);
+    chargeUi.press('pointer', e.pointerId, e.clientX, e.clientY);
   });
+  refs.phone.addEventListener('contextmenu', (e) => e.preventDefault());
+  refs.miniPhone.addEventListener('contextmenu', (e) => e.preventDefault());
   refs.phone.addEventListener('click', (e) => {
     if (e.detail === 0) {
       const r = refs.phone.getBoundingClientRect();
@@ -262,6 +293,7 @@ function build(): void {
   refs.miniPhone.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     doTap(e.clientX, e.clientY, refs.miniPhone);
+    chargeUi.press('pointer', e.pointerId, e.clientX, e.clientY);
   });
   refs.miniPhone.addEventListener('click', (e) => {
     if (e.detail === 0) {
@@ -273,7 +305,15 @@ function build(): void {
   refs.room.append(refs.phone, refs.tapHint, eventCall, refs.tip);
   initFever(refs.room, refs.phone);
   initUnpack({ room: refs.room, eventCall, tapHint: refs.tapHint, toast: showToast });
-  fx.combo.attach(refs.room);
+  comboUi.attach(refs.room, refs.phone, document.getElementById('app')!);
+  chargeUi.initCharge({
+    room: refs.room,
+    canStart: () => !moving && document.visibilityState === 'visible' && !document.querySelector('.overlay, .box-scene, .move-scene'),
+    streak: () => chargeStreak,
+    onRelease: applyCharge,
+  });
+  weakUi.initWeak({ room: refs.room, onHit: applyWeak });
+  chargeUi.setZone(chargeZone);
 
   setLabel(refs.moveBtn, 'ui-move', 32, '이사');
   refs.moveBtn.type = 'button';
@@ -354,10 +394,10 @@ function build(): void {
   });
   refs.speed.append(refs.speedVal, el('span', { cls: 'speed-unit', text: ' Mbps' }));
   for (const n of [refs.speed, refs.ptsRate, multBtn]) n.addEventListener('click', () => strat.toggleMult(refs.points));
-  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = s; } };
+  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = s; }, combo: (n: number) => { combo = { n, lastMs: performance.now(), earned: n * 100 }; comboBest0 = state.bestCombo; }, getCombo: () => combo, holdAt: chargeUi.holdAt, release: chargeUi.releaseHeld, charge: (pos: number) => { chargeUi.holdAt(pos); chargeUi.releaseHeld(); }, streak: (n: number) => { chargeStreak = n; }, tip: chargeUi.showTip, keep: () => { if (combo.n) combo = { ...combo, lastMs: performance.now() }; }, weak: showWeakAt, weakHit: () => { const r = document.querySelector('.weak:not([hidden])')?.getBoundingClientRect(); if (r) applyWeak(r.left + r.width / 2, r.top + r.height / 2); }, weakAuto: (on: boolean) => { weakAuto = on; }, weakTip: () => weakUi.showTip(), getWeak: () => weak, heatAuto: (on: boolean) => { heatAuto = on; }, zoneAuto: (on: boolean) => { zoneAuto = on; }, heat: (v: number) => setHeat(v >= 100 ? heatAdd(initialHeat(), 100) : { heat: { v, overMs: 0 }, overheated: false }), getHeat: () => heat, zone: (center: number) => { chargeZone = chargeZoneAt(center); chargeUi.setZone(chargeZone); }, getZone: () => chargeZone };
 
   const keyHint = el('p', { cls: 'key-hint' });
-  for (const [keys, label] of [[['Space'], '상자 치기'], [['1~4'], '탭 전환'], [['Q', 'W', 'E'], '수량'], [['Esc'], '닫기']] as [string[], string][]) {
+  for (const [keys, label] of [[['Space'], '상자 치기 · 꾹 강타'], [['1~4'], '탭 전환'], [['Q', 'W', 'E'], '수량'], [['Esc'], '닫기']] as [string[], string][]) {
     keyHint.append(el('span', { cls: 'kh' }, el('span', {}, ...keys.map((k) => el('kbd', { text: k }))), label));
   }
   const colPlay = el('div', { cls: 'col-play' }, header, el('section', { cls: 'hero' }, el('div', { cls: 'speed-wrap' }, refs.speed, multBtn), refs.speedTitle, refs.points), refs.room, feverGauge, ...(roomStrip() ? [roomStrip()!] : []), moveBlock, keyHint);
@@ -384,7 +424,9 @@ function build(): void {
     tap: () => {
       const c = boxCenter();
       doTap(c.x, c.y);
+      chargeUi.press('key', 0, c.x, c.y);
     },
+    release: () => chargeUi.releaseKey(),
     tab: (n) => {
       const id = (['services', 'tap', 'box', 'dex'] as TabId[])[n];
       if (tabOpen(id)) selectTab(id);
@@ -639,17 +681,214 @@ function buyFlourish(i: number, row: ServiceRow): void {
   });
 }
 
+/** 콤보 정산: 보너스를 포인트에 더한다. quiet이면 연출·대기 없이 더하기만(숨김·이사), 아니면 코인이 포인트 표시로 날아가 도착할 때 숫자가 오른다 */
+function settleCombo(c: ComboState, quiet: boolean): void {
+  if (c.n <= 0) return;
+  const bonus = comboBonus(c);
+  if (comboTier(c.n) === 0 || !(bonus > 0)) {
+    if (!quiet) comboUi.hide();
+    return;
+  }
+  state = { ...state, points: state.points + bonus, earned: state.earned + bonus, stats: { ...state.stats, totalEarned: state.stats.totalEarned + bonus } };
+  if (quiet) {
+    comboUi.hide();
+    return;
+  }
+  pendingReward += bonus;
+  let done = false;
+  const release = (): void => {
+    if (done) return;
+    done = true;
+    pendingReward = Math.max(0, pendingReward - bonus);
+    update();
+  };
+  window.setTimeout(release, 2500);
+  comboUi.settle({ n: c.n, bonus, best: c.n >= 25 && c.n > comboBest0, pointsEl: ptsTarget(), onArrive: release });
+}
+
+/** 진행 중 콤보를 정산하고 끝낸다(숨김·이사 시작) */
+function endComboQuiet(): void {
+  const c = combo;
+  combo = initialCombo();
+  settleCombo(c, true);
+}
+
+function resetCombo(): void {
+  combo = initialCombo();
+  comboUi.hide();
+}
+
+/** 강타·급소 공통: 만료된 콤보를 정산하고, roll이 낸 묵직한 한 방을 상태·콤보에 반영한다(tapGate는 거치지 않는다) */
+function applyHeavy<T extends { state: GameState; gain: number; comboAdd: number }>(x: number, y: number, roll: (mult: number) => T): { r: T; wasFever: boolean } {
+  const nowMs = performance.now();
+  lastTapMs = nowMs;
+  const wasFever = state.fever.activeSec > 0;
+  if (comboExpired(combo, nowMs, comboWindowMs(wasFever))) {
+    const c = combo;
+    combo = initialCombo();
+    settleCombo(c, false);
+  }
+  if (combo.n === 0) comboBest0 = state.bestCombo;
+  const r = roll(comboMult(combo.n));
+  state = r.state;
+  const h = comboAdd(combo, nowMs, r.comboAdd);
+  combo = addEarned(h.combo, r.gain);
+  if (combo.n > state.bestCombo) state = { ...state, bestCombo: combo.n };
+  if (r.comboAdd > 0) comboUi.hit({ n: combo.n, tierUp: h.tierUp, damped: false, x, y });
+  return { r, wasFever };
+}
+
+/** 꾹 눌러 강타: 떼는 순간의 표시 위치 pos로 판정한다 */
+function applyCharge(pos: number, x: number, y: number): void {
+  if (moving || document.visibilityState !== 'visible') return;
+  let power = 1;
+  const { r, wasFever } = applyHeavy(x, y, (mult) => {
+    const c = releaseCharge(state, () => Math.random(), pos, chargeStreak, mult, (g) => (power = heatStrikeMult(heat, g)), chargeZone);
+    chargeStreak = c.streak;
+    return c;
+  });
+  heat = ventHeat(heat);
+  if (zoneAuto) {
+    chargeZone = rollChargeZone(Math.random, chargeZone);
+    chargeUi.setZone(chargeZone);
+  }
+  chargeUi.say(r.grade, r.streak, r.gain, power);
+  chargeUi.strikeFx(r.grade, r.streak, document.getElementById('app')!, refs.room, power);
+  unpackHeavy({ x, y, grade: r.grade, streak: r.streak, bursts: r.bursts, pointsEl: ptsTarget(), fever: wasFever });
+  const c = boxCenter();
+  const r2 = ptsTarget().getBoundingClientRect();
+  fx.absorb({ x: c.x, y: c.y }, ptsTarget(), r.grade === 'perfect' ? 6 : r.grade === 'good' ? 3 : 1, { offset: { x: 0, y: r2.height / 2 + 12 } });
+  if (r.grade !== 'miss' && !getPrefs().chargeDone) setPrefs({ chargeDone: true });
+  if (r.grade !== 'miss' && power >= 2 && !getPrefs().heatDone) setPrefs({ heatDone: true });
+  update();
+}
+
+/** 급소 노리기: 과녁을 눌렀다. 묵직한 한 방(8탭 몫) + 콤보 +5. (x, y)는 과녁 중심 화면 좌표 */
+function applyWeak(x: number, y: number): void {
+  if (moving || document.visibilityState !== 'visible' || !weakVisible(weak)) return;
+  const w = weak;
+  const { r, wasFever } = applyHeavy(x, y, (mult) => {
+    const h = hitWeak(state, () => Math.random(), w, mult);
+    weak = h.weak;
+    return h;
+  });
+  weakPin = false;
+  if (heatAuto) setHeat(heatAdd(heat, HEAT_WEAK));
+  weakUi.hitFx(x, y, r.gain, document.getElementById('app')!);
+  unpackHeavy({ x, y, grade: 'perfect', streak: 0, bursts: r.bursts, pointsEl: ptsTarget(), fever: wasFever });
+  const c = boxCenter();
+  const r2 = ptsTarget().getBoundingClientRect();
+  fx.absorb({ x: c.x, y: c.y }, ptsTarget(), 6, { offset: { x: 0, y: r2.height / 2 + 12 } });
+  if (!getPrefs().weakDone) setPrefs({ weakDone: true });
+  update();
+}
+
+/** 열기를 바꾸고, 과열 시작·달아오름 진입이면 연출 훅을 부른다 */
+function setHeat(a: HeatAdd): void {
+  const was = heatZone(heat);
+  heat = a.heat;
+  if (a.overheated) {
+    heatUi.over();
+    chargeUi.sayOver();
+  } else if (was !== 'hot' && heatZone(heat) === 'hot') {
+    heatUi.hot();
+    if (!getPrefs().heatDone) heatTipPending = true;
+  }
+}
+
+function stepHeat(dtMs: number): void {
+  if (!heatAuto && heat.overMs <= 0) return;
+  const a = advanceHeat(heat, dtMs, chargeUi.isCharging());
+  heat = a.heat;
+  if (a.recovered) heatUi.recovered();
+}
+
+function showWeakAt(u: number, v: number): void {
+  weak = { nextInMs: 9999, remainMs: 1800, u, v };
+  weakPin = true;
+  presentWeak();
+}
+
+/** 급소가 막 떴다: 과녁을 띄우고, 처음이면 안내 말풍선(강타 안내와 겹치지 않게) */
+function presentWeak(): void {
+  weakUi.show(weak.u, weak.v);
+  if (weakTipDone || getPrefs().weakDone || chargeUi.tipShown() || !refs.tip.hidden) return;
+  weakTipDone = true;
+  weakUi.showTip();
+}
+
+function resetWeak(): void {
+  weak = initialWeak(Math.random);
+  weakPin = false;
+  weakUi.clear();
+}
+
+/** 급소를 띄워도 되는 때: 최근 2초 안에 탭, 모으는 중 아님, 창·이사 연출 없음, 칠 상자 있음 */
+function weakActive(nowMs: number): boolean {
+  return weakAuto && nowMs - lastTapMs < 2000 && !chargeUi.isCharging() && !moving && !document.querySelector('.overlay, .box-scene, .move-scene') && weakUi.hasBox();
+}
+
+function stepWeak(nowMs: number, dtMs: number): void {
+  if (weakPin) {
+    weakUi.frame(weak.remainMs);
+    return;
+  }
+  const a = advanceWeak(weak, dtMs, weakActive(nowMs), Math.random);
+  weak = a.weak;
+  if (a.appeared) presentWeak();
+  else if (a.vanished) weakUi.vanish();
+  else if (weakVisible(weak)) weakUi.frame(weak.remainMs);
+}
+
+/** 탭을 어느 정도 친 뒤 한 번만 알려 준다. 강타에 성공한 적이 있으면 다시 안 뜬다 */
+function syncChargeTip(): void {
+  if (fx.bannerActive() || document.querySelector('.charge-say, .weak-say')) {
+    if (chargeUi.tipShown()) {
+      if (chargeUi.shownTipKind() === 'heat') heatTipPending = true;
+      else chargeTipDone = false;
+      chargeUi.hideTip();
+    }
+    if (weakUi.tipShown()) {
+      weakUi.hideTip();
+      weakTipDone = false;
+    }
+    return;
+  }
+  const busy = !refs.tip.hidden || chargeUi.tipShown() || weakUi.tipShown() || !!document.querySelector('.overlay, .box-scene, .move-scene');
+  if (heatTipPending) {
+    if (getPrefs().heatDone || heatZone(heat) !== 'hot') heatTipPending = false;
+    else if (!busy) {
+      heatTipPending = false;
+      chargeUi.showTip('heat');
+    }
+    return;
+  }
+  if (chargeTipDone || getPrefs().chargeDone || state.stats.totalTaps < 20 || !refs.tip.hidden || chargeUi.tipShown() || weakUi.tipShown() || document.querySelector('.overlay, .box-scene, .move-scene')) return;
+  chargeTipDone = true;
+  chargeUi.showTip();
+}
+
 function doTap(x: number, y: number, via: HTMLElement = refs.phone): void {
-  const gate = tapGate(tapGateState, performance.now());
+  const nowMs = performance.now();
+  lastTapMs = nowMs;
+  const gate = tapGate(tapGateState, nowMs);
   tapGateState = { recent: gate.recent, tokens: gate.tokens, lastMs: gate.lastMs };
   if (!gate.ok) return;
   const wasFever = state.fever.activeSec > 0;
-  const r = tapAndHit(state, () => Math.random(), gate.damped);
+  const h = comboHit(combo, nowMs, comboWindowMs(wasFever), gate.damped);
+  if (h.ended) settleCombo(h.ended, false);
+  if (h.combo.n === 1) comboBest0 = state.bestCombo;
+  const r = tapAndHit(state, () => Math.random(), gate.damped || heatDamped(heat), comboMult(h.combo.n) * heatTapMult(heat));
+  if (heatAuto) setHeat(heatTap(heat));
+  heatUi.tap(heat);
   state = r.state;
-  const c = fx.combo.hit();
+  combo = addEarned(h.combo, r.gain);
+  if (combo.n > state.bestCombo) state = { ...state, bestCombo: combo.n };
+  comboUi.hit({ n: combo.n, tierUp: h.tierUp, damped: gate.damped, x, y });
   fx.bounce(via, 0.86);
-  tapEffect({ x, y, gain: r.gain, crit: r.crit, damped: r.damped, fever: wasFever, combo: c, lite: true, anchor: boxAnchor(), pointsEl: ptsTarget(), phone: refs.phone, app: document.getElementById('app')! });
+  tapEffect({ x, y, gain: r.gain, crit: r.crit, damped: r.damped, fever: wasFever, combo: combo.n, lite: true, anchor: boxAnchor(), pointsEl: ptsTarget(), phone: refs.phone, app: document.getElementById('app')! });
   unpackHit({ x, y, crit: r.crit, damped: r.damped, burst: r.burst, fever: wasFever, pointsEl: ptsTarget() });
+  if (h.tierUp >= 2) dropTapNumber();
   update();
 }
 
@@ -718,6 +957,7 @@ function update(): void {
   syncUnpack(state);
   setText(refs.tapHint, `탭 +${formatNumber(tapValue(state))}`);
   syncTip();
+  syncChargeTip();
 
   const prog = moveProgress(state);
   const mst = moveStatus(state);
@@ -924,6 +1164,10 @@ function openMoveConfirm(): void {
 function doMove(): void {
   if (moving || !moveStatus(state).ok) return;
   moving = true;
+  chargeUi.cancel();
+  resetWeak();
+  heat = initialHeat();
+  endComboQuiet();
   dismissModal();
   const toName = houseInfo(state.moves + 1).name;
   fx.moveScene({
@@ -1034,6 +1278,8 @@ function openSettings(): void {
       msg.textContent = r.kind === 'future' ? '더 새로운 버전의 저장 데이터예요.' : '저장 문자열이 올바르지 않아요.';
       return;
     }
+    resetCombo();
+    resetWeak();
     state = { ...r.state, savedAt: Date.now() };
     snapNext = true;
     save();
@@ -1052,6 +1298,8 @@ function openSettings(): void {
           danger: true,
           onClick: () => {
             clearSave();
+            resetCombo();
+            resetWeak();
             snapNext = true;
             state = defaultState(Date.now());
             save();
@@ -1105,6 +1353,9 @@ function load(): OfflineResult | null {
 
 function onVisibility(): void {
   if (document.visibilityState === 'hidden') {
+    chargeUi.cancel();
+    resetWeak();
+    endComboQuiet();
     save();
     return;
   }
@@ -1120,6 +1371,20 @@ function frame(now: number): void {
   const dt = Math.min((now - lastFrame) / 1000, 0.25);
   lastFrame = now;
   if (document.visibilityState === 'visible') {
+    const nowMs = performance.now();
+    chargeUi.frame(nowMs);
+    stepWeak(nowMs, dt * 1000);
+    stepHeat(dt * 1000);
+    chargeUi.sync(heat);
+    if (combo.n > 0) {
+      const win = comboWindowMs(state.fever.activeSec > 0);
+      if (chargeUi.isCharging()) combo = { ...combo, lastMs: nowMs };
+      else if (comboExpired(combo, nowMs, win)) {
+        const c = combo;
+        combo = initialCombo();
+        settleCombo(c, false);
+      } else comboUi.tick(nowMs, combo, win);
+    }
     state = tick(state, dt, () => Math.random());
     update();
   }

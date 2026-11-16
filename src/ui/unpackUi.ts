@@ -638,6 +638,73 @@ export function unpackHit(i: UnpackHitInput): void {
   if (i.burst) boom(cur, i.burst, i.pointsEl, reduced);
 }
 
+/** 모으는 동안 상자가 웅크린다: 83ms 프레임으로 움찔움찔, 오래 모을수록 깊게. null이면 원래대로 */
+export function chargeCrouch(step: number | null): void {
+  const b = boxes[0];
+  if (!b) return;
+  if (step === null || fx.isReduced()) {
+    b.body.style.translate = '';
+    b.body.style.scale = '';
+    return;
+  }
+  const deep = Math.min(2, Math.floor(step / 8));
+  const jit = step % 2;
+  b.body.style.translate = `${jit ? 2 : -2}px ${(2 + deep * 2) + (jit ? 0 : 2)}px`;
+  b.body.style.scale = `${1.03 + deep * 0.02} ${0.96 - deep * 0.02}`;
+}
+
+/** 퍼펙트 직전 멈춤: 상자가 흰색으로 굳는다 */
+export function chargeFreeze(): void {
+  const b = boxes[0];
+  if (!b) return;
+  b.body.style.translate = '0 4px';
+  b.body.style.scale = '1.08 0.88';
+  b.body.style.filter = WHITE;
+}
+
+export interface HeavyHitInput {
+  x: number;
+  y: number;
+  grade: 'perfect' | 'good' | 'miss';
+  streak: number;
+  /** 이번 강타로 터진 상자(순서대로). 없을 수 있다 */
+  bursts: BoxBurst[];
+  pointsEl: Element;
+  fever: boolean;
+}
+
+/** 강타 연출: 판정이 클수록 크게 맞는다. 상자가 여러 개 터지면 각각 터짐 연출을 이어서 낸다 */
+export function unpackHeavy(i: HeavyHitInput): void {
+  const cur = boxes[0];
+  if (!cur) return;
+  cur.body.style.translate = '';
+  cur.body.style.scale = '';
+  cur.body.style.filter = '';
+  const reduced = fx.isReduced();
+  const perfect = i.grade === 'perfect';
+  const good = i.grade === 'good';
+  const hit: UnpackHitInput = { x: i.x, y: i.y, crit: perfect || good, damped: !perfect && !good, burst: null, pointsEl: i.pointsEl, fever: i.fever };
+  if (i.bursts.length === 0) squash(cur, hit, reduced);
+  if (!reduced) {
+    const c = boxCenter();
+    chips({ ...hit, x: c.x, y: c.y }, perfect ? 16 : good ? 10 : 3);
+    swing(1);
+    if (perfect) {
+      stars(cur);
+      const ring = (n: number, speed: number, life: number, kind: 'dot' | 'star'): void =>
+        pburst(c.x, c.y - cur.root.offsetWidth * 0.2 * rs(), { n, kind, colors: i.streak >= 2 ? ['g2', 'k5', 'or', 'pk'] : ['g2', 'g3', 'k5'], speed, gravity: 0, size: kind === 'star' ? 8 : 6, ring: true, life });
+      ring(14 + Math.min(i.streak, 4), 300, 0.5, 'dot');
+      ring(16, 480, 0.55, 'star');
+    } else if (good) {
+      pburst(boxCenter().x, boxCenter().y - cur.root.offsetWidth * 0.2 * rs(), { n: 10, colors: ['b3', 'b4', 'k5'], speed: 280, gravity: 0, size: 6, ring: true, life: 0.45 });
+    }
+  }
+  for (const b of i.bursts) {
+    const box = boxes[0];
+    if (box) boom(box, b, i.pointsEl, reduced);
+  }
+}
+
 const WHITE = 'brightness(0) invert(1)';
 let lastHitAt = 0;
 
@@ -828,7 +895,11 @@ function gainText(burst: BoxBurst, s: number, reduced: boolean): void {
   e.style.fontSize = `${fs}px`;
   e.style.lineHeight = `${fs}px`;
   const minTop = (chipsBottom() - stageOrigin().top) / rs() + 4;
-  e.style.top = `${g10(Math.max(-s - 8 - fs, minTop))}px`;
+  const say = room.querySelector<HTMLElement>('.charge-say, .weak-say');
+  // 판정 글자는 가운데 기준으로 커졌다 줄어드니(최대 배율) 부푼 아랫변 + 외곽선 2px + 숫자가 4px 오르는 몫을 비운다
+  const peak = say ? Math.max(1, ...say.getAnimations().flatMap((a) => (a.effect as KeyframeEffect).getKeyframes().map((k) => parseFloat(String(k.scale ?? 1))))) : 1;
+  const belowSay = say ? (room.getBoundingClientRect().top + (say.offsetTop + say.offsetHeight * (1 + (peak - 1) / 2)) * rs() - stageOrigin().top) / rs() + 12 : -Infinity;
+  e.style.top = `${g10(Math.max(-s - 8 - fs, minTop, belowSay))}px`;
   stage.append(e);
   scene.gain = e;
   const rm = (): void => {

@@ -3,10 +3,19 @@ import { formatNumber } from '../logic/format';
 import * as fx from './fx';
 import { sfx } from './sound';
 import { vibrate } from './prefs';
+import { COMBO_TIERS, comboTier } from '../logic/combo';
 
 const MERGE_MS = 180;
 const MAX_LIVE = 6;
 const FEVER_COLORS = ['#ffc83d', '#ff8a1f', '#ffeaa0', '#ffffff'];
+const TIER_COLOR = ['#5b9bff', '#ffc83d', '#ff8a1f', '#ff6fb0', '#8d5cf6', '#ffffff'];
+/** 탭 음 계단: 단계마다 3칸, 단계 안에서 0~2칸. 상한은 sfx가 둔다 */
+export function comboStep(n: number): number {
+  const t = comboTier(n);
+  const from = t === 0 ? 0 : COMBO_TIERS[t - 1].at;
+  const to = t >= COMBO_TIERS.length ? from + 100 : COMBO_TIERS[t].at;
+  return t * 3 + Math.min(2, Math.floor(((n - from) / (to - from)) * 3));
+}
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
 
 export interface TapFxInput {
@@ -48,7 +57,7 @@ function showPending(tier: number): void {
   const a = pending.anchor;
   const x = clampX(a ? pending.x + rnd(28, 64) : pending.x + side * rnd(25, 115), 48);
   const y = a ? Math.max(pending.y - rnd(16, 32), a.y - a.half * 0.6) : pending.y + rnd(-15, 25);
-  const scale = (1 + big * 0.11 + tier * 0.12) * (pending.fever ? 1.3 : 1) * (a?.k ?? 1);
+  const scale = (1 + big * 0.11 + tier * 0.16) * (pending.fever ? 1.3 : 1) * (a?.k ?? 1);
   fx.floatText(x, y, `+${formatNumber(pending.sum)}`, { scale, spread: 25, ms: 800, cls: [pending.fever ? 'fever' : '', tier > 0 ? `t${tier}` : ''].filter(Boolean).join(' ') || undefined });
   live++;
   window.setTimeout(() => {
@@ -95,8 +104,8 @@ function singleNumber(i: TapFxInput, tier: number): void {
     return;
   }
   one.el?.remove();
-  const big = Math.min(i.damped ? 0 : tier, 3);
-  const scale = (i.damped ? 0.7 : (1 + big * 0.12) * (i.fever ? 1.3 : 1)) * a.k;
+  const big = Math.min(i.damped ? 0 : tier, 5);
+  const scale = (i.damped ? 0.7 : (1 + big * 0.16) * (i.fever ? 1.3 : 1)) * a.k;
   const cls = [i.damped ? 'damped' : '', !i.damped && i.fever ? 'fever' : '', !i.damped && tier > 0 ? `t${tier}` : ''].filter(Boolean).join(' ') || undefined;
   const x = clampX(a.x + a.half * 0.85 + 12, 48);
   const below = a.gainBottom ? a.gainBottom + 24 * a.k : 0;
@@ -118,7 +127,18 @@ function critEffect(i: TapFxInput): void {
   const a = i.anchor;
   if (a) {
     const x = clampX(a.x, 128 * a.k);
-    fx.floatText(x, Math.max(a.y - a.half * 1.1 - 12 * a.k, a.minTop + 36), `쾅! 치명타 +${formatNumber(i.gain)}`, { scale: 1.2, k: a.k, spread: 6, ms: 830, minY: a.minTop + 28, cls: i.fever ? 'crit fever' : 'crit' });
+    const text = (): void => {
+      fx.floatText(x, Math.max(a.y - a.half * 1.1 - 12 * a.k, a.minTop + 36), `쾅! 치명타 +${formatNumber(i.gain)}`, { scale: 1.2, k: a.k, spread: 6, ms: 830, minY: a.minTop + 28, cls: i.fever ? 'crit fever' : 'crit' });
+    };
+    // 배너(단계 오름 등)가 떠 있으면 글자만 배너가 사라진 뒤로 미룬다. 번쩍·흔들림·소리는 그대로
+    if (fx.bannerActive()) {
+      const t0 = performance.now();
+      const wait = window.setInterval(() => {
+        if (fx.bannerActive() && performance.now() - t0 < 2500) return;
+        window.clearInterval(wait);
+        text();
+      }, 100);
+    } else text();
     fx.shake(i.app, 4, 250);
     sfx.crit();
     vibrate([35, 25, 60]);
@@ -146,12 +166,12 @@ function critEffect(i: TapFxInput): void {
 
 export function tapEffect(i: TapFxInput): void {
   tapCount++;
-  const tier = i.combo >= 40 ? 3 : i.combo >= 20 ? 2 : i.combo >= 10 ? 1 : 0;
+  const tier = comboTier(i.combo);
   if (i.crit) {
     critEffect(i);
   } else if (i.anchor) {
     singleNumber(i, tier);
-    if (!i.damped) vibrate(i.combo >= 20 ? 14 : 7);
+    if (!i.damped) vibrate(tier >= 2 ? 14 : 7);
   } else if (i.damped) {
     if (live < MAX_LIVE) {
       live++;
@@ -163,20 +183,20 @@ export function tapEffect(i: TapFxInput): void {
     if (!i.lite) fx.burst(i.x, i.y, { n: 3, colors: ['#ffffff'], speed: 160, size: 4 });
   } else {
     queueNumber(i.x, i.y, i.gain, i.fever, tier, i.anchor);
-    const colors = i.fever ? FEVER_COLORS : ['#ffc83d', '#ffeaa0', tier >= 2 ? '#e9304b' : '#5b9bff', '#ffffff'];
+    const colors = i.fever ? FEVER_COLORS : ['#ffc83d', '#ffeaa0', TIER_COLOR[Math.min(tier, 5)], '#ffffff'];
     if (!i.lite) fx.burst(i.x, i.y, {
-      n: Math.round((4 + tier * 2) * (i.fever ? 1.5 : 1)),
+      n: Math.round((4 + tier * 2.4) * (i.fever ? 1.5 : 1)),
       colors,
       kind: Math.random() < 0.25 || i.fever ? 'star' : 'dot',
-      speed: 240 + tier * 50 + (i.fever ? 60 : 0),
+      speed: 240 + tier * 45 + (i.fever ? 60 : 0),
       size: i.fever ? 8 : 6,
     });
-    vibrate(i.combo >= 20 ? 14 : 7);
+    vibrate(tier >= 2 ? 14 : 7);
   }
-  sfx.tap(i.combo);
+  sfx.tap(comboStep(i.combo));
   if (tapCount % 3 === 0 || performance.now() - lastShow > 400) {
     const r = i.pointsEl.getBoundingClientRect();
     fx.absorb({ x: i.x, y: i.y }, i.pointsEl, i.crit ? 4 : 1 + (tier >= 2 ? 1 : 0), { offset: { x: 0, y: r.height / 2 + 12 } });
   }
-  if (!i.crit && tier >= 2) fx.shake(i.app, tier * 2, 160);
+  if (!i.crit && tier >= 2) fx.shake(i.app, Math.min(tier, 4) * 2, 160);
 }

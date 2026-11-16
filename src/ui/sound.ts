@@ -110,14 +110,90 @@ export const sfx = {
     noise(0.12, 0.22, 0, 2500);
     tone(180, 0.15, 'sine', 0.3, 0, 70);
   },
-  tap(combo: number): void {
+  /** step: 콤보가 정한 음 계단(0~14). 피버 음정(pitch)과 곱해진다 */
+  tap(step: number): void {
     const now = performance.now();
     if (now - lastTap < 35) return;
     lastTap = now;
-    const f = noteFreq(392, Math.min(combo, 20)) * pitch;
+    const f = noteFreq(392, Math.min(step, 14)) * pitch;
     tone(f, 0.11, 'triangle', 0.35, 0, f * 0.8);
     tone(f * 2, 0.05, 'sine', 0.12);
     noise(0.03, 0.12, 0, 3000);
+  },
+  /** 모으는 동안 표시 위치(0~1)가 높을수록 음이 올라간다. 퍼펙트 구간이면 한 옥타브 위 */
+  chargeTick(pos: number, inPerfect: boolean): void {
+    const f = 260 + pos * 520;
+    tone(inPerfect ? f * 2 : f, 0.06, 'square', inPerfect ? 0.1 : 0.07);
+  },
+  /** 강타 판정: 퍼펙트는 묵직한 쾅 + 올라가는 화음, 굿은 중간, 빗나감은 낮은 툭 */
+  strike(grade: 'perfect' | 'good' | 'miss', streak: number): void {
+    if (grade === 'miss') {
+      tone(140, 0.14, 'sine', 0.3, 0, 70);
+      noise(0.06, 0.12, 0, 700);
+      return;
+    }
+    if (grade === 'good') {
+      tone(120, 0.24, 'sawtooth', 0.34, 0, 50);
+      noise(0.12, 0.24, 0, 1500);
+      [523, 659, 784].forEach((f, i) => tone(f, 0.14, 'square', 0.14, 0.04 + i * 0.05));
+      return;
+    }
+    const up = Math.min(streak, 5);
+    tone(80, 0.5, 'sawtooth', 0.5, 0, 32);
+    tone(150, 0.3, 'sine', 0.5, 0, 50);
+    noise(0.26, 0.36, 0, 1100);
+    noise(0.2, 0.2, 0.05, 5000);
+    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f * (1 + up * 0.03), 0.2, 'square', 0.15, 0.06 + i * 0.05));
+    tone(2093, 0.5, 'sine', 0.14, 0.34);
+  },
+  /** 열기가 달아오름에 들어섬: 올라가는 세 음 */
+  heatUp(): void {
+    [523, 659, 880].forEach((f, i) => tone(f, 0.09, 'square', 0.12, i * 0.05));
+  },
+  /** 과열 임박 경고: 짧은 두 음 */
+  heatWarn(): void {
+    tone(880, 0.04, 'square', 0.1);
+    tone(660, 0.04, 'square', 0.1, 0.05);
+  },
+  /** 과열 시작: 김 빠지는 쉬익 + 내려가는 음 */
+  heatOver(): void {
+    noise(0.5, 0.3, 0, 3200);
+    tone(330, 0.4, 'sawtooth', 0.18, 0, 90);
+  },
+  /** 과열이 끝남: 딩 */
+  heatBack(): void {
+    tone(1319, 0.14, 'sine', 0.14);
+    tone(1760, 0.26, 'sine', 0.12, 0.08);
+  },
+  /** 급소가 뜸: 짧고 밝은 두 음 */
+  weakAppear(): void {
+    tone(1568, 0.05, 'square', 0.1);
+    tone(2093, 0.07, 'square', 0.1, 0.05);
+  },
+  /** 급소 명중: 날카로운 쨍 + 묵직한 쾅 */
+  weakHit(): void {
+    tone(90, 0.3, 'sawtooth', 0.45, 0, 40);
+    noise(0.14, 0.3, 0, 4500);
+    [1047, 1568, 2093].forEach((f, i) => tone(f, 0.12, 'square', 0.16, i * 0.035));
+    tone(2637, 0.3, 'sine', 0.14, 0.12);
+  },
+  /** 콤보 단계 오름: 단계가 높을수록 음이 높고 길다 */
+  comboUp(tier: number): void {
+    const t = Math.max(1, Math.min(tier, 5));
+    const base = 523 * pitch;
+    const n = 2 + t;
+    for (let i = 0; i < n; i++) tone(noteFreq(base, i + t), 0.1 + t * 0.02, 'square', 0.16, i * 0.055);
+    if (t >= 2) {
+      tone(110 + t * 20, 0.2 + t * 0.05, 'sawtooth', 0.28, 0, 50);
+      noise(0.1 + t * 0.03, 0.18, 0, 1500 + t * 500);
+    }
+    if (t >= 4) tone(noteFreq(base, n + t) * 2, 0.5, 'sine', 0.16, n * 0.055);
+  },
+  /** 콤보 정산: 쾅 내려앉는 소리 */
+  comboEnd(tier: number): void {
+    tone(130, 0.22, 'sawtooth', 0.34, 0, 45);
+    noise(0.12, 0.22, 0, 900);
+    tone(784 + tier * 60, 0.14, 'square', 0.14, 0.12);
   },
   coin(): void {
     const now = performance.now();

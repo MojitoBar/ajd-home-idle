@@ -37,6 +37,12 @@
 - 호출 순서: 탭 `tapWithRng` -> 매 프레임 `tick` -> 상자 클릭 `catchParcel`. 피버·택배는 저장 안 함(불러오면 초기값), 이사 시 피버만 초기화, 오프라인엔 피버 미적용.
 - 이사 목표가 상향됨(원룸 8e6 등, `data/houses.ts`): 변주 3종이 속도를 높이므로 10~15분 목표 유지용.
 
+## 누르는 방식 변주 (`charge.ts`, `weak.ts`; 공용 `unpack.heavyHit`, `combo.comboAdd`)
+- `heavyHit(state, rng, taps, comboMult, feverCharge)` -> `tapAndHit`과 같은 필드 + `bursts[]`: 탭 taps번어치 수익·상자 타격을 한 번에(치명타 1회, 피버는 feverCharge). 콤보는 `comboAdd(c, nowMs, add)`로 따로 올린다.
+- 꾹 눌러 강타: `CHARGE_HOLD_MS` 넘게 누르면 `chargePos(elapsedMs, chargeSpeed(streak))`가 0~1을 왕복, 뗀 자리로 `releaseCharge(state, rng, pos, streak, comboMult)` -> `{...heavyHit, grade, streak, comboAdd}`. 보상은 `CHARGE_REWARD`.
+  - 스윙마다 구간이 바뀐다: `rollChargeZone(rng, prev?)`(가운데 0.35~0.87, 직전과 0.15 이상 떨어짐) -> `ChargeZone {perfect, good}`, `chargeGrade(pos, zone)`·`releaseCharge(..., tapsMult, zone)`에 넘긴다(생략하면 `CHARGE_ZONE_DEFAULT`, 가운데 0.83).
+- 급소: `WeakState`(`initialWeak`, `advanceWeak(w, dt, active, rng)` -> `{weak, appeared, vanished}`, `weakHitTest(w,u,v,radius)`, `hitWeak(state, rng, w, comboMult)` -> `{...heavyHit, weak, comboAdd}`). 저장 안 함.
+
 # 전략 요소 (v4): 결합 할인 · 이사 특전 3택 · 약정
 저장 버전 4(`migrate` 2->3, 3->4). 기존 export는 시그니처 그대로이고, 아래는 새 함수·새 state 필드다. 규칙·수치는 `DESIGN.md` 16절.
 
@@ -97,3 +103,9 @@
 - `boxKind(k)`, `boxHp(k)`, `unpackPower(state)`, `toolOf(level) -> {minLevel,name,emoji}`, `hitBox(state, {crit,damped,feverMult,rng?,critMult?}) -> {state, burst}`.
 - `roomProgress(state) -> {opened,total,slotsDone,slotFill,complete}`, `boxCondition(state) -> {kind,k,hp,damage,ratio,stage,stages}`(겉모습 단계: 작은·보통 3, 큰 4).
 - `BoxBurst = {kind,k,gain,item?,slot?,slotFill,roomDone,freeBox?}`. 탭 1회 P는 `TAP_BOX_SCALE`(0.6)배, 덜어 낸 몫은 터질 때 `tapValue x K`로 준다.
+
+## 콤보 (`combo.ts`)
+순수 함수, 시간(ms)은 인자. `ComboState {n,lastMs,earned}`는 저장 안 함. `comboHit(c, nowMs, comboWindowMs(feverActive), damped)` -> `{combo, tierUp, ended}`, 배율 `comboMult(n)`(10·25·50·100·200 -> x1.2·1.5·2·3·5, `COMBO_TIERS`), 남은 수 `comboNext(n)`, 끝났을 때 정산 `comboBonus(c)`(earned x 10~50%). `tapAndHit(state, rng, damped, comboMult)`의 배율은 gain에만 곱한다. 최고 콤보 `state.bestCombo`는 저장되고 이사해도 남는다(저장 버전은 그대로, 없으면 0).
+
+## 열기 (`heat.ts`)
+순수 함수, 시간(ms)은 인자. `HeatState {v 0~100, overMs}`는 저장 안 함(`initialHeat()`). 탭 `heatTap(h)`·급소 `heatAdd(h, HEAT_WEAK)` -> `{heat, overheated}`, 시간 `advanceHeat(h, dtMs, hold)` -> `{heat, recovered}`(초당 12씩 식고 hold 중엔 안 식음, 100이면 과열 3초: 오르지 않고 v가 100 -> 0). `heatZone` cool/warm(40)/hot(70)/over, `heatTapMult`(hot x1.5)·`heatDamped`(과열 중 약한 탭), 강타 `heatStrikeMult(h, grade)`(퍼펙트·굿 1 + v/50)를 `releaseCharge(..., comboMult, tapsMult)`에 숫자나 `(grade) => 배율`로 넘기고, 뗀 뒤 `ventHeat(h)`(20까지).

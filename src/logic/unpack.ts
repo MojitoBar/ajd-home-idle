@@ -17,7 +17,7 @@ import {
 } from '../data/unpack';
 import type { BoxResult } from './gacha';
 import { tapBase, tapValue } from './economy';
-import { feverMultOf } from './fever';
+import { chargeFever, feverMultOf } from './fever';
 import { perkEffects, seededRng, tapPowerMult } from './perks';
 import { HOME_SLOTS, type GameState } from './state';
 import { grantFreeBox, tapWithRng, type TapResult } from './variety';
@@ -175,12 +175,42 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
   return { state: next, burst };
 }
 
-/** 탭 1회 + 상자 피해. tapWithRng의 crit 판정을 그대로 쓴다(난수 1회, 방 완성 때만 추가). */
-export function tapAndHit(state: GameState, rng: () => number, damped = false): TapResult & { burst: BoxBurst | null } {
+/** 탭 1회 + 상자 피해. tapWithRng의 crit 판정을 그대로 쓴다(난수 1회, 방 완성 때만 추가). comboMult는 gain에만 곱하고 상자 피해에는 곱하지 않는다. */
+export function tapAndHit(state: GameState, rng: () => number, damped = false, comboMult = 1): TapResult & { burst: BoxBurst | null } {
   const feverMult = feverMultOf(state.fever);
-  const r = tapWithRng(state, rng, damped);
+  const r = tapWithRng(state, rng, damped, comboMult);
   const h = hitBox(r.state, { crit: r.crit, damped, feverMult, rng, critMult: perkEffects(state).critMult });
   return { ...r, state: h.state, burst: h.burst };
+}
+
+export interface HeavyResult extends TapResult {
+  /** 마지막으로 터진 상자(없으면 null). 여러 개가 터졌으면 전부 `bursts`에 순서대로 */
+  burst: BoxBurst | null;
+  bursts: BoxBurst[];
+}
+
+/**
+ * 탭 taps번어치를 한 번에: 수익 = 탭 1회 수익 x taps x comboMult, 치명타는 한 번만 굴려 터지면 수익·타격 전체에 배율(상자 피해 상한도 풀린다).
+ * 상자 피해는 탭 1회 피해 x taps를 한 타씩 넣어 `tapAndHit`을 taps번 부른 것과 같게 처리한다(터지면 보상·다음 상자, 남는 타격은 다음 상자로 이어진다).
+ * 피버는 feverCharge만 채우고 피버 피해 배율은 시작 상태 기준 하나로 쓴다. 감쇠 없음.
+ */
+export function heavyHit(state: GameState, rng: () => number, taps: number, comboMult = 1, feverCharge = taps): HeavyResult {
+  const feverMult = feverMultOf(state.fever);
+  const critMult = perkEffects(state).critMult;
+  const r = tapWithRng(state, rng, false, comboMult * taps);
+  const fx = perkEffects(state);
+  let next: GameState = {
+    ...r.state,
+    fever: chargeFever(state.fever, fx.feverSec, feverCharge),
+    stats: { ...r.state.stats, totalTaps: state.stats.totalTaps + taps },
+  };
+  const bursts: BoxBurst[] = [];
+  for (let i = 0; i < taps; i++) {
+    const h = hitBox(next, { crit: r.crit, damped: false, feverMult, rng, critMult });
+    next = h.state;
+    if (h.burst) bursts.push(h.burst);
+  }
+  return { ...r, state: next, burst: bursts.length > 0 ? bursts[bursts.length - 1] : null, bursts };
 }
 
 export interface RoomProgress {

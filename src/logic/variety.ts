@@ -19,11 +19,11 @@ export interface TapResult {
   damped: boolean;
 }
 
-/** 치명타 판정 + 피버 충전이 들어간 탭. rng() < 확률이면 치명타. 기존 applyTap은 그대로 둔다. */
-export function tapWithRng(state: GameState, rng: () => number, damped = false): TapResult {
+/** 치명타 판정 + 피버 충전이 들어간 탭. rng() < 확률이면 치명타. comboMult는 수익에만 곱한다. 기존 applyTap은 그대로 둔다. */
+export function tapWithRng(state: GameState, rng: () => number, damped = false, comboMult = 1): TapResult {
   const fx = perkEffects(state);
   const crit = !damped && rng() < fx.critChance;
-  const gain = tapValue(state, damped) * (crit ? fx.critMult : 1);
+  const gain = tapValue(state, damped) * (crit ? fx.critMult : 1) * comboMult;
   return {
     gain,
     crit,

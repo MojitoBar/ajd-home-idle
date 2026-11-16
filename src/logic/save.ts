@@ -172,6 +172,7 @@ export function sanitize(raw: Raw): GameState {
       boxesOpened: num(stats.boxesOpened, 0, true),
     },
     settings: { reduceMotion: settings.reduceMotion === true },
+    bestCombo: num(raw.bestCombo, 0, true),
     ...(Array.isArray(raw.unlocked) ? { unlocked: UNLOCK_IDS.filter((id) => (raw.unlocked as unknown[]).includes(id)) } : {}),
   };
   const k = out.unpack.box;

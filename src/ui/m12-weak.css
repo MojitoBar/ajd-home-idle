@@ -1,0 +1,11 @@
+/* 급소 노리기: 방 안 도트 과녁·판정 글자·안내 말풍선. 좌표는 방 안(PC 2배 화면에서는 방과 함께 2배) */
+.weak { position: absolute; z-index: 4; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; touch-action: none; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+.weak[hidden] { display: none; }
+.weak-dot { display: block; width: 32px; height: 32px; pointer-events: none; }
+.weak-art { display: block; width: 32px; height: 32px; image-rendering: pixelated; }
+.weak-tip { z-index: 5; }
+.weak-tip[hidden] { display: none; }
+.weak-say { position: absolute; left: 0; right: 0; top: 68px; z-index: 6; display: flex; flex-direction: column; align-items: center; pointer-events: none; white-space: nowrap; font-family: var(--f-bold); font-weight: 700; }
+.weak-say b, .weak-say i { font-style: normal; text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
+.weak-say b { font-size: 36px; line-height: 40px; color: var(--pk); }
+.weak-say i { font-size: 24px; line-height: 28px; color: var(--k5); }

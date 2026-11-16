@@ -179,12 +179,31 @@ button.info-btn, .chip.bundle-toggle { --hi: var(--k5); --drop: var(--k1); }
 }
 .phone:active { margin-top: 19px; box-shadow: 0 0 0 2px var(--k1); }
 .tap-hint { position: absolute; bottom: var(--s2); left: 50%; transform: translateX(-50%); padding: 2px var(--s3); background: var(--p1); color: var(--b2); box-shadow: 0 0 0 2px var(--k1); font: 700 var(--fs-m)/var(--lh-m) var(--f-body); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
-.combo { position: absolute; left: 8px; bottom: 8px; text-align: left; font-family: var(--f-bold); font-weight: 700; color: var(--g2); text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0); visibility: hidden; pointer-events: none; white-space: nowrap; }
-.combo.on { visibility: visible; }
-.combo-n { line-height: 1; }
-.combo[data-tier='1'] { color: var(--g2); }
-.combo[data-tier='2'] { color: var(--g3); }
-.combo[data-tier='3'] { color: var(--k5); }
+/* 콤보: 방 왼쪽 아래. 방 안이라 PC 2배 화면에서는 방과 함께 2배 */
+.combo { --cc: var(--k5); position: absolute; left: 8px; bottom: 8px; z-index: 3; display: none; flex-direction: column; align-items: flex-start; gap: 2px; pointer-events: none; white-space: nowrap; font-family: var(--f-bold); font-weight: 700; color: var(--cc); }
+.combo.on { display: flex; }
+.combo[data-tier='1'] { --cc: var(--g2); }
+.combo[data-tier='2'] { --cc: var(--or); }
+.combo[data-tier='3'] { --cc: var(--pk); }
+.combo[data-tier='4'] { --cc: var(--pu); }
+.combo[data-tier='5'] { animation: combo-rb 0.6s steps(1, end) infinite; }
+@keyframes combo-rb { 0% { --cc: var(--g2); } 17% { --cc: var(--or); } 34% { --cc: var(--gn); } 50% { --cc: var(--b3); } 67% { --cc: var(--pu); } 84% { --cc: var(--pk); } }
+.combo-row { display: flex; align-items: baseline; gap: 4px; }
+.combo-n, .combo-l { color: var(--cc); text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
+.combo-n { font: 700 24px/28px var(--f-bold); }
+.combo-l { font: 700 12px/16px var(--f-bold); text-shadow: 1px 0 0 var(--k0), -1px 0 0 var(--k0), 0 1px 0 var(--k0), 0 -1px 0 var(--k0); }
+.combo[data-tier='1'] .combo-n, .combo[data-tier='2'] .combo-n { font: 700 36px/40px var(--f-bold); }
+.combo[data-tier='3'] .combo-n, .combo[data-tier='4'] .combo-n, .combo[data-tier='5'] .combo-n { font: 700 48px/44px var(--f-bold); }
+.combo-chip { margin: 0 2px; padding: 0 4px; font: 700 12px/16px var(--f-bold); background: var(--k1); color: var(--k5); box-shadow: 0 0 0 2px var(--cc); }
+.combo-bar { margin: 2px 2px 0; width: 96px; height: 8px; background: var(--k1); box-shadow: 0 0 0 2px var(--k0); }
+.combo-bar i { display: block; height: 100%; width: 96px; background: var(--cc); }
+.combo-bar.low i { background: var(--r2); }
+.combo-next { font: 700 12px/16px var(--f-bold); color: var(--k5); text-shadow: 1px 0 0 var(--k0), -1px 0 0 var(--k0), 0 1px 0 var(--k0), 0 -1px 0 var(--k0); }
+.combo.end .combo-chip, .combo.end .combo-bar, .combo.end .combo-next { display: none; }
+.combo-heat { z-index: 2; }
+.combo-heat[hidden] { display: none; }
+.fx-banner.rb .fx-banner-big { animation: combo-rb 0.6s steps(1, end) infinite; color: var(--cc); }
+.fx-float.t5 { color: var(--cc); }
 .fx-pop { position: absolute; pointer-events: none; image-rendering: pixelated; }
 .fx-layer { position: fixed; inset: 0; z-index: 90; pointer-events: none; overflow: hidden; }
 .fx-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 8; pointer-events: none; image-rendering: pixelated; }
@@ -196,12 +215,13 @@ body:has(.overlay) .fx-canvas:not(.in-scene) { visibility: hidden; }
 .fx-edge { position: absolute; inset: 0; box-sizing: border-box; border: 4px solid var(--g2); }
 .fx-edgebox { position: absolute; inset: 0; box-sizing: border-box; border: 4px solid var(--g2); pointer-events: none; z-index: 6; }
 .fx-banner { z-index: 1; position: absolute; left: 50%; top: 40%; text-align: center; white-space: nowrap; }
-.fx-banner-big { font: 700 48px/52px var(--f-bold); color: var(--g2); text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0); }
+.fx-banner-big { font: 700 48px/52px var(--f-bold); color: var(--bcol, var(--g2)); text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0); }
 .fx-banner.red { z-index: 3; padding: 0 var(--s4); background: var(--or); box-shadow: 0 0 0 2px var(--k0); }
 .fx-banner.red .fx-banner-big { color: var(--k0); text-shadow: none; }
 .fx-banner.red .fx-banner-sub { color: var(--k0); text-shadow: none; }
 .fx-banner.blue { padding: var(--s2) var(--s4); background: var(--k1); box-shadow: 0 0 0 2px var(--k0); }
 .fx-banner.blue .fx-banner-big { font-size: 36px; line-height: 40px; color: var(--k5); text-shadow: 2px 2px 0 var(--k0); }
+.fx-banner-sub.gold { background: var(--g2); color: var(--k0); }
 .fx-banner-sub { display: inline-block; margin-top: 6px; padding: 2px 6px; font-size: var(--fs-m); color: var(--k5); background: var(--k1); }
 .fx-banner.in-room { width: max-content; white-space: normal; text-wrap: balance; --bs: calc(48px * var(--bk)); }
 .fx-banner.in-room .fx-banner-big { font-size: var(--bs); line-height: calc(var(--bs) + 4px * var(--bk)); text-shadow: calc(2px * var(--bk)) 0 0 var(--k0), calc(-2px * var(--bk)) 0 0 var(--k0), 0 calc(2px * var(--bk)) 0 var(--k0), 0 calc(-2px * var(--bk)) 0 var(--k0); }

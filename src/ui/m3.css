@@ -2,7 +2,9 @@
 .fx-float.damped { font-family: var(--f-bold); font-size: var(--fs-s); color: var(--k4); }
 .fx-float.t1 { color: var(--g3); }
 .fx-float.t2 { color: var(--or); }
-.fx-float.t3 { color: var(--k5); }
+.fx-float.t3 { color: var(--pk); }
+.fx-float.t4 { color: var(--pu); }
+.fx-float.t5 { animation: combo-rb 0.6s steps(1, end) infinite; }
 .fx-float.fever { color: var(--g3); }
 .fx-float.crit { color: var(--g2); font-size: var(--fs-l); line-height: 1.1; text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
 .fx-float.crit.fever { color: var(--or); }

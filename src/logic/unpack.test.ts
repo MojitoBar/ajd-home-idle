@@ -3,7 +3,7 @@ import { BOX_KINDS, ENDLESS_K_MULT } from '../data/unpack';
 import { tapValue } from './economy';
 import { move } from './prestige';
 import { defaultState, type GameState } from './state';
-import { boxCondition, boxHp, boxKind, endlessHp, hitBox, nextCareSlot, roomProgress, tapAndHit, tierOf, toolOf, unpackPower } from './unpack';
+import { boxCondition, boxHp, boxKind, endlessHp, heavyHit, hitBox, nextCareSlot, roomProgress, tapAndHit, tierOf, toolOf, unpackPower } from './unpack';
 
 const never = () => 0.99; // 치명타 아님
 const always = () => 0; // 치명타
@@ -213,5 +213,54 @@ describe('진행·겉모습·이사', () => {
     expect(m.unpack).toEqual({ box: 0, damage: 0, roomDone: false, hp: boxHp(0) });
     expect(m.homeLv).toEqual([4, 3, 3, 1, 0, 0, 0, 0]);
     expect(toolOf(m.tapLevel).name).toBe('맨손');
+  });
+});
+
+describe('heavyHit', () => {
+  it('수익 = 탭 수익 x taps x 배율, 피해 = 탭 1회 피해 x taps, 피버는 feverCharge', () => {
+    const s = at(60);
+    const r = heavyHit(s, never, 5, 1.5, 2);
+    expect(r.gain).toBeCloseTo(tapValue(s) * 5 * 1.5);
+    expect(r.crit).toBe(false);
+    expect(r.state.unpack.damage).toBe(unpackPower(s) * 5);
+    expect(r.state.fever.gauge).toBe(2);
+    expect(r.state.stats.totalTaps).toBe(5);
+    expect(r.burst).toBeNull();
+    expect(r.bursts).toEqual([]);
+  });
+  it('치명타는 한 번만 굴려 수익·피해 전체에 곱한다', () => {
+    const s = at(60);
+    let calls = 0;
+    const r = heavyHit(s, () => (calls++, 0), 4);
+    expect(calls).toBe(1);
+    expect(r.crit).toBe(true);
+    expect(r.gain).toBeCloseTo(tapValue(s) * 4 * 6);
+    expect(r.state.unpack.damage).toBe(unpackPower(s) * 6 * 4);
+  });
+  it('taps번 tapAndHit과 같은 결과(상자 터짐, 남는 타격)', () => {
+    const s = last(0);
+    let seq = s;
+    let gain = 0;
+    const bursts: unknown[] = [];
+    for (let i = 0; i < 6; i++) {
+      const r = tapAndHit(seq, never);
+      seq = r.state;
+      gain += r.gain;
+      if (r.burst) bursts.push(r.burst);
+    }
+    const h = heavyHit(s, never, 6);
+    expect(h.state.unpack).toEqual(seq.unpack);
+    expect(h.state.points).toBeCloseTo(seq.points);
+    expect(h.gain).toBeCloseTo(gain);
+    expect(h.bursts).toEqual(bursts);
+    expect(h.bursts.length).toBeGreaterThanOrEqual(1);
+    expect(h.burst).toBe(h.bursts[h.bursts.length - 1]);
+    expect(h.state.unpack.box).toBeGreaterThan(0);
+  });
+  it('한 번에 여러 상자가 터질 수 있다', () => {
+    const s = last(0);
+    const h = heavyHit(s, never, 40);
+    expect(h.bursts.length).toBeGreaterThan(1);
+    expect(h.state.unpack.box).toBe(h.bursts.length);
   });
 });

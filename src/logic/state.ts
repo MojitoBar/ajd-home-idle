@@ -124,6 +124,8 @@ export interface GameState {
   contracts: ContractState[];
   stats: { totalTaps: number; totalEarned: number; playSec: number; boxesOpened: number };
   settings: { reduceMotion: boolean };
+  /** 최고 콤보(탭 수). 이사해도 유지 */
+  bestCombo: number;
   /** 열린 화면 요소 id(단계적 공개). 없으면 예전 저장이라 조건에서 유도해 조용히 채운다. 한번 열리면 이사해도 유지 */
   unlocked?: string[];
 }
@@ -149,5 +151,6 @@ export function defaultState(savedAt = 0): GameState {
     contracts: [],
     stats: { totalTaps: 0, totalEarned: 0, playSec: 0, boxesOpened: 0 },
     settings: { reduceMotion: false },
+    bestCombo: 0,
   };
 }

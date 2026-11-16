@@ -61,6 +61,131 @@ const save = (page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) |
     const after = await text(page, '.dock-pts-main');
     check('탭하면 재화 증가', before !== after, `${before} -> ${after}`);
 
+    // 콤보: 사람 속도로 13번 치면 표시·배율 칩·최고 기록, 끊기면 정산으로 포인트가 오른다(0 pps라 정산만 포인트를 올린다)
+    {
+      const cb = await newPage(browser, null, '?debug');
+      for (let i = 0; i < 13; i++) {
+        await cb.page.locator('.phone').tap();
+        await cb.page.waitForTimeout(170);
+      }
+      const chip = (await cb.page.locator('.combo.on .combo-chip').count()) ? await cb.page.locator('.combo.on .combo-chip').innerText() : '';
+      const num = (await cb.page.locator('.combo.on .combo-n').count()) ? await cb.page.locator('.combo.on .combo-n').innerText() : '';
+      check('콤보: 10번 넘게 치면 콤보 표시와 배율 칩', Number(num) >= 10 && /^탭 x1\.2$/.test(chip), `n=${num} chip=${chip}`);
+      const p0 = await cb.page.evaluate(() => window.__ajd.get().points);
+      await cb.page.waitForTimeout(1600);
+      const st = await cb.page.evaluate(() => ({ p: window.__ajd.get().points, best: window.__ajd.get().bestCombo, n: window.__ajd.getCombo().n }));
+      check('콤보: 끊기면 정산으로 포인트가 오른다', st.p > p0 && st.n === 0, `${p0} -> ${st.p}`);
+      check('콤보: 최고 콤보가 저장 상태에 남는다', st.best >= 10, `best=${st.best}`);
+      await cb.ctx.close();
+    }
+
+    // 꾹 눌러 강타: 짧은 탭은 게이지 없는 일반 탭, 길게 누르면 게이지 -> 떼면 판정 글자와 함께 탭 1번보다 많이 깎인다
+    {
+      const cg = await newPage(browser, { version: 3, points: 1e6, earned: 1e6, moves: 0, tapLevel: 3, services: [0, 0, 0, 0, 0, 0, 0, 0], event: { nextInSec: 9999, remainSec: 0, streak: 0 }, perks: {}, perkOffers: [], contracts: [], stats: { totalEarned: 0, playSec: 0, boxesOpened: 0, totalTaps: 500 }, unpack: { box: 2, damage: 0, roomDone: false } }, '?debug');
+      const box = await cg.page.locator('.phone').boundingBox();
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+      const gs = () => cg.page.evaluate(() => window.__ajd.get());
+      const dmg = (s) => s.unpack.box * 1e12 + s.unpack.damage;
+      await cg.page.waitForTimeout(500);
+      const s0 = await gs();
+      await cg.page.mouse.click(cx, cy);
+      await cg.page.waitForTimeout(450);
+      const s1 = await gs();
+      check('강타: 짧은 탭은 게이지도 판정 글자도 없는 일반 탭', (await cg.page.locator('.charge:not([hidden])').count()) === 0 && (await cg.page.locator('.charge-say').count()) === 0 && s1.stats.totalTaps - s0.stats.totalTaps === 1, `taps +${s1.stats.totalTaps - s0.stats.totalTaps}`);
+      const one = dmg(s1) - dmg(s0);
+      await cg.page.waitForTimeout(600);
+      await cg.page.mouse.move(cx, cy);
+      await cg.page.mouse.down();
+      await cg.page.waitForTimeout(500);
+      check('강타: 길게 누르면 게이지가 뜬다', (await cg.page.locator('.charge:not([hidden])').count()) === 1 && (await cg.page.locator('.charge-mark').count()) === 1);
+      await cg.page.waitForTimeout(200);
+      const s2 = await gs();
+      await cg.page.mouse.up();
+      await cg.page.waitForTimeout(300);
+      const s3 = await gs();
+      const say = (await cg.page.locator('.charge-say b').count()) ? await cg.page.locator('.charge-say b').first().innerText() : '';
+      check('강타: 떼면 판정 글자와 함께 상자가 탭 1번보다 많이 깎이고 게이지가 사라진다', /퍼펙트|굿|아쉽/.test(say) && dmg(s3) - dmg(s2) > one * 1.5 && (await cg.page.locator('.charge:not([hidden])').count()) === 0, `say=${say} 탭1번=${one} 강타=${dmg(s3) - dmg(s2)}`);
+      await cg.ctx.close();
+    }
+
+    // 열기·정타 구간: 탭하면 열기가 오르고 게이지가 보인다 / 과열이면 탭이 약하다 / 열기 90 퍼펙트는 열기 0보다 세고 뒤에 20 이하로 식는다 / 구간이 옮겨진다(스모크는 ?debug라 둘 다 꺼져 있다)
+    {
+      const ch = await newPage(browser, { version: 3, points: 1e6, earned: 1e6, moves: 0, tapLevel: 3, services: [0, 0, 0, 0, 0, 0, 0, 0], event: { nextInSec: 9999, remainSec: 0, streak: 0 }, perks: {}, perkOffers: [], contracts: [], stats: { totalEarned: 0, playSec: 0, boxesOpened: 0, totalTaps: 500 }, unpack: { box: 2, damage: 0, roomDone: false } }, '?debug');
+      const hbox = await ch.page.locator('.phone').boundingBox();
+      const hx = hbox.x + hbox.width / 2;
+      const hy = hbox.y + hbox.height / 2;
+      const gs = () => ch.page.evaluate(() => window.__ajd.get());
+      const dmg = (s) => s.points;
+      const ev = (fn, a) => ch.page.evaluate(fn, a);
+      await ch.page.waitForTimeout(500);
+      await ev(() => window.__ajd.heatAuto(true));
+      for (let i = 0; i < 4; i++) { await ch.page.mouse.click(hx, hy); await ch.page.waitForTimeout(90); }
+      const h1 = await ev(() => window.__ajd.getHeat());
+      check('열기: 탭하면 열기가 오르고 게이지가 보인다', h1.v > 10 && (await ch.page.locator('.charge:not([hidden]) .charge-heat').count()) === 1, `v=${h1.v.toFixed(1)}`);
+      await ev(() => window.__ajd.heatAuto(false));
+      const tapSum = async (n) => {
+        const a = dmg(await gs());
+        for (let i = 0; i < n; i++) { await ch.page.mouse.click(hx, hy); await ch.page.waitForTimeout(260); }
+        return dmg(await gs()) - a;
+      };
+      await ev(() => window.__ajd.heat(0));
+      const normal = await tapSum(5);
+      await ev(() => window.__ajd.heat(100));
+      const over = await tapSum(5);
+      const hs = await ev(() => window.__ajd.getHeat());
+      check('열기: 100이면 과열이 되고 그동안 탭 수익이 평소보다 작다', hs.overMs > 0 && (await ch.page.locator('.charge-heat.z-over').count()) === 1 && over < normal, `평소 5탭=${normal} 과열 5탭=${over} overMs=${hs.overMs.toFixed(0)}`);
+      await ch.page.waitForTimeout(3200);
+      const strike = async (v) => {
+        await ev((x) => { window.__ajd.heat(x); window.__ajd.zone(0.4); }, v);
+        const a = dmg(await gs());
+        await ev(() => window.__ajd.charge(0.4));
+        await ch.page.waitForTimeout(300);
+        return dmg(await gs()) - a;
+      };
+      const g0 = await strike(0);
+      await ch.page.waitForTimeout(1500);
+      const g90 = await strike(90);
+      const after = await ev(() => window.__ajd.getHeat());
+      check('열기: 90에서 퍼펙트 강타는 열기 0보다 세고(약 2.8배) 강타 뒤 열기가 20 이하', g90 > g0 * 2.2 && g90 < g0 * 3.5 && after.v <= 20, `열기0=${g0} 열기90=${g90} 비=${(g90 / g0).toFixed(2)} 뒤=${after.v}`);
+      await ch.page.waitForTimeout(1500);
+      await ev(() => { window.__ajd.heat(0); window.__ajd.zone(0.4); window.__ajd.charge(0.4); });
+      await ch.page.waitForTimeout(200);
+      const sayA = (await ch.page.locator('.charge-say b').count()) ? await ch.page.locator('.charge-say b').first().innerText() : '';
+      await ch.page.waitForTimeout(1500);
+      await ev(() => { window.__ajd.zone(0.4); window.__ajd.charge(0.83); });
+      await ch.page.waitForTimeout(200);
+      const sayB = (await ch.page.locator('.charge-say b').count()) ? await ch.page.locator('.charge-say b').first().innerText() : '';
+      check('열기: zone(0.4)이면 charge(0.4)는 퍼펙트, charge(0.83)은 퍼펙트가 아니다', /퍼펙트/.test(sayA) && !/퍼펙트/.test(sayB) && sayB !== '', `0.4=${sayA} 0.83=${sayB}`);
+      await ch.ctx.close();
+    }
+
+    // 급소 노리기: 띄우면 과녁이 보이고, 과녁 밖은 일반 탭, 과녁을 누르면 `급소!`와 함께 탭 1번보다 많이 깎인다(스모크는 ?debug라 급소가 저절로 뜨지 않는다)
+    {
+      const cw = await newPage(browser, { version: 3, points: 1e6, earned: 1e6, moves: 0, tapLevel: 3, services: [0, 0, 0, 0, 0, 0, 0, 0], event: { nextInSec: 9999, remainSec: 0, streak: 0 }, perks: {}, perkOffers: [], contracts: [], stats: { totalEarned: 0, playSec: 0, boxesOpened: 0, totalTaps: 500 }, unpack: { box: 2, damage: 0, roomDone: false } }, '?debug');
+      const gs = () => cw.page.evaluate(() => window.__ajd.get());
+      const dmg = (s) => s.unpack.box * 1e12 + s.unpack.damage;
+      await cw.page.waitForTimeout(500);
+      await cw.page.evaluate(() => window.__ajd.weak(0.8, 0.2));
+      await cw.page.waitForTimeout(300);
+      const wb = await cw.page.locator('.weak').boundingBox();
+      check('급소: 띄우면 과녁이 보이고 누르는 영역이 44px 이상', (await cw.page.locator('.weak:not([hidden])').count()) === 1 && wb.width >= 44 && wb.height >= 44, `${wb.width}x${wb.height}`);
+      const s0 = await gs();
+      await cw.page.mouse.click(wb.x + wb.width / 2 - 70, wb.y + wb.height / 2);
+      await cw.page.waitForTimeout(450);
+      const s1 = await gs();
+      const one = dmg(s1) - dmg(s0);
+      check('급소: 과녁 밖 상자를 누르면 일반 탭(급소는 그대로)', s1.stats.totalTaps - s0.stats.totalTaps === 1 && (await cw.page.locator('.weak-say').count()) === 0 && (await cw.page.locator('.weak:not([hidden])').count()) === 1, `taps +${s1.stats.totalTaps - s0.stats.totalTaps}`);
+      await cw.page.waitForTimeout(500);
+      const s2 = await gs();
+      await cw.page.mouse.click(wb.x + wb.width / 2, wb.y + wb.height / 2);
+      await cw.page.waitForTimeout(300);
+      const s3 = await gs();
+      const say = (await cw.page.locator('.weak-say b').count()) ? await cw.page.locator('.weak-say b').first().innerText() : '';
+      check('급소: 과녁을 누르면 `급소!`와 함께 상자가 탭 1번보다 많이 깎이고 과녁이 사라진다', say === '급소!' && dmg(s3) - dmg(s2) > one * 1.5 && (await cw.page.locator('.weak:not([hidden])').count()) === 0, `say=${say} 탭1번=${one} 급소=${dmg(s3) - dmg(s2)}`);
+      await cw.ctx.close();
+    }
+
     // 상자 풀기 화면
     check('방에 상자가 보인다', (await page.locator('.un-box[data-pos="0"]').count()) === 1 && await page.locator('.un-box[data-pos="0"]').isVisible());
     const barW = () => page.locator('.un-bar-fill').evaluate((e) => parseFloat(e.style.getPropertyValue('--r')));

@@ -57,11 +57,27 @@ const gs = (page) => page.evaluate(() => window.__ajd.get());
   await page.waitForTimeout(400);
   const t0 = (await gs(page)).stats?.totalTaps ?? 0;
   await page.keyboard.down('Space');
-  for (let i = 0; i < 6; i++) { await page.keyboard.down('Space'); await page.waitForTimeout(60); }
+  for (let i = 0; i < 2; i++) { await page.keyboard.down("Space"); await page.waitForTimeout(60); }
   await page.keyboard.up('Space');
   await page.waitForTimeout(100);
   const t1 = (await gs(page)).stats?.totalTaps ?? 0;
-  check('Space를 누르고 있어도 한 번만', t1 - t0 === 1, `${t1 - t0}`);
+  check('Space를 짧게 누르고 있어도(키 반복) 한 번만', t1 - t0 === 1, `${t1 - t0}`);
+  // 꾹 눌러 강타: Space를 길게 누르면 게이지, 떼면 판정(키 반복이 연타가 아니라 모으기가 된다)
+  await page.waitForTimeout(600);
+  const u0 = await gs(page);
+  const dmgOf = (s) => s.unpack.box * 1e12 + s.unpack.damage;
+  await page.keyboard.down('Space');
+  await page.waitForTimeout(150);
+  const u1 = await gs(page);
+  const one = dmgOf(u1) - dmgOf(u0);
+  for (let i = 0; i < 8; i++) { await page.keyboard.down('Space'); await page.waitForTimeout(60); }
+  check('Space 길게: 게이지가 뜨고 키 반복은 탭을 더하지 않는다', (await page.locator('.charge:not([hidden])').count()) === 1 && (await gs(page)).stats.totalTaps === u1.stats.totalTaps, `${u1.stats.totalTaps}`);
+  const u2 = await gs(page);
+  await page.keyboard.up('Space');
+  await page.waitForTimeout(300);
+  const u3 = await gs(page);
+  const say = (await page.locator('.charge-say b').count()) ? await page.locator('.charge-say b').first().innerText() : '';
+  check('Space 떼면: 판정 글자와 함께 상자가 탭 1번보다 많이 깎인다', /퍼펙트|굿|아쉽/.test(say) && dmgOf(u3) - dmgOf(u2) > one * 1.5 && (await page.locator('.charge:not([hidden])').count()) === 0, `say=${say} 탭1번=${one} 강타=${dmgOf(u3) - dmgOf(u2)}`);
   await page.waitForTimeout(300);
   // 버튼 포커스 시 Space는 그 버튼만(Tab으로 도착)
   await page.keyboard.press('Tab');
