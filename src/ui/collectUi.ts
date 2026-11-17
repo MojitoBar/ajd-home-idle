@@ -79,7 +79,7 @@ export interface UiCtx {
   set(s: GameState): void;
   update(): void;
   save(): void;
-  goto(tab: 'services' | 'tap' | 'box' | 'dex'): void;
+  goto(tab: 'tap' | 'home' | 'box' | 'dex'): void;
   showModal(title: string, body: Node[], actions: Parameters<typeof openModal>[2], opts?: Parameters<typeof openModal>[3]): void;
   dismissModal(): void;
 }

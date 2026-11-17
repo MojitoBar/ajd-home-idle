@@ -1,6 +1,9 @@
 /** 꾹 눌러 강타: 길게 누르면 표시(marker)가 0 -> 1 -> 0을 왕복하고, 손을 뗀 자리가 판정이 된다. 저장하지 않는 실행 중 상태(연속 퍼펙트 streak 포함). */
 import { heavyHit, type HeavyResult } from './unpack';
 import type { GameState } from './state';
+import { strikeMult } from './economy';
+import { gearEffects } from './gear';
+import { GEAR_PERFECT_HALF_BASE, GEAR_PERFECT_HALF_MAX } from '../data/gear';
 
 /** 이보다 길게 누르면 모으기 시작, 짧으면 일반 탭 */
 export const CHARGE_HOLD_MS = 220;
@@ -20,6 +23,8 @@ export interface ChargeZone {
 
 /** 구간을 따로 안 정하면 쓰는 고정 자리 */
 export const CHARGE_ZONE_DEFAULT: ChargeZone = { perfect: CHARGE_PERFECT, good: CHARGE_GOOD };
+/** 고정 자리의 퍼펙트 가운데 */
+export const CHARGE_ZONE_CENTER = (CHARGE_PERFECT[0] + CHARGE_PERFECT[1]) / 2;
 
 /** 스윙마다 뽑는 구간 가운데의 범위, 직전 스윙과 최소 간격 */
 export const CHARGE_CENTER_MIN = 0.35;
@@ -28,22 +33,23 @@ export const CHARGE_CENTER_GAP = 0.15;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-/** 퍼펙트 가운데가 center인 구간(기본 구간과 같은 모양·폭, 0~1로 자름) */
-export function chargeZoneAt(center: number): ChargeZone {
+/** 퍼펙트 가운데가 center인 구간(굿 구간은 그대로, 퍼펙트 반폭 half는 0.12까지, 0~1로 자름) */
+export function chargeZoneAt(center: number, half = GEAR_PERFECT_HALF_BASE): ChargeZone {
+  const h = Math.min(half, GEAR_PERFECT_HALF_MAX);
   return {
-    perfect: [clamp01(center - 0.05), clamp01(center + 0.05)],
+    perfect: [clamp01(center - h), clamp01(center + h)],
     good: [clamp01(center - 0.25), clamp01(center + 0.13)],
   };
 }
 
 /** 다음 스윙의 구간을 뽑는다. prev가 있으면 가운데가 CHARGE_CENTER_GAP 이상 떨어진 자리에서만 고른다(다시 뽑기 없이 허용 범위에서 바로 뽑음) */
-export function rollChargeZone(rng: () => number, prev?: ChargeZone): ChargeZone {
-  if (!prev) return chargeZoneAt(CHARGE_CENTER_MIN + rng() * (CHARGE_CENTER_MAX - CHARGE_CENTER_MIN));
+export function rollChargeZone(rng: () => number, prev?: ChargeZone, half?: number): ChargeZone {
+  if (!prev) return chargeZoneAt(CHARGE_CENTER_MIN + rng() * (CHARGE_CENTER_MAX - CHARGE_CENTER_MIN), half);
   const p = (prev.perfect[0] + prev.perfect[1]) / 2;
   const left = Math.max(0, p - CHARGE_CENTER_GAP - CHARGE_CENTER_MIN);
   const right = Math.max(0, CHARGE_CENTER_MAX - (p + CHARGE_CENTER_GAP));
   const r = rng() * (left + right);
-  return chargeZoneAt(r < left ? CHARGE_CENTER_MIN + r : p + CHARGE_CENTER_GAP + (r - left));
+  return chargeZoneAt(r < left ? CHARGE_CENTER_MIN + r : p + CHARGE_CENTER_GAP + (r - left), half);
 }
 
 export interface ChargeReward {
@@ -61,11 +67,16 @@ export const CHARGE_REWARD: Record<ChargeGrade, ChargeReward> = {
   miss: { taps: 2, combo: 0, fever: 1 },
 };
 
-/** 연속 퍼펙트 1회마다 퍼펙트 보상 탭 +2번어치, 최대 +10 */
-export const CHARGE_STREAK_TAPS = 2;
-export const CHARGE_STREAK_MAX = 5;
-/** 연속 1회마다 표시 속도 +8%, 최대 5회분 */
+/** 연속 퍼펙트 1회마다 퍼펙트 보상 배수 +0.5(상한 없음) */
+export const CHARGE_STREAK_STEP = 0.5;
+/** 연속 1회마다 표시 속도 +8%, 최대 10회분(배수와 달리 속도만 상한) */
 export const CHARGE_STREAK_SPEED = 0.08;
+export const CHARGE_STREAK_SPEED_MAX = 10;
+
+/** 연속 퍼펙트 streak(이번 이전까지)번째 퍼펙트에 곱하는 배수 */
+export function streakMult(streak: number): number {
+  return 1 + CHARGE_STREAK_STEP * Math.max(0, streak);
+}
 
 /** 모으기 시작 후 elapsedMs 시점의 표시 위치(0~1, 삼각파) */
 export function chargePos(elapsedMs: number, speed = 1): number {
@@ -81,13 +92,13 @@ export function chargeGrade(pos: number, zone: ChargeZone = CHARGE_ZONE_DEFAULT)
 }
 
 export function chargeSpeed(streak: number): number {
-  return 1 + CHARGE_STREAK_SPEED * Math.min(streak, CHARGE_STREAK_MAX);
+  return 1 + CHARGE_STREAK_SPEED * Math.min(streak, CHARGE_STREAK_SPEED_MAX);
 }
 
 /** 이 판정이 주는 탭 수(streak은 이번 이전까지의 연속 퍼펙트 수) */
 export function chargeTaps(grade: ChargeGrade, streak: number): number {
   const base = CHARGE_REWARD[grade].taps;
-  return grade === 'perfect' ? base + CHARGE_STREAK_TAPS * Math.min(streak, CHARGE_STREAK_MAX) : base;
+  return grade === 'perfect' ? base * streakMult(streak) : base;
 }
 
 export interface ChargeRelease extends HeavyResult {
@@ -100,7 +111,7 @@ export interface ChargeRelease extends HeavyResult {
   taps: number;
 }
 
-/** 손을 뗀 자리 pos(0~1)의 판정 -> 묵직한 한 방. streak은 직전까지의 연속 퍼펙트 수. tapsMult(열기 강타 배율 등)는 숫자나 판정별 함수이며 탭 수에만 곱하고 피버 충전량은 표 그대로. zone은 이번 스윙의 구간(없으면 기본 구간) */
+/** 손을 뗀 자리 pos(0~1)의 판정 -> 묵직한 한 방. streak은 직전까지의 연속 퍼펙트 수. tapsMult(열기 강타 배율 등)는 숫자나 판정별 함수이며 탭 수에만 곱하고 피버 충전량은 표 그대로. zone은 이번 스윙의 구간(없으면 기본 자리에 수평계 반폭을 적용한 구간) */
 export function releaseCharge(
   state: GameState,
   rng: () => number,
@@ -108,12 +119,12 @@ export function releaseCharge(
   streak: number,
   comboMult = 1,
   tapsMult: number | ((grade: ChargeGrade) => number) = 1,
-  zone: ChargeZone = CHARGE_ZONE_DEFAULT,
+  zone: ChargeZone = chargeZoneAt(CHARGE_ZONE_CENTER, gearEffects(state).perfectHalf),
 ): ChargeRelease {
   const grade = chargeGrade(pos, zone);
   const reward = CHARGE_REWARD[grade];
   const mult = typeof tapsMult === 'function' ? tapsMult(grade) : tapsMult;
-  const taps = Math.round(chargeTaps(grade, streak) * mult);
+  const taps = Math.round(chargeTaps(grade, streak) * mult * strikeMult(state.strikeLevel));
   const h = heavyHit(state, rng, taps, comboMult, reward.fever);
   return { ...h, grade, streak: grade === 'perfect' ? streak + 1 : 0, comboAdd: reward.combo, taps };
 }

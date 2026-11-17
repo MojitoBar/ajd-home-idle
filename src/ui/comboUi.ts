@@ -112,7 +112,7 @@ function tierUpFx(t: number, n: number, mult: number): void {
     vibrate(18);
     return;
   }
-  if (!fx.bannerActive()) fx.banner(`${n} 콤보!`, { sub: `탭 x${mult}`, tone: 'gold', ms: 1000 + t * 120, color: col, cls: t === 5 ? 'rb' : undefined });
+  fx.banner(`${n} 콤보!`, { sub: `탭 x${mult}`, tone: 'gold', ms: 1000 + t * 120, color: col, cls: t === 5 ? 'rb' : undefined, head: 'aside' });
   fx.flash(t === 5 ? 'k5' : col, 300 + t * 60);
   fx.edge(host, col, [1, 0, 1, 0, 1, 1]);
   fx.burst(c.x, c.y, { n: 12 + t, colors: [col, 'k5', 'g2'], speed: 330, size: 6, ring: true, clip: true, gravity: 0, life: 0.6 });
@@ -188,7 +188,7 @@ export function settle(v: SettleView): void {
     fx.shake(app, 4, 250);
   }
   fx.burst(c.x, c.y, { n: 10, colors: [col, 'g2', 'k5'], speed: 280, size: 6, kind: 'star', clip: true });
-  fx.banner(`정산 +${formatNumber(v.bonus)} P`, { sub: v.best ? '최고 기록!' : `${v.n} 콤보`, tone: 'gold', ms: 1500, color: 'g2', subGold: v.best });
+  fx.banner(`정산 +${formatNumber(v.bonus)} P`, { sub: v.best ? '최고 기록!' : `${v.n} 콤보`, tone: 'gold', ms: 1500, color: 'g2', subGold: v.best, head: 'aside' });
   sfx.comboEnd(t);
   vibrate([20, 20, 40]);
   fx.coinShower(c, v.pointsEl, 12, v.onArrive);

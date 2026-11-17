@@ -6,17 +6,30 @@ import {
   TIER_BASE,
   TIER_STEP,
   BOX_PATTERN,
+  BOMB_BLAST,
+  GOLD_GAIN_MULT,
+  RUSH_MAX_SEC,
+  RUSH_SEC,
+  SPECIAL_FREE_BOXES,
+  SPECIAL_GAP,
+  SPECIAL_RATE,
+  SPECIAL_WEIGHTS,
   NONCRIT_CAP,
+  CHAIN_BONUS_CAP,
+  CHAIN_BONUS_STEP,
+  CHAIN_PRIZES,
   ROOM_BOXES,
   ROOM_ITEMS,
   TOOLS,
   UNPACK_HP_BASE,
   UNPACK_HP_GROWTH,
   type BoxKind,
+  type SpecialBox,
   type ToolDef,
 } from '../data/unpack';
 import type { BoxResult } from './gacha';
 import { tapBase, tapValue } from './economy';
+import { gearEffects } from './gear';
 import { chargeFever, feverMultOf } from './fever';
 import { perkEffects, seededRng, tapPowerMult } from './perks';
 import { HOME_SLOTS, type GameState } from './state';
@@ -27,6 +40,57 @@ export function boxKind(k: number): BoxKind {
   return BOX_PATTERN[k % BOX_PATTERN.length];
 }
 
+/** 정수 두 개를 섞는 간단한 해시(정수 연산만). 결과는 0 이상 2^32 미만 */
+function mix(a: number, b: number): number {
+  let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x7f4a7c15, 0xc2b2ae35);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x2c1b3c6d);
+  h ^= h >>> 12;
+  h = Math.imul(h, 0x297a2d39);
+  h ^= h >>> 15;
+  return h >>> 0;
+}
+
+/** 간격 규칙 전의 후보: 큰 상자 자리와 처음 20개는 없고, 나머지는 rate 확률로 가중치에 따라 종류가 정해진다 */
+function specialCandidate(salt: number, k: number, rate: number): SpecialBox | null {
+  if (k < SPECIAL_FREE_BOXES || boxKind(k) === 'big') return null;
+  if (mix(salt, k) / 4294967296 >= rate) return null;
+  const kinds = Object.keys(SPECIAL_WEIGHTS) as SpecialBox[];
+  let r = mix(salt ^ 0x5bd1e995, k) % kinds.reduce((a, x) => a + SPECIAL_WEIGHTS[x], 0);
+  for (const kind of kinds) {
+    if (r < SPECIAL_WEIGHTS[kind]) return kind;
+    r -= SPECIAL_WEIGHTS[kind];
+  }
+  return null;
+}
+
+/**
+ * k번째 상자의 특별 종류(결정적). 직전 4개 안에 특별 상자가 있으면 일반 상자.
+ * 후보 없이 4칸이 이어진 곳까지 거슬러 올라가 거기서부터 앞으로 확정하므로 비용이 작다.
+ */
+export function specialAt(salt: number, k: number, rate = SPECIAL_RATE): SpecialBox | null {
+  const kind = specialCandidate(salt, k, rate);
+  if (!kind) return null;
+  let start = k;
+  for (let run = 0; start > 0 && run < SPECIAL_GAP; ) {
+    start--;
+    run = specialCandidate(salt, start, rate) ? 0 : run + 1;
+  }
+  let last = -Infinity;
+  for (let j = start; j < k; j++) if (specialCandidate(salt, j, rate) && j - last > SPECIAL_GAP) last = j;
+  return k - last > SPECIAL_GAP ? kind : null;
+}
+
+/** 지금 상자(offset 0)와 다음 상자들(offset 1, 2…)의 특별 종류. 화면의 대기 상자 표시용 */
+export function boxSpecial(state: GameState, offset = 0): SpecialBox | null {
+  return specialAt(state.unpack.salt, state.unpack.box + offset, gearEffects(state).specialRate);
+}
+
+/** 새 게임·이사 때 뽑는 salt(0 이상 2^31 미만 정수) */
+export function rollSalt(rng: () => number): number {
+  return Math.floor(rng() * 2147483648);
+}
+
 /** 살림 레벨 -> 단계(0 기본 / 1 은 / 2 금 / 3 무지개 / 4+ 반짝 단계). 문턱 3·12·48·192… */
 export function tierOf(lv: number): number {
   let tier = 0;
@@ -35,7 +99,7 @@ export function tierOf(lv: number): number {
 }
 
 /** 다음 단계 문턱까지 남은 레벨 */
-function toNextTier(lv: number): number {
+export function toNextTier(lv: number): number {
   let thr = TIER_BASE;
   while (lv >= thr) thr *= TIER_STEP;
   return thr - lv;
@@ -87,8 +151,14 @@ export interface BoxBurst {
   kind: BoxKind;
   /** 터진 상자 순번(0부터) */
   k: number;
-  /** 얻은 P 덩어리 */
+  /** 얻은 P 덩어리(강타 연쇄 보너스 반영) */
   gain: number;
+  /** 한 번의 강타에서 몇 번째로 터졌는가(1부터). 탭 하나로 터졌으면 1 */
+  chain: number;
+  /** 특별 상자 종류. 일반 상자는 null */
+  special: SpecialBox | null;
+  /** 폭탄에 휩쓸려 터졌는가(내구도와 상관없이 함께 터진 상자) */
+  blast: boolean;
   /** 살림 id. 큰 상자(완성)에서만, 덤 짐은 없음 */
   item?: string;
   /** 살림 칸 번호(0~7). 덤 짐은 없음 */
@@ -114,6 +184,16 @@ export interface HitOptions {
   rng?: () => number;
   /** 치명타 배율(perkEffects 값). 생략하면 현재 상태의 값 */
   critMult?: number;
+  /** 강타·급소: 비치명타도 상자의 남은 내구도까지 한 번에 깎는다(hp/3 제한 없음) */
+  pierce?: boolean;
+  /** 터질 때 받는 P 덩어리에 곱할 연쇄 보너스. 생략하면 1 */
+  gainMult?: number;
+  /** 이번 터짐이 연쇄 몇 번째인가(1부터). 생략하면 1 */
+  chain?: number;
+  /** 폭탄 폭발: 내구도와 상관없이 지금 상자를 터뜨린다 */
+  force?: boolean;
+  /** 폭탄에 휩쓸린 터짐 표시 */
+  blast?: boolean;
 }
 
 /** 상자 1탭 피해와 터짐 처리. 감쇠 탭은 피해 0. */
@@ -121,13 +201,17 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
   if (o.damped) return { state, burst: null };
   const { box: k, damage } = state.unpack;
   const hp = currentHp(state);
-  let dmg = unpackPower(state) * (o.crit ? (o.critMult ?? perkEffects(state).critMult) : 1) * o.feverMult;
-  if (!o.crit) dmg = Math.min(dmg, Math.ceil(hp * NONCRIT_CAP));
-  const total = damage + dmg;
-  if (total < hp) return { state: { ...state, unpack: { ...state.unpack, damage: total } }, burst: null };
+  if (!o.force) {
+    let dmg = unpackPower(state) * (o.crit ? (o.critMult ?? perkEffects(state).critMult) : 1) * o.feverMult;
+    if (!o.crit && !o.pierce) dmg = Math.min(dmg, Math.ceil(hp * NONCRIT_CAP));
+    const total = damage + dmg;
+    if (total < hp) return { state: { ...state, unpack: { ...state.unpack, damage: total } }, burst: null };
+  }
 
   const kind = boxKind(k);
-  const gain = (tapValue(state) / feverMultOf(state.fever)) * BOX_KINDS[kind].k * (k < ROOM_BOXES ? 1 : ENDLESS_K_MULT);
+  const special = specialAt(state.unpack.salt, k, gearEffects(state).specialRate);
+  const gain =
+    (tapValue(state) / feverMultOf(state.fever)) * BOX_KINDS[kind].k * (k < ROOM_BOXES ? 1 : ENDLESS_K_MULT) * (o.gainMult ?? 1) * (special === 'gold' ? GOLD_GAIN_MULT : 1);
   const inRoom = k < ROOM_BOXES;
   const slot = inRoom ? Math.floor(k / BOX_PATTERN.length) : undefined;
   const within = k % BOX_PATTERN.length;
@@ -137,7 +221,14 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
     points: state.points + gain,
     earned: state.earned + gain,
     stats: { ...state.stats, totalEarned: state.stats.totalEarned + gain },
-    unpack: { box: k + 1, damage: 0, roomDone: state.unpack.roomDone || completes, hp: 0 },
+    unpack: {
+      ...state.unpack,
+      box: k + 1,
+      damage: 0,
+      roomDone: state.unpack.roomDone || completes,
+      hp: 0,
+      rushSec: special === 'clock' ? Math.min(RUSH_MAX_SEC, state.unpack.rushSec + RUSH_SEC) : state.unpack.rushSec,
+    },
   };
   next.unpack.hp = hpFor(next, k + 1);
   const rng = o.rng ?? seededRng(k * 7919 + 3);
@@ -164,6 +255,9 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
     kind,
     k,
     gain,
+    chain: o.chain ?? 1,
+    special,
+    blast: o.blast === true,
     slotFill: inRoom ? (kind === 'big' ? 1 : (within + 1) / BOX_PATTERN.length) : 0,
     roomDone: completes,
     freeBoxes,
@@ -175,23 +269,86 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
   return { state: next, burst };
 }
 
-/** 탭 1회 + 상자 피해. tapWithRng의 crit 판정을 그대로 쓴다(난수 1회, 방 완성 때만 추가). comboMult는 gain에만 곱하고 상자 피해에는 곱하지 않는다. */
-export function tapAndHit(state: GameState, rng: () => number, damped = false, comboMult = 1): TapResult & { burst: BoxBurst | null } {
+/**
+ * 한 번의 피해(hitBox)와 그 뒤의 폭발. 터진 상자는 bursts 뒤에 붙고 연쇄 보너스·순번은 bursts 길이를 따른다.
+ * 폭탄이 터지면 뒤따르는 BOMB_BLAST개가 내구도와 상관없이 함께 터지고, 휩쓸린 폭탄은 거기서 다시 BOMB_BLAST개를 터뜨린다.
+ */
+function hitChained(state: GameState, base: HitOptions, bursts: BoxBurst[]): GameState {
+  const opts = (extra: Partial<HitOptions>): HitOptions => ({ ...base, gainMult: chainBonus(bursts.length, gearEffects(state).chainCap), chain: bursts.length + 1, ...extra });
+  const h = hitBox(state, opts({}));
+  if (!h.burst) return h.state;
+  bursts.push(h.burst);
+  let next = h.state;
+  let pending = h.burst.special === 'bomb' ? BOMB_BLAST : 0;
+  while (pending > 0) {
+    pending--;
+    const b = hitBox(next, opts({ force: true, blast: true }));
+    next = b.state;
+    if (!b.burst) continue;
+    bursts.push(b.burst);
+    if (b.burst.special === 'bomb') pending += BOMB_BLAST;
+  }
+  return next;
+}
+
+/** 연쇄 상금(5·10·20개 이상). 없으면 null. 상금은 시작 상태 기준 탭 1회 수익(피버 제외) x taps */
+function chainPrize(start: GameState, state: GameState, chain: number): { state: GameState; prize: HeavyResult['prize'] } {
+  for (let t = CHAIN_PRIZES.length - 1; t >= 0; t--) {
+    if (chain < CHAIN_PRIZES[t].n) continue;
+    const gain = (tapValue(start) / feverMultOf(start.fever)) * CHAIN_PRIZES[t].taps;
+    return {
+      prize: { tier: t as 0 | 1 | 2, n: chain, gain },
+      state: { ...state, points: state.points + gain, earned: state.earned + gain, stats: { ...state.stats, totalEarned: state.stats.totalEarned + gain } },
+    };
+  }
+  return { state, prize: null };
+}
+
+function tapCore(state: GameState, rng: () => number, damped: boolean, comboMult: number, charge: boolean): HeavyResult {
   const feverMult = feverMultOf(state.fever);
   const r = tapWithRng(state, rng, damped, comboMult);
-  const h = hitBox(r.state, { crit: r.crit, damped, feverMult, rng, critMult: perkEffects(state).critMult });
-  return { ...r, state: h.state, burst: h.burst };
+  const bursts: BoxBurst[] = [];
+  const start = charge ? r.state : { ...r.state, fever: state.fever };
+  const next = hitChained(start, { crit: r.crit, damped, feverMult, rng, critMult: perkEffects(state).critMult }, bursts);
+  const chain = bursts.length;
+  const p = chainPrize(state, next, chain);
+  let out = p.state;
+  if (chain > 1 && chain > out.bestChain) out = { ...out, bestChain: chain };
+  return { ...r, state: out, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize: p.prize };
+}
+
+/**
+ * 탭 1회 + 상자 피해. tapWithRng의 crit 판정을 그대로 쓴다(난수 1회, 방 완성 때만 추가). comboMult는 gain에만 곱하고 상자 피해에는 곱하지 않는다.
+ * 폭탄 상자가 터지면 여러 개가 함께 터지므로 강타와 같은 모양으로 `bursts`·`chain`·`prize`도 돌려준다(`burst`는 마지막으로 터진 상자).
+ */
+export function tapAndHit(state: GameState, rng: () => number, damped = false, comboMult = 1): HeavyResult {
+  return tapCore(state, rng, damped, comboMult, true);
+}
+
+/** 러시(시계 상자) 탭: 일반 탭과 같은 피해·보상·치명타지만 피버 게이지를 올리지 않는다. 열기·콤보는 화면이 다룬다 */
+export function rushTap(state: GameState, rng: () => number, comboMult = 1): HeavyResult {
+  return tapCore(state, rng, false, comboMult, false);
 }
 
 export interface HeavyResult extends TapResult {
   /** 마지막으로 터진 상자(없으면 null). 여러 개가 터졌으면 전부 `bursts`에 순서대로 */
   burst: BoxBurst | null;
   bursts: BoxBurst[];
+  /** 이번에 터진 상자 수(= bursts.length) */
+  chain: number;
+  /** 연쇄 상금(5·10·20개 이상). 없으면 null. tier는 CHAIN_PRIZES 인덱스 */
+  prize: { tier: 0 | 1 | 2; n: number; gain: number } | null;
+}
+
+/** i번째(0부터) 터진 상자의 연쇄 보너스 배율 */
+export function chainBonus(i: number, cap = CHAIN_BONUS_CAP): number {
+  return 1 + CHAIN_BONUS_STEP * Math.min(i, cap);
 }
 
 /**
  * 탭 taps번어치를 한 번에: 수익 = 탭 1회 수익 x taps x comboMult, 치명타는 한 번만 굴려 터지면 수익·타격 전체에 배율(상자 피해 상한도 풀린다).
  * 상자 피해는 탭 1회 피해 x taps를 한 타씩 넣어 `tapAndHit`을 taps번 부른 것과 같게 처리한다(터지면 보상·다음 상자, 남는 타격은 다음 상자로 이어진다).
+ * 강타는 상자를 뚫는다: 탭 한 단위가 상자 하나를 끝낼 수 있고(hp/3 제한 없음), 터진 순서대로 연쇄 보너스가 붙으며, 5·10·20개 이상이면 연쇄 상금을 더한다. 최고 연쇄도 갱신한다.
  * 피버는 feverCharge만 채우고 피버 피해 배율은 시작 상태 기준 하나로 쓴다. 감쇠 없음.
  */
 export function heavyHit(state: GameState, rng: () => number, taps: number, comboMult = 1, feverCharge = taps): HeavyResult {
@@ -206,11 +363,14 @@ export function heavyHit(state: GameState, rng: () => number, taps: number, comb
   };
   const bursts: BoxBurst[] = [];
   for (let i = 0; i < taps; i++) {
-    const h = hitBox(next, { crit: r.crit, damped: false, feverMult, rng, critMult });
-    next = h.state;
-    if (h.burst) bursts.push(h.burst);
+    next = hitChained(next, { crit: r.crit, damped: false, feverMult, rng, critMult, pierce: true }, bursts);
   }
-  return { ...r, state: next, burst: bursts.length > 0 ? bursts[bursts.length - 1] : null, bursts };
+  const chain = bursts.length;
+  const p = chainPrize(state, next, chain);
+  next = p.state;
+  const prize = p.prize;
+  if (chain > next.bestChain) next = { ...next, bestChain: chain };
+  return { ...r, state: next, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize };
 }
 
 export interface RoomProgress {

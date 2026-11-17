@@ -15,7 +15,8 @@ export const PARCEL_STAY_SEC = 8;
 export const PARCEL_FREE_BOX_CHANCE = 0.1;
 export const PARCEL_MIN_PPS_SEC = 20;
 export const PARCEL_MAX_PPS_SEC = 40;
-export const PARCEL_MIN_TAPS = 50;
+/** 택배 포인트 = tapStable x 이 값 x 초(20~40) */
+export const PARCEL_TAPS_PER_SEC = 2.5;
 
 export const initialFever = (): FeverState => ({ gauge: 0, activeSec: 0, cooldownSec: 0 });
 export const initialParcel = (): ParcelState => ({ nextInSec: 90, remainSec: 0 });

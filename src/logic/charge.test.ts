@@ -13,6 +13,7 @@ import {
   chargePos,
   chargeSpeed,
   chargeTaps,
+  streakMult,
   releaseCharge,
 } from './charge';
 import { defaultState } from './state';
@@ -48,25 +49,49 @@ describe('판정·보상', () => {
     expect(CHARGE_REWARD.good).toEqual({ taps: 8, combo: 3, fever: 3 });
     expect(CHARGE_REWARD.miss).toEqual({ taps: 2, combo: 0, fever: 1 });
   });
-  it('연속 퍼펙트 가산·상한, 속도', () => {
-    expect([0, 1, 3, 5, 9].map((s) => chargeTaps('perfect', s))).toEqual([20, 22, 26, 30, 30]);
+  it('연속 퍼펙트 배수(상한 없음), 속도(10회분까지)', () => {
+    expect([0, 1, 3, 5, 9].map((s) => chargeTaps('perfect', s))).toEqual([20, 30, 50, 70, 110]);
+    expect(streakMult(0)).toBe(1);
+    expect(streakMult(4)).toBe(3);
+    expect(streakMult(20)).toBe(11);
+    expect(chargeTaps('perfect', 20)).toBeGreaterThan(chargeTaps('perfect', 19));
     expect(chargeTaps('good', 5)).toBe(8);
     expect(chargeSpeed(0)).toBe(1);
     expect(chargeSpeed(3)).toBeCloseTo(1.24);
-    expect(chargeSpeed(5)).toBeCloseTo(1.4);
-    expect(chargeSpeed(50)).toBeCloseTo(1.4);
+    expect(chargeSpeed(10)).toBeCloseTo(1.8);
+    expect(chargeSpeed(50)).toBeCloseTo(1.8);
   });
 });
 
 describe('releaseCharge', () => {
+  it('강타 힘 강화(strikeLevel)는 탭 수에 곱한다', () => {
+    const s = { ...defaultState(), strikeLevel: 5 };
+    expect(releaseCharge(s, never, 0.8, 0, 1).taps).toBe(Math.round(releaseCharge(defaultState(), never, 0.8, 0, 1).taps * 2));
+  });
   it('퍼펙트: 연속 +1, 수익 = 탭 수익 x 탭 수 x 배율, 콤보·피버', () => {
     const s = defaultState();
     const r = releaseCharge(s, never, 0.8, 2, 1.5);
     expect(r.grade).toBe('perfect');
     expect(r.streak).toBe(3);
     expect(r.comboAdd).toBe(10);
-    expect(r.gain).toBeCloseTo(tapValue(s) * 24 * 1.5);
+    expect(r.gain).toBeCloseTo(tapValue(s) * 40 * 1.5);
     expect(r.state.fever.gauge).toBe(6);
+  });
+  it('연속 퍼펙트는 상한 없이 배수가 계속 커지고, 굿이면 0으로 돌아가 다시 x1', () => {
+    const s = defaultState();
+    let streak = 0;
+    let prev = 0;
+    for (let i = 0; i < 25; i++) {
+      const r = releaseCharge(s, never, 0.8, streak, 1);
+      expect(r.taps).toBe(Math.round(20 * (1 + 0.5 * i)));
+      expect(r.taps).toBeGreaterThan(prev);
+      prev = r.taps;
+      streak = r.streak;
+    }
+    expect(streak).toBe(25);
+    const g = releaseCharge(s, never, 0.6, streak, 1);
+    expect(g.streak).toBe(0);
+    expect(releaseCharge(s, never, 0.8, g.streak, 1).taps).toBe(20);
   });
   it('굿·빗나감은 연속을 0으로', () => {
     const s = defaultState();

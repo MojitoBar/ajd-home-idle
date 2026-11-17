@@ -6,7 +6,7 @@ import { vibrate } from './prefs';
 import { COMBO_TIERS, comboTier } from '../logic/combo';
 
 const MERGE_MS = 180;
-const MAX_LIVE = 6;
+const MAX_LIVE = 4;
 const FEVER_COLORS = ['#ffc83d', '#ff8a1f', '#ffeaa0', '#ffffff'];
 const TIER_COLOR = ['#5b9bff', '#ffc83d', '#ff8a1f', '#ff6fb0', '#8d5cf6', '#ffffff'];
 /** 탭 음 계단: 단계마다 3칸, 단계 안에서 0~2칸. 상한은 sfx가 둔다 */
@@ -30,6 +30,8 @@ export interface TapFxInput {
   lite?: boolean;
   /** 상자 화면: 상자 중심 좌표. 숫자·치명타 글자가 터짐 숫자 자리를 피해 흩어진다 */
   anchor?: { x: number; y: number; half: number; minTop: number; k: number; gainBottom?: number };
+  /** 폭탄 연쇄 탭: 타격 글자(숫자·치명타)는 생략한다(연쇄 숫자와 합계가 대신한다). 연출은 그대로 */
+  noNumber?: boolean;
   combo: number;
   pointsEl: Element;
   phone: HTMLElement;
@@ -128,6 +130,7 @@ function critEffect(i: TapFxInput): void {
   if (a) {
     const x = clampX(a.x, 128 * a.k);
     const text = (): void => {
+      if (i.noNumber) return;
       fx.floatText(x, Math.max(a.y - a.half * 1.1 - 12 * a.k, a.minTop + 36), `쾅! 치명타 +${formatNumber(i.gain)}`, { scale: 1.2, k: a.k, spread: 6, ms: 830, minY: a.minTop + 28, cls: i.fever ? 'crit fever' : 'crit' });
     };
     // 배너(단계 오름 등)가 떠 있으면 글자만 배너가 사라진 뒤로 미룬다. 번쩍·흔들림·소리는 그대로
@@ -170,7 +173,7 @@ export function tapEffect(i: TapFxInput): void {
   if (i.crit) {
     critEffect(i);
   } else if (i.anchor) {
-    singleNumber(i, tier);
+    if (!i.noNumber) singleNumber(i, tier);
     if (!i.damped) vibrate(tier >= 2 ? 14 : 7);
   } else if (i.damped) {
     if (live < MAX_LIVE) {

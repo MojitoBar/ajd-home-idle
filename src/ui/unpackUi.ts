@@ -1,25 +1,32 @@
 // 이삿짐 상자 풀기 화면: 방 한가운데 상자·대기 상자·살림 칸·내구도 막대·도구 연출. 로직은 모르고 state와 터짐 결과만 받는다.
-import { ROOMS, roomFor, shelfSlots } from '../data/rooms';
+import { ROOMS, roomFor, SHELF_ICON_DROP, SHELF_TOOL_DROP, shelfSlots } from '../data/rooms';
 import { houseInfo } from '../logic/house';
-import { ROOM_BOXES, ROOM_ITEMS, TOOLS, type BoxKind, type ToolDef } from '../data/unpack';
-import { SERVICES } from '../data/services';
+import { CHAIN_PRIZES, GOLD_GAIN_MULT, ROOM_BOXES, ROOM_ITEMS, TOOLS, type BoxKind, type SpecialBox, type ToolDef } from '../data/unpack';
 import { formatNumber } from '../logic/format';
 import type { GameState } from '../logic/state';
-import { boxCondition, boxKind, nextCareSlot, roomProgress, tierOf, toolOf, type BoxBurst } from '../logic/unpack';
+import { gearEffects, gearLevel } from '../logic/gear';
+import { homeMult } from '../logic/economy';
+import type { GearId } from '../data/gear';
+import { boxCondition, boxKind, nextCareSlot, roomProgress, specialAt, tierOf, toolOf, type BoxBurst } from '../logic/unpack';
 import { el, setText } from './dom';
 import * as fx from './fx';
 import { vibrate } from './prefs';
 import { playFree } from './box';
 import { sfx } from './sound';
+import { markTabDot } from './unlockUi';
 import { dropTapNumber } from './tapFx';
 import { artUrl, dim, DOT, preload, pxImg } from './px/art';
 
 /** 지금 집 테마의 방(배경·살림·전화 자리). 선반·상자 자리는 모든 방이 같다 */
 let ONE_ROOM = roomFor('blue');
 let roomTheme = 'blue';
-const WALL_RING = 'ui/wall-phone-ring';
 const STAGES: Record<BoxKind, number> = { small: 3, normal: 3, big: 4 };
-const boxArt = (kind: BoxKind, stage = 0): string => `box/${kind}-${stage + 1}`;
+const boxArt = (kind: BoxKind, stage = 0, special: SpecialBox | null = null): string => (special ? `box/${special}-${kind}-${stage + 1}` : `box/${kind}-${stage + 1}`);
+const openArt = (kind: BoxKind, special: SpecialBox | null): string => (special ? `box/${special}-${kind}-open` : `box/${kind}-open`);
+const SPECIALS: SpecialBox[] = ['gold', 'bomb', 'clock'];
+const SPECIAL_NAME: Record<SpecialBox, string> = { gold: '황금 상자', bomb: '폭탄 상자', clock: '시계 상자' };
+/** 폭탄 그림의 심지 자리(그림 크기 대비 비율): 작은·보통 */
+const FUSE: Record<'small' | 'normal', { x: number; y: number }> = { small: { x: 0.61, y: 0.6 }, normal: { x: 0.27, y: 0.57 } };
 /** 상자 크기는 그림 자연 크기 x 2 */
 const boxPx = (kind: BoxKind): number => dim(boxArt(kind)).w * DOT;
 
@@ -41,23 +48,28 @@ const stageOf = (kind: BoxKind, ratio: number): number => {
 };
 /** 살림 그림 단계 접미(기본·은·금·무지개). 반짝 단계는 무지개 그림 + 반짝 입자 */
 const TIER_SUFFIX = ['', '-silver', '-gold', '-rainbow'];
-const tierArt = (i: number, lv: number): string => ROOM_ITEMS[i].image + TIER_SUFFIX[Math.min(tierOf(lv), 3)];
+export const tierArt = (i: number, lv: number): string => ROOM_ITEMS[i].image + TIER_SUFFIX[Math.min(tierOf(lv), 3)];
 const TIER_COLS = [['g2'], ['k5', 'k4', 'k3'], ['g2', 'g3', 'g1'], ['or', 'g2', 'gn', 'b3'], ['g3', 'k5', 'p1', 'pk']];
 const TIER_GIFT = ['', '은빛', '금빛', '무지갯빛', '반짝'];
 const TIER_TOAST = ['', '은빛이 됐어요', '금빛이 됐어요', '무지갯빛이 됐어요', '반짝이게 됐어요'];
 const PX_ART = [
   ...Object.values(ROOMS).map((r) => r.bg),
   'ui/wall-phone',
-  WALL_RING,
   'icon/parcel',
   'box/small-open',
   'box/normal-open',
   'box/big-open',
   'box/flat',
   ...TOOLS.map((t) => t.icon),
+  'tool/sledge',
+  'tool/level',
+  'tool/hardhat',
+  'tool/crowbar',
+  'tool/awl',
+  'tool/magnifier',
   ...(['small', 'normal', 'big'] as BoxKind[]).flatMap((k) => Array.from({ length: STAGES[k] }, (_, i) => boxArt(k, i))),
+  ...SPECIALS.flatMap((sp) => (['small', 'normal'] as BoxKind[]).flatMap((k) => [...Array.from({ length: STAGES[k] }, (_, i) => boxArt(k, i, sp)), openArt(k, sp)])),
   ...ROOM_ITEMS.flatMap((i) => TIER_SUFFIX.map((x) => i.image + x)),
-  ...SERVICES.map((s) => `icon/svc-${s.id}`),
 ];
 /** 짐 더미 자리(도트): 열 가운데 x, 상자 바닥 y. 1단 왼·오. 상자 윗변(92-32=60)이 창문 아랫변(60)보다 위로 올라가지 않는다 */
 const PILE = [{ c: 74, b: 92 }, { c: 106, b: 92 }];
@@ -66,6 +78,8 @@ const pileCount = (k: number): number => (k >= ROOM_BOXES ? 1 : Math.max(0, Math
 /** 가운데 뒤에서 기다리는 상자 수(0~2). 마지막 두 상자에서는 비어 보인다 */
 const waitCount = (k: number): number => (k >= ROOM_BOXES ? 2 : Math.max(0, Math.min(2, ROOM_BOXES - k - 1)));
 let pileEls: HTMLElement[] = [];
+/** 지금 상자들을 만든 salt(바뀌면 특별 상자 자리가 달라지니 다시 만든다) */
+let shownSalt = -1;
 let artReady = false;
 const LIVE_CAP = 30;
 
@@ -77,6 +91,8 @@ interface BoxEl {
   waitImgs: HTMLImageElement[];
   k: number;
   kind: BoxKind;
+  /** 특별 상자 종류(황금·폭탄·시계). 일반 상자는 null */
+  special: SpecialBox | null;
   stage: number;
 }
 
@@ -87,7 +103,7 @@ let barFill: HTMLElement;
 let barEl: HTMLElement;
 let chip: HTMLElement;
 let doneChip: HTMLElement;
-let wall: HTMLButtonElement;
+let wall: HTMLElement;
 let boxes: BoxEl[] = [];
 const slots: { root: HTMLElement; col: HTMLElement; img: HTMLElement; pic: HTMLImageElement; fill: number; rows?: number; tier?: number }[] = [];
 /** 단계가 바뀌는 착지를 기다리는 살림 칸(그림을 아직 바꾸지 않는다) */
@@ -152,13 +168,14 @@ function setTool(s: HTMLElement, t: ToolDef): void {
 
 function makeBox(k: number, pos: number): BoxEl {
   const kind = boxKind(k);
+  const special = specialAt(lastState?.unpack.salt ?? 0, k, lastState ? gearEffects(lastState).specialRate : undefined);
   const body = el('div', { cls: 'un-body' });
   // 단계 그림은 전부 미리 얹어 두고 켜고 끈다(그림 교체 때 깜빡임 없음)
-  const imgs = Array.from({ length: STAGES[kind] }, (_, i) => pxImg(boxArt(kind, i), `un-box-img${i === 0 ? ' on' : ''}`));
+  const imgs = Array.from({ length: STAGES[kind] }, (_, i) => pxImg(boxArt(kind, i, special), `un-box-img${i === 0 ? ' on' : ''}`));
   const waitImgs = kind === 'big' ? Array.from({ length: STAGES.normal }, (_, i) => pxImg(boxArt('normal', i), 'un-box-img')) : [];
   body.append(...imgs, ...waitImgs);
   const root = el('div', { cls: 'un-box', attrs: { 'data-kind': kind, 'data-stage': '0', 'data-pos': String(pos) } }, body);
-  const b: BoxEl = { root, body, imgs, waitImgs, k, kind, stage: 0 };
+  const b: BoxEl = { root, body, imgs, waitImgs, k, kind, special, stage: 0 };
   setBoxPos(b, pos);
   return b;
 }
@@ -193,6 +210,7 @@ function layoutWait(): void {
 
 function rebuild(k: number): void {
   settle();
+  shownSalt = lastState?.unpack.salt ?? 0;
   for (const b of boxes) b.root.remove();
   boxes = Array.from({ length: 1 + waitCount(k) }, (_, i) => makeBox(k + i, i));
   for (const b of boxes) b.root.style.visibility = '';
@@ -223,7 +241,7 @@ function setStageVar(): void {
   if (boxes[0]) stage.style.setProperty('--b0', String(boxPx(boxes[0].kind)));
 }
 
-export function initUnpack(o: { room: HTMLElement; eventCall: HTMLElement; tapHint?: HTMLElement; toast: (msg: string, gold?: boolean) => void }): void {
+export function initUnpack(o: { room: HTMLElement; tapHint?: HTMLElement; toast: (msg: string, gold?: boolean) => void }): void {
   room = o.room;
   toast = o.toast;
   glint = el('i', { cls: 'un-glint un-only', attrs: { 'aria-hidden': 'true' } });
@@ -232,6 +250,7 @@ export function initUnpack(o: { room: HTMLElement; eventCall: HTMLElement; tapHi
   toolEl = el('span', { cls: 'un-swing' });
   stage.append(toolEl);
   toolSpans.push(toolEl);
+  window.setInterval(ambient, 160);
 
   const mk = (from: number, side: string): HTMLElement => {
     const g = el('div', { cls: `un-slots un-only ${side}` });
@@ -256,10 +275,7 @@ export function initUnpack(o: { room: HTMLElement; eventCall: HTMLElement; tapHi
   doneChip.hidden = true;
   const meta = el('div', { cls: 'un-meta un-only' }, chip, doneChip, barEl);
 
-  wall = el('button', { cls: 'un-wall un-only', attrs: { type: 'button', 'aria-label': '벽 전화(이벤트 전화가 오면 눌러요)' } }, pxImg('ui/wall-phone', 'un-wall-a'));
-  wall.addEventListener('click', () => {
-    if (!o.eventCall.hidden) o.eventCall.click();
-  });
+  wall = el('span', { cls: 'un-wall un-only' }, pxImg('ui/wall-phone', 'un-wall-a'));
   room.append(stage, mk(0, 'l'), mk(4, 'r'), meta, wall, glint);
   initPixel(o.tapHint);
 }
@@ -285,10 +301,6 @@ function initPixel(tapHint?: HTMLElement): void {
   room.querySelector('.un-meta')?.remove();
   preload(PX_ART).then(() => {
     artReady = true;
-    if (dim(WALL_RING).w > 0) {
-      wall.classList.add('ring2');
-      wall.append(pxImg(WALL_RING, 'un-wall-b'));
-    }
     if (lastState) applyTheme(lastState);
     layoutPixel();
     if (lastState) {
@@ -318,27 +330,45 @@ function layoutPixel(): void {
   wall.classList.toggle('short', !!wp.short);
 }
 
-/** 선반: 산 서비스(레벨 1 이상)의 24도트 아이콘을 고정 자리(shelfSlots, 그림 불투명 폭 기준 같은 간격)에, 판자 윗면에 바닥을 맞춘다. 숫자는 없다 */
+/** 선반에 올릴 공구 그림 7칸(없으면 null): 공구·오함마는 항상, 새 5종은 Lv 1부터. [그림, 아래 투명 행] */
+function shelfIcons(state: GameState): ([string, number] | null)[] {
+  const tool = toolOf(state.tapLevel);
+  const gear = (id: GearId, art: string, drop: number): [string, number] | null => (gearLevel(state, id) > 0 ? [art, drop] : null);
+  return [
+    [tool.icon, SHELF_TOOL_DROP[tool.id] ?? 0],
+    ['tool/sledge', SHELF_ICON_DROP[1]],
+    gear('level', 'tool/level', SHELF_ICON_DROP[2]),
+    gear('helmet', 'tool/hardhat', SHELF_ICON_DROP[3]),
+    gear('crowbar', 'tool/crowbar', SHELF_ICON_DROP[4]),
+    gear('awl', 'tool/awl', SHELF_ICON_DROP[5]),
+    gear('loupe', 'tool/magnifier', SHELF_ICON_DROP[6]),
+  ];
+}
+
+/** 선반: 가진 공구(24도트)를 고정 자리(shelfSlots)에, 불투명 바닥을 판자 윗면에 맞춘다. 숫자는 없다. 공구 칸 그림이 단계마다 바뀌면 다시 놓는다 */
 function syncPixelShelf(state: GameState): void {
+  if (!artReady) return;
   const pos = shelfSlots(ONE_ROOM.w);
-  const owned = SERVICES.map((_, i) => (state.services[i] > 0 ? '1' : '0')).join('');
+  const icons = shelfIcons(state);
+  const owned = icons.map((n) => (n ? n[0] : '0')).join(',');
   if (owned === shelfKey) return;
-  const prev = shelfKey;
+  const prev = shelfKey.split(',');
   shelfKey = owned;
   shelfEls.clear();
   shelf.querySelectorAll('.px-svc').forEach((n) => n.remove());
-  SERVICES.forEach((s, i) => {
-    if (owned[i] !== '1') return;
-    const d = dim(`icon/svc-${s.id}`);
-    const box = el('span', { cls: 'px-svc', attrs: { 'data-id': s.id } }, pxImg(`icon/svc-${s.id}`));
+  icons.forEach((it, i) => {
+    if (!it) return;
+    const [name, drop] = it;
+    const d = dim(name);
+    const box = el('span', { cls: 'px-svc' }, pxImg(name));
     box.style.left = `calc(50% + ${(pos[i].x - ONE_ROOM.w / 2) * DOT}px)`;
-    box.style.top = `${-d.h * DOT}px`;
+    box.style.top = `${-(d.h - drop) * DOT}px`;
     box.style.width = `${d.w * DOT}px`;
     box.style.height = `${d.h * DOT}px`;
     shelfEls.set(i, box);
     shelf.append(box);
-    // 새로 산 순간만: 2px 단위로 톡 내려앉는다
-    if (shelfInit && prev[i] !== '1' && !fx.isReduced()) box.animate([{ translate: `0 ${-6 * DOT}px` }, { translate: '0 0' }], { duration: 240, easing: 'steps(6, end)' });
+    // 새로 올라온 순간만: 2px 단위로 톡 내려앉는다
+    if (shelfInit && (prev[i] ?? '0') === '0' && !fx.isReduced()) box.animate([{ translate: `0 ${-6 * DOT}px` }, { translate: '0 0' }], { duration: 240, easing: 'steps(6, end)' });
   });
   shelfInit = true;
 }
@@ -359,7 +389,7 @@ function chipsBottom(): number {
 export function boxAnchor(): { x: number; y: number; half: number; minTop: number; k: number; gainBottom: number } {
   const c = boxCenter();
   const gain = scene.gain?.isConnected ? scene.gain.getBoundingClientRect().bottom : 0;
-  return { x: c.x, y: c.y, half: boxes[0] ? (boxPx(boxes[0].kind) / 2) * rs() : 0, minTop: chipsBottom(), k: rs(), gainBottom: gain };
+  return { x: c.x, y: c.y, half: boxes[0] ? (boxPx(boxes[0].kind) / 2) * rs() : 0, minTop: Math.max(chipsBottom(), fx.headBottom() + 4 * rs()), k: rs(), gainBottom: gain };
 }
 
 function applySlots(): void {
@@ -438,6 +468,44 @@ function armSparkle(): void {
   }, period);
 }
 
+/** 살림 단계가 오른 순간의 머리글 "살림 xA → xB"(주황). 살림 탭을 안 보고 있어도 탭 버튼에 알림 점이 한 번 찍힌다 */
+function homeSay(care: NonNullable<BoxBurst['care']>, delay: number): void {
+  const st = lastState;
+  if (!st) return;
+  markTabDot('home');
+  const at = (lv: number): number => homeMult({ ...st, homeLv: st.homeLv.map((x, i) => (i === care.slot ? lv : x)) });
+  const text = `살림 x${formatNumber(at(care.lv - 1))} → x${formatNumber(at(care.lv))}`;
+  // 연쇄 덩어리(판정·숫자·합계)가 보이는 동안은 그 자리를 쓰지 않도록 사라질 때까지 기다린다(최대 3초)
+  const go = (tries: number): void => {
+    if (chainVisible() && tries < 30) {
+      window.setTimeout(() => go(tries + 1), 100);
+      return;
+    }
+    fx.headline('now', (end) => {
+      // 같은 순간에 뜰 배율 돌파가 있으면 한 머리글로 합쳐 부제 칩으로 보인다
+      const brk = fx.headDrop('break');
+      const e = el('div', { cls: 'un-home-say' }, el('b', { text }), ...(brk ? [el('i', { text: brk })] : []));
+      e.style.top = `${fx.headTop(room, rs())}px`;
+      room.append(e);
+      const fit = fx.fitHead(e, 'un-home-say', ['', 'long', 'xl'], room);
+      const rm = (): void => {
+        e.remove();
+        end();
+      };
+      if (fx.isReduced()) {
+        window.setTimeout(rm, 1100);
+        return () => e.remove();
+      }
+      const f: Keyframe[] = [1.5, 1.3, 1.15, 1.05].map((s) => ({ scale: String(Math.min(s, fit)), visibility: 'visible' }));
+      for (let i = 0; i < 24; i++) f.push({ scale: '1', visibility: 'visible' });
+      for (let i = 0; i < 4; i++) f.push({ scale: '1', visibility: i % 2 ? 'visible' : 'hidden' });
+      fx.pxFrames(e, f, 40).onfinish = rm;
+      return () => e.remove();
+    });
+  };
+  window.setTimeout(() => go(0), delay);
+}
+
 /** 손질 착지: 칸이 통통 튀고 Lv N이 뜬다. 단계가 오르면 흰 1프레임 뒤 새 그림 + 색종이 + 토스트 */
 function careLand(burst: BoxBurst, reduced: boolean, showLv: boolean, inRoom = false): void {
   const care = burst.care;
@@ -451,6 +519,7 @@ function careLand(burst: BoxBurst, reduced: boolean, showLv: boolean, inRoom = f
   const name = ROOM_ITEMS[care.slot].name;
   const say = (): void => {
     if (!care.tierUp) return;
+    homeSay(care, burst.roomDone ? 5700 : 0);
     const msg = `${josa(name, '이', '가')} ${TIER_TOAST[Math.min(tierOf(care.lv), 4)]}`;
     window.setTimeout(() => toast(msg, true), burst.roomDone ? 5700 : 0);
   };
@@ -563,9 +632,9 @@ export function syncUnpack(state: GameState): void {
     else dockToolEl.parentElement?.setAttribute('data-tool', tool.id);
     dockToolEl.parentElement?.setAttribute('aria-label', `${tool.name}으로 상자 치기`);
   }
-  if (!artReady) return;
+  if (!artReady || chainRun) return;
   const k = state.unpack.box;
-  if (boxes[0]?.k !== k) rebuild(k);
+  if (boxes[0]?.k !== k || shownSalt !== state.unpack.salt) rebuild(k);
   const cur = boxes[0];
   const c = boxCondition(state);
   const stg = stageOf(cur.kind, c.ratio);
@@ -591,7 +660,7 @@ export function syncUnpack(state: GameState): void {
   const rp = roomProgress(state);
   const care = k >= ROOM_BOXES;
   setText(pxMain, care ? `손질 ${rp.careStep + 1}/10` : `상자 ${rp.opened + 1}/${rp.total}`);
-  setText(pxItem, care ? ` · ${ROOM_ITEMS[nextCareSlot(state)].name}` : '');
+  setText(pxItem, (care ? ` · ${ROOM_ITEMS[nextCareSlot(state)].name}` : '') + (cur.special ? ` · ${SPECIAL_NAME[cur.special]}` : ''));
   setText(doneChip, `살림 Lv ${formatNumber(rp.lvSum)}`);
   doneChip.hidden = !care;
   fitStrip();
@@ -606,6 +675,12 @@ export interface UnpackHitInput {
   crit: boolean;
   damped: boolean;
   burst: BoxBurst | null;
+  /** 이번 탭으로 터진 상자 전부(순서대로). 폭탄 상자가 터지면 2개 이상이다. burst는 그중 마지막 */
+  bursts: BoxBurst[];
+  /** 탭 자체의 수익(연쇄 합계는 이 값에 터진 상자 몫을 더해 올린다) */
+  gain: number;
+  /** 연쇄 상금(5·10·20개 이상). 없으면 null */
+  prize: HeavyHitInput['prize'];
   /** 동전이 날아갈 포인트 표시 */
   pointsEl: Element;
   fever: boolean;
@@ -614,7 +689,7 @@ export interface UnpackHitInput {
 export function unpackHit(i: UnpackHitInput): void {
   const now = performance.now();
   const kCur = boxes[0]?.k ?? lastState?.unpack.box ?? 0;
-  const bk = i.burst ? i.burst.k : kCur;
+  const bk = i.bursts[0] ? i.bursts[0].k : kCur;
   if (!timing || timing.k !== bk) timing = { k: bk, t0: now, taps: 0 };
   timing.taps++;
   if (i.burst) {
@@ -634,6 +709,44 @@ export function unpackHit(i: UnpackHitInput): void {
       fx.shake(room, 4, 250);
       stars(cur);
     }
+  }
+  if (i.bursts.length >= 2) {
+    // 폭탄이 휩쓴 연쇄: 강타와 같은 "다라라락" 연출. 판정 글자 자리에는 `폭발!`
+    setChainJudge('폭발!', 'blast', '');
+    playBursts({ x: i.x, y: i.y, grade: 'good', streak: 0, gain: i.gain, bursts: i.bursts, pointsEl: i.pointsEl, fever: i.fever, prize: i.prize });
+    return;
+  }
+  if (i.burst) boom(cur, i.burst, i.pointsEl, reduced);
+}
+
+/** 시계 상자 러시의 한 번 탭(초당 10번): 타격 숫자 없이 상자 타격 프레임과 파랑·흰 작은 입자만. 둘 이상 터지면(폭탄) 연쇄 재생 대신 한꺼번에 터뜨려 러시가 끊기지 않는다 */
+export function unpackRush(i: UnpackHitInput): void {
+  const cur = boxes[0];
+  if (!cur) return;
+  const reduced = fx.isReduced();
+  if (!i.burst) squash(cur, i, reduced);
+  if (!reduced) {
+    if (fx.particleCount() < 56) {
+      const c = boxCenter();
+      const w = cur.root.offsetWidth * rs();
+      pburst(c.x + (Math.random() - 0.5) * w * 0.6, c.y - w * 0.2, { n: 3, colors: ['b3', 'k5', 'b4'], speed: 220, gravity: 500, size: 4, up: true, life: 0.35 });
+    }
+    swing(1);
+  }
+  const n = i.bursts.length;
+  if (n >= 2) {
+    const hi: HeavyHitInput = { x: i.x, y: i.y, grade: 'good', streak: 0, gain: i.gain, bursts: i.bursts, pointsEl: i.pointsEl, fever: i.fever, prize: i.prize };
+    const cum = cumGain(hi);
+    setChainJudge('폭발!', 'blast', '');
+    startChain();
+    i.bursts.forEach((b, j) => {
+      const box = boxes[0];
+      if (box) boom(box, b, i.pointsEl, reduced, { j, n, instant: true });
+    });
+    if (lastState) syncUnpack(lastState);
+    chainShow(n, cum[n - 1]);
+    chainEnd(i.bursts, i.prize, i.pointsEl, reduced, cum[n - 1]);
+    return;
   }
   if (i.burst) boom(cur, i.burst, i.pointsEl, reduced);
 }
@@ -667,10 +780,14 @@ export interface HeavyHitInput {
   y: number;
   grade: 'perfect' | 'good' | 'miss';
   streak: number;
+  /** 강타 자체의 수익(탭 몫). 연쇄 합계는 이 값에 터진 상자 몫을 더해 올린다 */
+  gain: number;
   /** 이번 강타로 터진 상자(순서대로). 없을 수 있다 */
   bursts: BoxBurst[];
   pointsEl: Element;
   fever: boolean;
+  /** 연쇄 상금(5·10·20개 이상). 없으면 null */
+  prize: { tier: 0 | 1 | 2; n: number; gain: number } | null;
 }
 
 /** 강타 연출: 판정이 클수록 크게 맞는다. 상자가 여러 개 터지면 각각 터짐 연출을 이어서 낸다 */
@@ -683,7 +800,7 @@ export function unpackHeavy(i: HeavyHitInput): void {
   const reduced = fx.isReduced();
   const perfect = i.grade === 'perfect';
   const good = i.grade === 'good';
-  const hit: UnpackHitInput = { x: i.x, y: i.y, crit: perfect || good, damped: !perfect && !good, burst: null, pointsEl: i.pointsEl, fever: i.fever };
+  const hit: UnpackHitInput = { x: i.x, y: i.y, crit: perfect || good, damped: !perfect && !good, burst: null, bursts: [], gain: i.gain, prize: null, pointsEl: i.pointsEl, fever: i.fever };
   if (i.bursts.length === 0) squash(cur, hit, reduced);
   if (!reduced) {
     const c = boxCenter();
@@ -699,10 +816,272 @@ export function unpackHeavy(i: HeavyHitInput): void {
       pburst(boxCenter().x, boxCenter().y - cur.root.offsetWidth * 0.2 * rs(), { n: 10, colors: ['b3', 'b4', 'k5'], speed: 280, gravity: 0, size: 6, ring: true, life: 0.45 });
     }
   }
-  for (const b of i.bursts) {
-    const box = boxes[0];
-    if (box) boom(box, b, i.pointsEl, reduced);
+  playBursts(i);
+}
+
+/** 터진 상자들을 재생한다: 하나면 그냥 터짐, 둘 이상이면 연쇄(움직임 줄이기면 한꺼번에) */
+function playBursts(i: HeavyHitInput): void {
+  const reduced = fx.isReduced();
+  const n = i.bursts.length;
+  if (n < 2) {
+    for (const b of i.bursts) {
+      const box = boxes[0];
+      if (box) boom(box, b, i.pointsEl, reduced);
+    }
+    return;
   }
+  if (reduced) {
+    i.bursts.forEach((b, j) => {
+      const box = boxes[0];
+      if (box) boom(box, b, i.pointsEl, true, { j, n });
+    });
+    startChain();
+    chainShow(n, cumGain(i)[n - 1]);
+    chainEnd(i.bursts, i.prize, i.pointsEl, true, cumGain(i)[n - 1]);
+    return;
+  }
+  playChain(i);
+}
+
+/** 연쇄 재생 중이면 입력을 로직에 넣지 않는다(app이 확인) */
+export const chainPlaying = (): boolean => chainRun !== null;
+/** 디버그: 재생 중 여부와 마지막으로 올라간 연쇄 숫자 */
+export const chainInfo = (): { playing: boolean; n: number; total: number } => ({ playing: chainRun !== null, n: chainN, total: chainTotal });
+
+interface ChainMeta {
+  j: number;
+  n: number;
+  /** 러시 중 한꺼번에 터뜨리는 연쇄: 걸음 소리·흔들림을 겹쳐 내지 않는다 */
+  instant?: boolean;
+}
+let chainRun: { timer: number } | null = null;
+let chainN = 0;
+let chainTotal = 0;
+let chainBox: HTMLElement | null = null;
+let chainJudge: { text: string; tone: string; power: string } | null = null;
+let chainJudgePop = false;
+let chainPop: Animation | null = null;
+let chainSumPop: Animation | null = null;
+let chainOff = 0;
+/** 이번 연쇄에 시계 상자가 있어 러시 칩이 도중에 뜬다 */
+let chainClock = false;
+
+/** 2연쇄 이상으로 터질 때 판정 글자(`퍼펙트!`·`급소!`) + 있으면 파워 배율: 큰 글자 대신 연쇄 숫자 바로 위 24px 한 줄로 보인다. 다음 연쇄 시작 때 쓴다 */
+export function setChainJudge(text: string, tone: string, power: string): void {
+  chainJudge = { text, tone, power };
+}
+/** 연쇄 덩어리가 보이는 중이다(게이지·말풍선이 비켜 줄 때 쓴다) */
+export const chainVisible = (): boolean => !!chainBox && !chainBox.hidden;
+
+/** 연쇄 시작: 머리글을 붙잡고(떠 있던 것은 치움) 판정 줄을 채운다 */
+function startChain(): void {
+  window.clearTimeout(chainOff);
+  fx.headHold(true);
+  const j = chainJudge;
+  chainJudge = null;
+  const judge = chainEl().lastElementChild as HTMLElement;
+  judge.className = `un-chain-judge${j ? ` ${j.tone}` : ''}`;
+  judge.replaceChildren(...(j ? [document.createTextNode(j.text), ...(j.power ? [el('em', { text: ` ${j.power}` })] : [])] : []));
+  chainJudgePop = !!j;
+}
+
+/** 하나씩 이어 터뜨린다: 간격 clamp(900/n, 35, 90)ms를 평균으로 뒤로 갈수록 빨라진다. 끝나면 보상 표시 */
+function playChain(i: HeavyHitInput): void {
+  const bs = i.bursts;
+  const n = bs.length;
+  chainClock = bs.some((b) => b.special === 'clock');
+  const base = Math.max(35, Math.min(90, 900 / n));
+  const cum = cumGain(i);
+  const step = (j: number): void => {
+    const box = boxes[0];
+    try {
+      if (j === 0) startChain();
+      if (box) boom(box, bs[j], i.pointsEl, false, { j, n });
+      chainShow(j + 1, cum[j], cum[n - 1], n);
+    } catch (e) {
+      chainRun = null;
+      fx.headHold(false);
+      throw e;
+    }
+    if (j < n - 1) {
+      chainRun = { timer: window.setTimeout(() => step(j + 1), Math.max(35, base * (1.3 - (0.6 * (j + 1)) / n))) };
+      return;
+    }
+    chainRun = null;
+    if (lastState) syncUnpack(lastState);
+    chainEnd(bs, i.prize, i.pointsEl, false, cum[n - 1]);
+  };
+  chainRun = { timer: 0 };
+  step(0);
+}
+
+/** 방 안 연쇄 표시 칸: 숫자 / 합계 / 상금 칩이 위에서 아래로 쌓인다. 판정 글자 아래 */
+function chainEl(): HTMLElement {
+  if (!chainBox) {
+    chainBox = el('div', { cls: 'un-chain' }, el('b'), el('i'), el('span', { cls: 'un-chain-judge' }));
+    room.append(chainBox);
+  }
+  return chainBox;
+}
+
+/** 상자가 터질 때마다 올라가는 누적 수익: 강타 몫 + 지금까지 터진 상자 몫 */
+function cumGain(i: HeavyHitInput): number[] {
+  let t = i.gain;
+  return i.bursts.map((b) => (t += b.gain));
+}
+
+/** 연쇄 줄 팝: 자리 계산(sumLayout)이 정한 만큼만 부푼다 */
+function popFrames(e: HTMLElement, scales: number[]): Animation {
+  const f = Number(e.dataset.pf ?? 1);
+  return fx.pxFrames(e, scales.map((v) => ({ scale: String(Math.round((1 + (v - 1) * f) * 100) / 100) })), 40);
+}
+
+/** 연쇄 덩어리 줄(판정·숫자·합계)을 콤보 위젯·피버 칩 자리·방 테두리와 겹치지 않게 놓는다. 줄마다 가운데 → 비는 자리로 밀기 → 한 단계 작은 글자로 같은 순서(판정 줄은 크기 그대로, 안 들어가면 파워 배율을 뺀다). 끝 숫자·끝 자리 기준이라 올라가는 동안 자리는 그대로다(콤보 위젯이 늦게 뜨는 첫 칸만 다시 잰다) */
+function sumLayout(box: HTMLElement, sum: HTMLElement, finalText: string, finalN: number, judgeFresh: boolean): void {
+  const [b, , judge] = Array.from(box.children) as HTMLElement[];
+  b.textContent = `${finalN}연쇄!`;
+  sum.textContent = finalText;
+  const k = rs();
+  const rr = room.getBoundingClientRect();
+  const gap = 4 * k;
+  const obs = Array.from(document.querySelectorAll<HTMLElement>('.combo, .fever-tag, .rush-tag'))
+    .filter((e) => !e.hidden && e.getClientRects().length > 0)
+    .map((e) => e.getBoundingClientRect());
+  // 피버 칩은 연쇄 도중 늦게 뜨고 폭이 바뀌니, 뜨기 전에도 오른쪽 아래 자리(여백 8·6px, 폭 72·높이 32px)를 비운다
+  obs.push(new DOMRect(rr.right - 80 * k, rr.bottom - 38 * k, 72 * k, 32 * k));
+  // 러시 칩(피버 칩 바로 위)도 같은 이유로, 러시 중이면 뜨기 전에도 비운다
+  if ((lastState && lastState.unpack.rushSec > 0) || chainClock) obs.push(new DOMRect(rr.right - 80 * k, rr.bottom - 76 * k, 72 * k, 34 * k));
+  const dodge = (e: HTMLElement, classes: string[], pop: number, shrink?: () => void): void => {
+    let dx = 0;
+    let pf = 1;
+    for (let c = 0; c < classes.length; c++) {
+      e.style.translate = '';
+      e.className = classes[c];
+      let r = e.getBoundingClientRect();
+      const span = (q: DOMRect): { lo: number; hi: number } => {
+        let lo = rr.left + gap;
+        let hi = rr.right - gap;
+        const vy = (q.height * (pop - 1)) / 2;
+        for (const o of obs) {
+          if (q.bottom + vy <= o.top || q.top - vy >= o.bottom) continue;
+          if (o.left + o.right < rr.left + rr.right) lo = Math.max(lo, o.right + gap);
+          else hi = Math.min(hi, o.left - gap);
+        }
+        return { lo, hi };
+      };
+      let { lo, hi } = span(r);
+      const last = c === classes.length - 1;
+      if (r.width > hi - lo && last && shrink) {
+        shrink();
+        r = e.getBoundingClientRect();
+        ({ lo, hi } = span(r));
+      }
+      // 팝(최대 pop배)이 이웃을 덮지 않을 만큼만 부푼다: 빈 폭이 모자라면 팝을 줄이고, 절반 아래면 한 단계 작은 글자로
+      pf = Math.max(0, Math.min(1, (hi - lo - r.width) / (r.width * (pop - 1))));
+      const pad = (r.width * (pop - 1) * pf) / 2;
+      const left = Math.max(lo + pad, Math.min(r.left, hi - pad - r.width));
+      dx = Math.ceil((left - r.left) / k / 2) * 2 * k;
+      if (pf >= 0.5 || (last && r.width <= hi - lo)) break;
+    }
+    e.dataset.pf = String(pf);
+    e.style.translate = dx ? `${dx / k}px 0` : '';
+  };
+  dodge(b, finalN >= 10 ? ['x3', 'x2', 'x1'] : finalN >= 5 ? ['x2', 'x1'] : ['x1'], 1.4);
+  dodge(sum, ['', 'sm'], 1.5);
+  if (judgeFresh && judge.textContent) dodge(judge, [judge.className], 1.4, () => judge.querySelector('em')?.remove());
+}
+
+/** `N연쇄!` 숫자 + 누적 합계: 바뀔 때마다 steps() 팝. 2~4는 24px, 5~9는 36px, 10 이상은 48px */
+function chainShow(n: number, total: number, finalTotal = total, finalN = n): void {
+  const box = chainEl();
+  window.clearTimeout(chainOff);
+  chainPop?.cancel();
+  chainSumPop?.cancel();
+  chainN = n;
+  chainTotal = total;
+  box.hidden = false;
+  box.style.visibility = 'visible';
+  const [b, sum] = Array.from(box.children) as HTMLElement[];
+  b.textContent = `${n}연쇄!`;
+  b.className = n >= 10 ? 'x3' : n >= 5 ? 'x2' : 'x1';
+  sumLayout(box, sum, `+${formatNumber(finalTotal)} P`, finalN, chainJudgePop);
+  b.textContent = `${n}연쇄!`;
+  sum.textContent = `+${formatNumber(total)} P`;
+  if (chainJudgePop) {
+    chainJudgePop = false;
+    if (!fx.isReduced()) popFrames(box.lastElementChild as HTMLElement, [1.4, 1.2, 1.1, 1]);
+  }
+  if (!fx.isReduced()) {
+    chainPop = popFrames(b, [1.4, 1.2, 1.1, 1]);
+    chainSumPop = popFrames(sum, [1.2, 1.1, 1]);
+  }
+}
+
+/** 상금 칩: 알림 머리글로, 자리가 비면(연쇄가 끝난 0.6초 뒤, 줄 맨 앞) 뜬다 */
+function chainPrizeChip(text: string, tier: number, pointsEl: Element, reduced: boolean): void {
+  fx.headline(
+    'notice',
+    (end) => {
+      const chip = el('div', { cls: 'un-chain-prize', text });
+      chip.style.top = `${Math.max(72, fx.headTop(room, rs()))}px`;
+      room.append(chip);
+      const fit = fx.fitHead(chip, 'un-chain-prize', [''], room);
+      const rm = (): void => {
+        chip.remove();
+        end();
+      };
+      if (reduced) {
+        window.setTimeout(rm, 800);
+        return () => chip.remove();
+      }
+      const c = boxCenter();
+      const f: Keyframe[] = [1.3, 1.15, 1].map((s) => ({ scale: String(Math.min(s, fit)), visibility: 'visible' }));
+      for (let i = 0; i < 20; i++) f.push({ scale: '1', visibility: 'visible' });
+      for (let i = 0; i < 4; i++) f.push({ scale: '1', visibility: i % 2 ? 'visible' : 'hidden' });
+      fx.pxFrames(chip, f, 40).onfinish = rm;
+      fx.absorb({ x: c.x, y: c.y }, pointsEl, 6 + tier * 5, { delay: 0.06, offset: { x: 0, y: 0 } });
+      fx.confetti(c.x, c.y - 40 * rs(), 14 + tier * 8, { clip: true });
+      return () => chip.remove();
+    },
+    { first: true },
+  );
+}
+
+/** 끝: 합계 한 줄 + 상금 칩 + 마무리 연출. 0.6초쯤 머문 뒤 깜빡이며 사라진다 */
+function chainEnd(bs: BoxBurst[], prize: HeavyHitInput['prize'], pointsEl: Element, reduced: boolean, total: number): void {
+  const box = chainEl();
+  const sum = box.children[1] as HTMLElement;
+  sum.textContent = `+${formatNumber(total)} P`;
+  const n = bs.length;
+  const tier = prize ? prize.tier + 1 : n >= 10 ? 1 : 0;
+  const c = boxCenter();
+  if (!reduced) {
+    chainSumPop?.cancel();
+    chainSumPop = popFrames(sum, [1.5, 1.3, 1.15, 1]);
+    sfx.chainEnd(tier);
+    fx.shake(document.getElementById('app') ?? room, tier >= 2 ? 8 : 6, tier >= 1 ? 400 : 320);
+    if (n >= 10) {
+      const k = rs();
+      pburst(c.x, c.y - 24 * k, { n: 16 + tier * 4, kind: 'star', colors: ['g2', 'g3', 'k5', 'or'], speed: 520 + tier * 60, gravity: 0, size: 8, ring: true, life: 0.6 });
+      pburst(c.x, c.y - 24 * k, { n: 20 + tier * 4, colors: ['g2', 'or', 'k5'], speed: 340 + tier * 40, gravity: 0, size: 6, ring: true, life: 0.5 });
+    }
+    vibrate([30, 40, 60]);
+  }
+  fx.absorb({ x: c.x, y: c.y }, pointsEl, Math.min(12, 3 + tier * 3), { delay: 0.06, offset: { x: 0, y: 0 } });
+  if (prize) {
+    chainPrizeChip(`${CHAIN_PRIZES[prize.tier].n}연쇄 상금 +${formatNumber(prize.gain)} P`, prize.tier, pointsEl, reduced);
+  }
+  const off = (): void => {
+    // 덩어리가 사라지면 붙잡아 둔 알림(상금 칩이 가장 먼저)을 푼다
+    const hide = (): void => {
+      if (chainRun) return;
+      box.hidden = true;
+      fx.headHold(false);
+    };
+    if (reduced) return hide();
+    fx.pxFrames(box, Array.from({ length: 4 }, (_, k) => ({ visibility: k % 2 ? 'visible' : 'hidden' })), 40).onfinish = hide;
+  };
+  chainOff = window.setTimeout(off, 600);
 }
 
 const WHITE = 'brightness(0) invert(1)';
@@ -890,8 +1269,10 @@ const GAIN_PX: Record<BoxKind, number> = { small: 24, normal: 30, big: 36 };
 
 /** 터짐 숫자: 상자 윗변 -8px에서 8px 2단계로 오르고 600ms. 이전 숫자는 settle이 지운다 */
 function gainText(burst: BoxBurst, s: number, reduced: boolean): void {
-  const fs = GAIN_PX[burst.kind];
-  const e = el('i', { cls: 'un-gain', text: `+${formatNumber(burst.gain)} P` });
+  const gold = burst.special === 'gold';
+  const fs = gold ? 36 : GAIN_PX[burst.kind];
+  const e = el('i', { cls: `un-gain${gold ? ' gold' : ''}`, text: `+${formatNumber(burst.gain)} P` });
+  if (gold) e.append(el('em', { text: ` x${GOLD_GAIN_MULT}` }));
   e.style.fontSize = `${fs}px`;
   e.style.lineHeight = `${fs}px`;
   const minTop = (chipsBottom() - stageOrigin().top) / rs() + 4;
@@ -899,7 +1280,8 @@ function gainText(burst: BoxBurst, s: number, reduced: boolean): void {
   // 판정 글자는 가운데 기준으로 커졌다 줄어드니(최대 배율) 부푼 아랫변 + 외곽선 2px + 숫자가 4px 오르는 몫을 비운다
   const peak = say ? Math.max(1, ...say.getAnimations().flatMap((a) => (a.effect as KeyframeEffect).getKeyframes().map((k) => parseFloat(String(k.scale ?? 1))))) : 1;
   const belowSay = say ? (room.getBoundingClientRect().top + (say.offsetTop + say.offsetHeight * (1 + (peak - 1) / 2)) * rs() - stageOrigin().top) / rs() + 12 : -Infinity;
-  e.style.top = `${g10(Math.max(-s - 8 - fs, minTop, belowSay))}px`;
+  const belowHead = (fx.headBottom() - stageOrigin().top) / rs() + 12;
+  e.style.top = `${g10(Math.max(-s - 8 - fs, minTop, belowSay, belowHead))}px`;
   stage.append(e);
   scene.gain = e;
   const rm = (): void => {
@@ -913,7 +1295,87 @@ function gainText(burst: BoxBurst, s: number, reduced: boolean): void {
   fx.pxFrames(e, [{ translate: '0 0' }, { translate: '0 -2px' }, { translate: '0 -4px' }, { translate: '0 -4px' }, { translate: '0 -4px' }, { translate: '0 -4px', visibility: 'hidden' }], 100).onfinish = rm;
 }
 
-function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean): void {
+/** 맨 앞 특별 상자 둘레의 입자(글자 없이 눈에 띄게): 황금 반짝·폭탄 불꽃·시계 째깍. 160ms마다 한 번, 동시에 3~4개 */
+let ambTick = 0;
+function ambient(): void {
+  const b = boxes[0];
+  if (!b?.special || fx.isReduced() || chainRun || document.visibilityState !== 'visible' || !room.getClientRects().length || fx.particleCount() > 60) return;
+  const r = b.root.getBoundingClientRect();
+  if (r.width === 0) return;
+  const t = ambTick++;
+  const k = rs();
+  const at = (u: number, v: number): { x: number; y: number } => ({ x: r.left + r.width * u, y: r.top + r.height * v });
+  if (b.special === 'gold') {
+    const p = at(0.2 + Math.random() * 0.6, 0.3 + Math.random() * 0.5);
+    fx.twinkle(p.x, p.y, ['g2', 'g3', 'k5'][t % 3], 8 * k, 0.5);
+  } else if (b.special === 'bomb') {
+    const f = FUSE[b.kind === 'small' ? 'small' : 'normal'];
+    const p = at(f.x, f.y);
+    fx.burst(p.x, p.y, { n: t % 2 ? 2 : 1, colors: t % 2 ? ['or', 'g2'] : ['g2', 'g3'], speed: 70 * k, gravity: 140 * k, size: 4 * k, up: true, life: 0.4 });
+  } else if (t % 3 === 0) {
+    const p = at((t / 3) % 2 ? 0.12 : 0.88, 0.25);
+    fx.burst(p.x, p.y, { n: 2, colors: ['b3', 'k5', 'b4'], speed: 50 * k, gravity: 0, size: 4 * k, up: true, life: 0.5 });
+  }
+}
+
+/** 황금(`황금 상자!`)·시계(`자동 연타!`) 상자가 혼자 터질 때 머리글: 노랑 글자 + 남색 외곽선, 부제 없음. 짧게 */
+export function goldHead(text = '황금 상자!'): void {
+  fx.headline('now', (end) => {
+    const t = el('div', { cls: 'un-gold-head', text });
+    t.style.top = `${Math.max(72, fx.headTop(room, rs()))}px`;
+    room.append(t);
+    const fit = fx.fitHead(t, 'un-gold-head', [''], room);
+    const rm = (): void => {
+      t.remove();
+      end();
+    };
+    const f: Keyframe[] = [1.3, 1.15, 1].map((v) => ({ scale: String(Math.min(v, fit)), visibility: 'visible' }));
+    for (let i = 0; i < 12; i++) f.push({ scale: '1', visibility: 'visible' });
+    for (let i = 0; i < 4; i++) f.push({ scale: '1', visibility: i % 2 ? 'visible' : 'hidden' });
+    fx.pxFrames(t, f, 40).onfinish = rm;
+    return () => t.remove();
+  });
+}
+
+/** 황금·폭탄·시계가 터지는 입자·플래시·흔들림·소리(글자는 부르는 쪽이 정한다). 연쇄 안이면 흔들림·두 번째 고리를 뺀다 */
+function specialBurst(sp: SpecialBox, c: { x: number; y: number }, s: number, inChain: boolean, blast: boolean): void {
+  const k = rs();
+  const y = c.y - s * 0.25 * k;
+  const app = document.getElementById('app') ?? room;
+  if (sp === 'gold') {
+    fx.flash('#ffc83d', 450);
+    pburst(c.x, y, { n: 12, kind: 'coin', colors: ['g2', 'g3'], speed: 500, gravity: 700, size: 6, up: true, life: 0.8 });
+    pburst(c.x, y, { n: 16, colors: ['g2', 'g3', 'k5'], speed: 520, gravity: 0, size: 8, ring: true, life: 0.55 });
+    pburst(c.x, y, { n: 16, colors: ['g2', 'g3', 'k5'], speed: 380, gravity: 500, size: 6, life: 0.7 });
+    if (!inChain) window.setTimeout(() => pburst(c.x, y, { n: 12, kind: 'star', colors: ['g3', 'k5'], speed: 300, gravity: 0, size: 8, ring: true, life: 0.5 }), 90);
+    sfx.goldBurst();
+    return;
+  }
+  if (sp === 'clock') {
+    // 시계: 파랑 테두리 플래시 + 파랑·흰 정사각형이 사방으로(흔들림 없음)
+    fx.edge(room, '#5b9bff', [1, 0, 1, 1, 0, 1]);
+    pburst(c.x, y, { n: 16, colors: ['b3', 'k5', 'b4'], speed: 520, gravity: 0, size: 8, ring: true, life: 0.55 });
+    pburst(c.x, y, { n: 16, colors: ['b2', 'b3', 'k5'], speed: 380, gravity: 400, size: 6, life: 0.7 });
+    if (!inChain) window.setTimeout(() => pburst(c.x, y, { n: 12, colors: ['b4', 'k5'], speed: 300, gravity: 0, size: 6, ring: true, life: 0.45 }), 90);
+    sfx.clockBurst();
+    vibrate([20, 30, 20]);
+    return;
+  }
+  // 폭탄: 흰색 -> 주황 플래시, 방 흔들림(강타보다 세게), 사방으로 정사각형
+  fx.edge(room, '#ffffff', [1, 0, 0]);
+  fx.edge(room, '#ff8a1f', [0, 1, 1, 0, 1]);
+  if (!blast) {
+    fx.shake(room, 10, 420);
+    fx.shake(app, 10, 420);
+  }
+  pburst(c.x, y, { n: 16, colors: ['or', 'g2', 'k1'], speed: 560, gravity: 0, size: 8, ring: true, life: 0.5 });
+  pburst(c.x, y, { n: 16, colors: ['or', 'g2', 'k1', 'g3'], speed: 420, gravity: 300, size: 6, life: 0.7 });
+  if (!inChain) window.setTimeout(() => pburst(c.x, y, { n: 12, colors: ['g2', 'g3', 'or'], speed: 300, gravity: 0, size: 6, ring: true, life: 0.45 }), 80);
+  sfx.bombBlast();
+  vibrate([40, 30, 70]);
+}
+
+function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean, chain?: ChainMeta): void {
   settle();
   dropTapNumber();
   const s = boxPx(b.kind);
@@ -938,7 +1400,8 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean): v
   setStageVar();
   shownBar = -1;
   if (big) sfx.boxBurst(1);
-  else sfx.parcelCatch();
+  else if (!chain) sfx.parcelCatch();
+  if (chain && !reduced && !chain.instant) sfx.chainStep(chain.j);
 
   const slot = burst.slot;
   const item = big && slot !== undefined ? ROOM_ITEMS[slot] : null;
@@ -960,9 +1423,14 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean): v
     fx.twinkle(sr.left + sr.width * 0.75, sr.top + sr.height * 0.2, 'g3', 8 * rs(), 0.04);
   };
 
-  gainText(burst, s, reduced);
-  fx.absorb({ x: c.x, y: c.y }, pointsEl, 3, { delay: 0.04, offset: { x: 0, y: 0 } });
-  vibrate([18, 30, 40]);
+  if (!chain && burst.special === 'gold' && !reduced) goldHead();
+  if (!chain && burst.special === 'clock' && !reduced) goldHead('자동 연타!');
+  if (!chain) gainText(burst, s, reduced);
+  if (burst.special && !reduced) specialBurst(burst.special, c, s, !!chain, burst.blast);
+  fx.absorb({ x: c.x, y: c.y }, pointsEl, burst.special === 'gold' ? (chain ? 4 : 10) : chain ? 1 : 3, { delay: 0.04, offset: { x: 0, y: 0 } });
+  if (!chain || chain.j === 0) vibrate([18, 30, 40]);
+  if (chain && !reduced && !chain.instant && chain.j % 3 === 2) fx.shake(document.getElementById('app') ?? room, 4, 160);
+  if (chain && !reduced && !chain.instant) swing(1);
   if (burst.roomDone) roomDone();
   if (burst.freeBoxes.length >= 2) {
     window.setTimeout(() => fx.banner('사은품 상자 도착!', { sub: `${burst.freeBoxes.length - 1}개 더 와요`, tone: 'gold', ms: 1000 }), burst.roomDone ? 1900 : 150);
@@ -992,7 +1460,7 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean): v
   }
 
   // 0ms: 흰 1프레임 + 아래 4px, 40ms: 열린 상자 그림 + 위로 4px
-  const openImg = pxImg(`box/${old.kind}-open`, 'un-box-img open');
+  const openImg = pxImg(openArt(old.kind, old.special), 'un-box-img open');
   old.body.append(openImg);
   const closed = Array.from(old.body.querySelectorAll<HTMLElement>('.un-box-img.on'));
   fx.pxFrames(openImg, [{ visibility: 'hidden' }, { visibility: 'visible' }], 40, { fill: 'forwards' });
@@ -1002,8 +1470,10 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean): v
   window.setTimeout(() => {
     if (!old.root.isConnected) return;
     lids(c, s);
-    fluff(c, s);
-    planks(c, s);
+    if (!chain || chain.j % 2 === 0 || chain.j === chain.n - 1) {
+      fluff(c, s);
+      planks(c, s);
+    }
   }, 40);
 
   // 40~240ms: 조각 줄이 칸으로(작은·보통) / 살림이 솟아 칸으로(큰 상자)

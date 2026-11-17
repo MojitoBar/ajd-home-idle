@@ -4,7 +4,7 @@ import { el } from './dom';
 import * as fx from './fx';
 import { vibrate } from './prefs';
 import { sfx } from './sound';
-import { boxAnchor } from './unpackUi';
+import { boxAnchor, setChainJudge } from './unpackUi';
 
 const STEP_MS = 83;
 /** 누르는 영역(방 안 px). 그림은 32px(16도트) */
@@ -17,7 +17,6 @@ let root: HTMLButtonElement;
 let dotEl: HTMLElement;
 let canvas: HTMLCanvasElement;
 let tipEl: HTMLElement;
-let sayEl: HTMLElement | null = null;
 let tipAnim: Animation | undefined;
 let tipTimer = 0;
 let anim: Animation | undefined;
@@ -180,7 +179,7 @@ export function hideTip(): void {
 }
 
 /** 맞힘: 과녁이 터지고 `급소!` 글자 + 수익, 번쩍·흔들림·소리·진동 */
-export function hitFx(x: number, y: number, gain: number, app: HTMLElement): void {
+export function hitFx(x: number, y: number, gain: number, app: HTMLElement, chain = 0): void {
   kill();
   hideTip();
   const k = boxAnchor().k;
@@ -191,21 +190,27 @@ export function hitFx(x: number, y: number, gain: number, app: HTMLElement): voi
   fx.edge(room, 'pk', [1, 0, 1, 0, 1]);
   fx.burst(x, y, { n: 14, ring: true, colors: ['pk', 'k5', 'or'], speed: 320 * k, gravity: 0, size: 6 * k, life: 0.5 });
   fx.burst(x, y, { n: 10, ring: true, kind: 'star', colors: ['pk', 'k5'], speed: 520 * k, gravity: 0, size: 8 * k, life: 0.55 });
-  sayEl?.remove();
-  const e = el('div', { cls: 'weak-say' }, el('b', { text: '급소!' }), el('i', { text: `+${formatNumber(gain)} P` }));
-  room.append(e);
-  sayEl = e;
-  const rm = (): void => {
-    e.remove();
-    if (sayEl === e) sayEl = null;
-  };
-  if (fx.isReduced()) {
-    window.setTimeout(rm, SAY_MS * 0.7);
+  if (chain >= 2) {
+    setChainJudge('급소!', 'weakhit', '');
     return;
   }
-  const keep = Math.max(1, Math.round(SAY_MS / STEP_MS) - 4 - 4);
-  const f: Keyframe[] = [1.6, 1.35, 1.15, 1.05].map((s) => ({ scale: String(s), visibility: 'visible' }));
-  for (let i = 0; i < keep; i++) f.push({ scale: '1', visibility: 'visible' });
-  for (let i = 0; i < 4; i++) f.push({ scale: '1', visibility: i % 2 ? 'visible' : 'hidden' });
-  fx.pxFrames(e, f, STEP_MS).onfinish = rm;
+  fx.headline('now', (end) => {
+    const e = el('div', { cls: 'weak-say' }, el('b', { text: '급소!' }), el('i', { text: `+${formatNumber(gain)} P` }));
+    e.style.top = `${fx.headTop(room, k)}px`;
+    room.append(e);
+    const rm = (): void => {
+      e.remove();
+      end();
+    };
+    if (fx.isReduced()) {
+      window.setTimeout(rm, SAY_MS * 0.7);
+      return () => e.remove();
+    }
+    const keep = Math.max(1, Math.round(SAY_MS / STEP_MS) - 4 - 4);
+    const f: Keyframe[] = [1.6, 1.35, 1.15, 1.05].map((s) => ({ scale: String(s), visibility: 'visible' }));
+    for (let i = 0; i < keep; i++) f.push({ scale: '1', visibility: 'visible' });
+    for (let i = 0; i < 4; i++) f.push({ scale: '1', visibility: i % 2 ? 'visible' : 'hidden' });
+    fx.pxFrames(e, f, STEP_MS).onfinish = rm;
+    return () => e.remove();
+  });
 }

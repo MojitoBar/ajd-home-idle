@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { COLLECTIBLES, SETS } from '../data/collectibles';
-import { collectionMultOf, setEffects, setProgress, slotLevel, slotNextNeed } from './collection';
+import { COLLECTIBLES, RARITIES, SETS } from '../data/collectibles';
+import { collectionMultOf, setEffects, slotMultOf, setProgress, slotLevel, slotNextNeed } from './collection';
 import { FEVER_SEC, CRIT_MULT } from './fever';
 import { boxPrice, openBox, openBoxes, rollBox } from './gacha';
-import { applyOffline } from './offline';
 import { perkEffects } from './perks';
 import { parseSave, serialize } from './save';
 import { defaultState, type GameState } from './state';
-import { multBreakdown } from './economy';
+import { collectionMult, multBreakdown, tapStable } from './economy';
 
 const rich = () => ({ ...defaultState(), points: 1e15 });
 const fullSet = (rarity: string, count = 1): GameState['collection'] => {
@@ -27,12 +26,24 @@ describe('칸 레벨', () => {
   it('다음 레벨까지 남은 개수, 최대면 0', () => {
     expect([1, 2, 3, 7, 15, 31, 100].map(slotNextNeed)).toEqual([2, 1, 4, 8, 16, 0, 0]);
   });
-  it('레벨이 배율에 반영: Lv 5는 3배', () => {
-    const one = { fan: { base: 1, shiny: 0, gold: 0, rainbow: 0 } };
-    expect(collectionMultOf(one)).toBeCloseTo(1.01, 10);
-    expect(collectionMultOf({ fan: { base: 3, shiny: 0, gold: 0, rainbow: 0 } })).toBeCloseTo(1.015, 10);
-    expect(collectionMultOf({ fan: { base: 31, shiny: 0, gold: 0, rainbow: 0 } })).toBeCloseTo(1.03, 10);
-    expect(collectionMultOf({ fan: { base: 500, shiny: 0, gold: 0, rainbow: 0 } })).toBeCloseTo(1.03, 10);
+  it('레벨이 배율에 반영: 등급 가중 0.05 x 2^(Lv-1), Lv 5는 16배', () => {
+    const col = (n: number) => ({ fan: { base: n, shiny: 0, gold: 0, rainbow: 0 } });
+    expect(collectionMultOf(col(1))).toBeCloseTo(1.05, 10);
+    expect(collectionMultOf(col(3))).toBeCloseTo(1.1, 10);
+    expect(collectionMultOf(col(7))).toBeCloseTo(1.2, 10);
+    expect(collectionMultOf(col(31))).toBeCloseTo(1.8, 10);
+    expect(collectionMultOf(col(500))).toBeCloseTo(1.8, 10);
+  });
+  it('등급 가중은 0.05·0.1·0.2·0.4·0.8', () => {
+    expect(RARITIES.map((r) => r.weight)).toEqual([0.05, 0.1, 0.2, 0.4, 0.8]);
+    for (const [id, w] of [['water_purifier', 0.1], ['air_conditioner', 0.2], ['massage_chair', 0.4], ['space_purifier', 0.8]] as const) {
+      expect(slotMultOf({ [id]: { base: 1, shiny: 0, gold: 0, rainbow: 0 } })).toBeCloseTo(1 + w, 10);
+    }
+  });
+  it('첫 상자 10개 안팎(일반 10종 기본 Lv1)은 약 x1.5', () => {
+    const col: GameState['collection'] = {};
+    for (const c of COLLECTIBLES.slice(0, 7)) col[c.id] = { base: 1, shiny: 0, gold: 0, rainbow: 0 };
+    expect(slotMultOf(col)).toBeCloseTo(1 + 7 * 0.05, 10);
   });
 });
 
@@ -42,30 +53,36 @@ describe('등급 세트', () => {
     const p = setProgress(col)[0];
     expect([p.have, p.total, p.done]).toEqual([2, 7, false]);
   });
-  it('완성 전은 효과 없음, 완성하면 각 효과가 perkEffects에 합쳐진다', () => {
+  it('완성 전은 효과 없음, 완성하면 도감 배율 곱 x2·x2·x3·x3·x5와 전설·신화 추가 효과', () => {
     const s = defaultState();
     const base = perkEffects(s);
     const partial = fullSet('common');
     delete partial.fan;
     expect(perkEffects({ ...s, collection: partial })).toEqual(base);
+    expect(setEffects({ collection: partial }).dexMult).toBe(1);
+    expect(SETS.map((d) => d.dexMult)).toEqual([2, 2, 3, 3, 5]);
+    expect(['common', 'rare', 'epic', 'legend', 'myth'].map((r) => setEffects({ collection: fullSet(r) }).dexMult)).toEqual([2, 2, 3, 3, 5]);
     const fx = (r: string) => perkEffects({ ...s, collection: fullSet(r) });
-    expect(fx('common').tapMult).toBeCloseTo(base.tapMult * 1.5, 10);
-    expect(fx('rare').serviceMult).toBeCloseTo(base.serviceMult * 1.25, 10);
-    expect(fx('epic').offlineMult).toBeCloseTo(1.5, 10);
+    expect(fx('common').tapMult).toBe(base.tapMult);
     expect(fx('legend').feverSec).toBe(FEVER_SEC + 5);
     expect(fx('myth').critMult).toBe(CRIT_MULT + 2);
     expect(SETS).toHaveLength(5);
     expect(setEffects({ collection: fullSet('myth') }).critMult).toBe(2);
+    expect(SETS.every((d) => d.desc.includes('도감 배율 x'))).toBe(true);
   });
-  it('오프라인 보상에 에픽 세트가 곱해지고 배율 내역에 세트가 보인다', () => {
-    const s = { ...defaultState(), services: [10, 0, 0, 0, 0, 0, 0, 0], savedAt: 0 };
-    const withSet = { ...s, collection: fullSet('epic') };
-    const a = applyOffline(s, 3600_000).report!.gain;
-    const b = applyOffline(withSet, 3600_000).report!.gain;
-    expect(b / a).toBeGreaterThan(1.499);
-    const tapSet = { ...s, collection: fullSet('common') };
-    expect(multBreakdown(tapSet, 'tap').set).toBeCloseTo(1.5, 10);
-    expect(multBreakdown(tapSet, 'tap').perk).toBeCloseTo(1, 10);
+  it('세트 곱은 도감 배율에 한 번만 곱해진다(특전은 한 번 더)', () => {
+    const col = fullSet('common');
+    const slots = 1 + 7 * 0.05;
+    expect(collectionMultOf(col)).toBeCloseTo(slots * 2, 10);
+    const s = { ...defaultState(), collection: col, perks: { dex_boost: 2 } };
+    expect(collectionMult(s)).toBeCloseTo(slots * 2 * 1.5, 10);
+  });
+  it('배율 내역에 세트가 보이고 도감 줄에는 세트 곱이 들어가지 않는다', () => {
+    const s = { ...defaultState(), savedAt: 0, collection: fullSet('common') };
+    const bd = multBreakdown(s, 'tap');
+    expect(bd.set).toBeCloseTo(2, 10);
+    expect(bd.collection).toBeCloseTo(1.35, 10);
+    expect(bd.perk).toBeCloseTo(1, 10);
   });
   it('개봉으로 세트가 완성되면 completedSets에 나온다', () => {
     const col = fullSet('myth', 0);
@@ -78,8 +95,11 @@ describe('등급 세트', () => {
 });
 
 describe('가격·보장·저장', () => {
-  it('가격: 최소 5000, 개봉마다 x1.06', () => {
+  it('가격: max(5000, 900 x tapStable) x 1.06^n, 개봉마다 x1.06', () => {
     expect(boxPrice(defaultState())).toBe(5000);
+    const strong = { ...defaultState(), tapLevel: 100 };
+    expect(boxPrice(strong)).toBeCloseTo(900 * tapStable(strong), 6);
+    expect(boxPrice({ ...strong, perks: { box_discount: 2 }, boxesThisRun: 5 })).toBeCloseTo(900 * tapStable(strong) * 1.06 ** 5 * 0.84, 6);
     expect(boxPrice({ ...defaultState(), boxesThisRun: 10 })).toBeCloseTo(5000 * 1.06 ** 10, 6);
   });
   it('중복은 레벨업과 남은 개수를 돌려준다', () => {
@@ -119,7 +139,7 @@ describe('가격·보장·저장', () => {
     const r = parseSave(serialize(s, 1));
     expect(r.kind).toBe('ok');
     const loaded = r.state;
-    expect(JSON.parse(serialize(s, 1)).version).toBe(6);
+    expect(JSON.parse(serialize(s, 1)).version).toBe(9);
     expect(loaded.collection.fan.base).toBe(7);
     expect(slotLevel(loaded.collection.fan.base)).toBe(3);
   });

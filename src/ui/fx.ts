@@ -606,10 +606,221 @@ export function floatText(x: number, y: number, text: string, o: { scale?: numbe
   return e;
 }
 
+/*
+ * 머리글 중재기: 방 안 큰 글자(판정·과열·급소·배너·상금 칩)는 같은 순간에 하나만 보인다.
+ *  now    즉시 반응(판정·급소·과열): 항상 바로 뜨고 떠 있던 것을 치운다. 치워진 것이 notice면 대기 줄 맨 앞으로 돌아간다
+ *  notice 알림(방 완성·피버·상금 칩 등): 자리가 비면 순서대로 뜬다. 대기 줄 최대 3개(넘치면 오래된 것부터 버림), maxWait가 지나면 버린다
+ *  aside  곁다리(콤보 단계·정산 글자): 자리가 비어 있고 기다리는 것도 없을 때만 뜬다
+ * 연쇄 재생 중에는 headHold(true)로 알림을 붙잡아 두고(떠 있던 것도 치움), 끝나면 headHold(false)로 줄을 푼다.
+ */
+export type HeadKind = 'now' | 'notice' | 'aside';
+/** play는 글자를 띄우고, 다 끝나면 end()를 부르며, 즉시 치우는 함수를 돌려준다 */
+type HeadPlay = (end: () => void) => () => void;
+interface HeadItem {
+  play: HeadPlay;
+  notice: boolean;
+  first: boolean;
+  at: number;
+  maxWait: number;
+  /** 다른 머리글이 합쳐 가져갈 수 있는 알림의 이름·내용(headDrop) */
+  tag?: string;
+  data?: string;
+}
+interface HeadCur {
+  item: HeadItem;
+  done: boolean;
+  stop: () => void;
+}
+const HEAD_QUEUE_MAX = 3;
+let headCur: HeadCur | null = null;
+let headQ: HeadItem[] = [];
+let headHeld = false;
+let quietWaiters: Array<() => void> = [];
+/** 머리글이 떠 있거나 연쇄 때문에 붙잡혀 있다 */
+export const headBusy = (): boolean => headCur !== null || headHeld;
+
+function headStart(item: HeadItem): void {
+  const cur: HeadCur = { item, done: false, stop: () => {} };
+  headCur = cur;
+  const finish = (): void => {
+    if (cur.done) return;
+    cur.done = true;
+    if (headCur === cur) headCur = null;
+    headPump();
+  };
+  const stop = item.play(finish);
+  cur.stop = (): void => {
+    if (cur.done) return;
+    cur.done = true;
+    stop();
+  };
+}
+
+function headClear(): void {
+  const c = headCur;
+  if (!c) return;
+  headCur = null;
+  c.stop();
+  if (c.item.notice) {
+    headQ.push({ ...c.item, first: true });
+    while (headQ.length > HEAD_QUEUE_MAX) headQ.shift();
+  }
+}
+
+function headPump(): void {
+  if (headCur || headHeld) return;
+  const now = performance.now();
+  headQ = headQ.filter((it) => !it.maxWait || now - it.at <= it.maxWait);
+  const i = Math.max(0, headQ.findIndex((it) => it.first));
+  const next = headQ.splice(i, 1)[0];
+  if (next) return headStart(next);
+  const w = quietWaiters;
+  quietWaiters = [];
+  w.forEach((f) => f());
+}
+
+/** keep: 즉시 글자인데 놓치면 안 되는 것(`피버!`). 연쇄가 붙잡고 있으면 줄 맨 앞에서 기다리고, 치워져도 줄 맨 앞으로 돌아간다 */
+export function headline(kind: HeadKind, play: HeadPlay, o: { maxWait?: number; first?: boolean; keep?: boolean; tag?: string; data?: string } = {}): void {
+  const item: HeadItem = { play, notice: kind === 'notice' || !!o.keep, first: !!o.first || !!o.keep, at: performance.now(), maxWait: o.maxWait ?? 0, tag: o.tag, data: o.data };
+  if (kind === 'now') {
+    if (headHeld && o.keep) {
+      headQ.push(item);
+      return;
+    }
+    headClear();
+    headStart(item);
+    return;
+  }
+  if (kind === 'aside') {
+    if (headCur || headHeld || headQ.length) return;
+    headStart(item);
+    return;
+  }
+  headQ.push(item);
+  while (headQ.length > HEAD_QUEUE_MAX) headQ.shift();
+  headPump();
+}
+
+/** 아직 뜨지 않았거나 떠 있는 tag 알림을 치우고 그 data를 돌려준다(없으면 null). 다른 머리글이 부제로 합쳐 보일 때 쓴다 */
+export function headDrop(tag: string): string | null {
+  const c = headCur;
+  if (c && c.item.tag === tag) {
+    headCur = null;
+    c.stop();
+    return c.item.data ?? '';
+  }
+  const i = headQ.findIndex((it) => it.tag === tag);
+  if (i < 0) return null;
+  return headQ.splice(i, 1)[0].data ?? '';
+}
+
+/** 연쇄 같은 큰 연출 동안 머리글을 붙잡는다. 켤 때 떠 있던 것은 치우고(notice는 줄 맨 앞으로), 끄면 줄을 푼다 */
+export function headHold(on: boolean): void {
+  if (on) {
+    headHeld = true;
+    headClear();
+    return;
+  }
+  headHeld = false;
+  headPump();
+}
+
+/** 머리글 자리도 줄도 비면 실행한다(토스트처럼 머리글과 겹치면 안 되는 글자용) */
+export function whenHeadQuiet(f: () => void): void {
+  if (!headCur && !headHeld && !headQ.length) f();
+  else quietWaiters.push(f);
+}
+
+/** 지금 보이는 머리글·연쇄 덩어리의 아랫변(화면 y). 없으면 -Infinity. 탭 숫자·터짐 숫자가 이 아래에만 뜨게 한다 */
+export function headBottom(): number {
+  let b = -Infinity;
+  for (const e of Array.from(document.querySelectorAll<HTMLElement>('.charge-say, .weak-say, .fx-banner.in-room, .un-chain-prize, .un-gold-head, .un-home-say, .un-chain'))) {
+    if (getComputedStyle(e).visibility === 'hidden' || !e.getClientRects().length) continue;
+    const r = document.createRange();
+    r.selectNodeContents(e);
+    const rr = r.getBoundingClientRect();
+    if (rr.height > 0) b = Math.max(b, rr.bottom);
+  }
+  return b;
+}
+
+/** 방 안 머리글(판정 글자 등)의 윗변(방 기준 CSS px): 기본 68, 토스트가 떠 있으면 그 아래 4px */
+export function headTop(room: HTMLElement, k: number): number {
+  const rr = room.getBoundingClientRect();
+  let t = 68;
+  for (const e of Array.from(document.querySelectorAll<HTMLElement>('.toast'))) {
+    const r = e.getBoundingClientRect();
+    if (r.height > 0) t = Math.max(t, Math.ceil((r.bottom - rr.top) / k / 2) * 2 + 4);
+  }
+  return t;
+}
+
+/**
+ * 방 안 한 줄 머리글(`살림 xA → xB`·`배율 xN 돌파!`)의 크기·자리: 큰 글자 단계(sizes, 큰 것부터)를 차례로 시험해
+ * 실드 줄(`.guard-row`: 연속 칩+방패)과 방 안쪽 여백(좌우 6px)을 비켜 같은 줄에 들어가는 첫 단계를 쓴다(가운데에서 안 되면 옆으로 민다).
+ * 어느 단계도 안 들어가면 방 안쪽 폭에 드는 가장 큰 단계로 칩 줄 아래에 내려 놓는다.
+ * 돌려주는 값은 그 글자가 제자리에서 팝(부풀기)으로 키울 수 있는 최대 배율(칩·방 안쪽을 넘지 않는 만큼, 최소 1)
+ */
+export function fitHead(e: HTMLElement, base: string, sizes: string[], room: HTMLElement): number {
+  const rr = room.getBoundingClientRect();
+  const k = room.offsetWidth ? rr.width / room.offsetWidth : 1;
+  const gap = 6 * k;
+  // 연속 칩은 강타 직후에 뜨니, 방패만 보이면 칩 자리(62px)도 미리 비운다
+  const chips = Array.from(document.querySelectorAll<HTMLElement>('.guard-row'))
+    .filter((c) => c.getClientRects().length > 0 && c.getBoundingClientRect().width > 0)
+    .map((c) => {
+      const r = c.getBoundingClientRect();
+      return c.querySelector('.streak-chip:not([hidden])') ? r : new DOMRect(r.left, r.top, r.width + 62 * k, r.height);
+    });
+  const text = (e.firstElementChild as HTMLElement | null) ?? e;
+  const put = (size: string): DOMRect => {
+    e.style.translate = '';
+    e.className = `${base} ${size}`.trim();
+    return text.getBoundingClientRect();
+  };
+  const popFit = (r: DOMRect, left: number, lo: number, hi: number): number => Math.max(1, (2 * Math.min(left + r.width / 2 - lo, hi - left - r.width / 2)) / r.width);
+  // 1) 칩 옆으로 비켜 같은 줄에 들어가는 가장 큰 글자
+  for (const size of sizes) {
+    const r = put(size);
+    let lo = rr.left + gap;
+    let hi = rr.right - gap;
+    for (const c of chips) {
+      if (r.bottom <= c.top - gap || r.top >= c.bottom + gap) continue;
+      if (c.left + c.right < rr.left + rr.right) lo = Math.max(lo, c.right + gap);
+      else hi = Math.min(hi, c.left - gap);
+    }
+    if (r.width > hi - lo) continue;
+    const left = Math.max(lo, Math.min(r.left, hi - r.width));
+    const dx = Math.round((left - r.left) / k / 2) * 2;
+    if (dx) e.style.translate = `${dx}px 0`;
+    return popFit(r, left, lo, hi);
+  }
+  // 2) 안 되면 방 안쪽 폭에 드는 가장 큰 글자로, 칩 줄 아래로 내려 가운데에 둔다
+  const lo = rr.left + gap;
+  const hi = rr.right - gap;
+  let r = put(sizes[sizes.length - 1]);
+  for (const size of sizes) {
+    const q = put(size);
+    if (q.width <= hi - lo) {
+      r = q;
+      break;
+    }
+  }
+  let dy = 0;
+  for (const c of chips) if (r.left < c.right + gap && r.right > c.left - gap && r.bottom > c.top - gap && r.top < c.bottom + gap) dy = Math.max(dy, c.bottom + gap - r.top);
+  dy = Math.ceil(dy / k / 2) * 2;
+  if (dy) e.style.translate = `0 ${dy}px`;
+  return popFit(r, r.left, lo, hi);
+}
+
 let bannerEl: HTMLDivElement | null = null;
 export const bannerActive = (): boolean => bannerEl !== null;
 /** 방 안 큰 글자(배너) 한 가지 자리 규칙: 방 안쪽 폭(좌우 12px 여백)을 넘지 않고, 토스트 띠(윗변 84px) 아래에서 시작해, 부제까지 방 아랫변 위 8px 안에 든다 */
-export function banner(text: string, o: { sub?: string; tone?: 'gold' | 'red' | 'blue'; ms?: number; color?: string; cls?: string; subGold?: boolean } = {}): void {
+export function banner(text: string, o: { sub?: string; tone?: 'gold' | 'red' | 'blue'; ms?: number; color?: string; cls?: string; subGold?: boolean; head?: HeadKind; maxWait?: number; keep?: boolean } = {}): void {
+  headline(o.head ?? 'notice', (end) => showBanner(text, o, end), { maxWait: o.maxWait, keep: o.keep });
+}
+
+function showBanner(text: string, o: { sub?: string; tone?: 'gold' | 'red' | 'blue'; ms?: number; color?: string; cls?: string; subGold?: boolean }, finish: () => void): () => void {
   ensure();
   bannerEl?.remove();
   const e = document.createElement('div');
@@ -659,13 +870,17 @@ export function banner(text: string, o: { sub?: string; tone?: 'gold' | 'red' | 
   e.style.marginTop = `${-px(e.offsetHeight / 2)}px`;
   bannerEl = e;
   const total = Math.max(10, Math.round((o.ms ?? 1500) / FRAME));
-  const end = (): void => {
+  const kill = (): void => {
     e.remove();
     if (bannerEl === e) bannerEl = null;
   };
+  const end = (): void => {
+    kill();
+    finish();
+  };
   if (reduced()) {
     window.setTimeout(end, total * FRAME * 0.7);
-    return;
+    return kill;
   }
   // 위에서 톡 떨어져 두 번 튀고 자리 잡는다 → 마지막에 깜빡이며 사라진다
 
@@ -678,6 +893,7 @@ export function banner(text: string, o: { sub?: string; tone?: 'gold' | 'red' | 
     },
     end,
   );
+  return kill;
 }
 
 let lastFlash = 0;

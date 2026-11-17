@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { BOX_KINDS, ENDLESS_K_MULT } from '../data/unpack';
-import { tapValue } from './economy';
+import { CHAIN_PRIZES } from '../data/unpack';
+import { buyStrikeUpgrade, strikeCost, strikeMult, tapValue } from './economy';
 import { move } from './prestige';
 import { defaultState, type GameState } from './state';
-import { boxCondition, boxHp, boxKind, endlessHp, heavyHit, hitBox, nextCareSlot, roomProgress, tapAndHit, tierOf, toolOf, unpackPower } from './unpack';
+import { boxCondition, boxHp, boxKind, endlessHp, chainBonus, heavyHit, hitBox, nextCareSlot, roomProgress, tapAndHit, tierOf, toolOf, unpackPower } from './unpack';
 
 const never = () => 0.99; // 치명타 아님
 const always = () => 0; // 치명타
 const at = (k: number, damage = 0, extra: Partial<GameState> = {}): GameState => {
-  const s: GameState = { ...defaultState(), ...extra, unpack: { box: k, damage, roomDone: k >= 80, hp: 0 } };
+  const s: GameState = { ...defaultState(), ...extra, unpack: { box: k, damage, roomDone: k >= 80, hp: 0, salt: 0, rushSec: 0 } };
   return { ...s, unpack: { ...s.unpack, hp: k < 80 ? boxHp(k) : endlessHp(s, k) } };
 };
 
@@ -114,7 +115,7 @@ describe('터짐', () => {
     const r = hitBox(s, { crit: false, damped: false, feverMult: 1 });
     const gain = tapValue(s) * BOX_KINDS.small.k;
     expect(r.burst?.gain).toBeCloseTo(gain);
-    expect(r.state.unpack).toEqual({ box: 1, damage: 0, roomDone: false, hp: boxHp(1) });
+    expect(r.state.unpack).toEqual({ box: 1, damage: 0, roomDone: false, hp: boxHp(1), salt: 0, rushSec: 0 });
     expect(r.state.points).toBeCloseTo(s.points + gain);
     expect(r.state.earned).toBeCloseTo(s.earned + gain);
     expect(r.burst?.slotFill).toBeCloseTo(0.1);
@@ -138,7 +139,7 @@ describe('터짐', () => {
     const n = hitBox(at(78, 0, { tapLevel: 999 }), { crit: true, damped: false, feverMult: 1 });
     expect(n.burst?.roomDone).toBe(false);
     expect(n.burst?.freeBox).toBeUndefined();
-    const again = hitBox({ ...r.state, unpack: { box: 79, damage: 0, roomDone: true, hp: boxHp(79) } }, { crit: true, damped: false, feverMult: 1 });
+    const again = hitBox({ ...r.state, unpack: { box: 79, damage: 0, roomDone: true, hp: boxHp(79), salt: 0, rushSec: 0 } }, { crit: true, damped: false, feverMult: 1 });
     expect(again.burst?.freeBox).toBeUndefined();
   });
   it('손질 큰 상자: 덩어리 x0.25, nextCareSlot 레벨 +1, 방 칸·item 없음', () => {
@@ -208,9 +209,10 @@ describe('진행·겉모습·이사', () => {
     expect(boxCondition(at(0, 6)).stage).toBe(2);
   });
   it('이사하면 unpack 초기화, 도구는 맨손', () => {
-    const s = { ...at(33, 5, { tapLevel: 40, homeLv: [4, 3, 3, 1, 0, 0, 0, 0] }), earned: 5.5e7 };
+    const s = { ...at(33, 5, { tapLevel: 40, homeLv: [4, 3, 3, 1, 0, 0, 0, 0] }), earned: 3.7e15 };
     const m = move(s)!;
-    expect(m.unpack).toEqual({ box: 0, damage: 0, roomDone: false, hp: boxHp(0) });
+    expect(m.unpack).toMatchObject({ box: 0, damage: 0, roomDone: false, hp: boxHp(0), rushSec: 0 });
+    expect(Number.isInteger(m.unpack.salt) && m.unpack.salt >= 0).toBe(true);
     expect(m.homeLv).toEqual([4, 3, 3, 1, 0, 0, 0, 0]);
     expect(toolOf(m.tapLevel).name).toBe('맨손');
   });
@@ -262,5 +264,68 @@ describe('heavyHit', () => {
     const h = heavyHit(s, never, 40);
     expect(h.bursts.length).toBeGreaterThan(1);
     expect(h.state.unpack.box).toBe(h.bursts.length);
+  });
+});
+
+describe('연쇄 강타', () => {
+  // 탭 레벨 30: 탭 한 단위(31)가 앞쪽 상자(HP 7~)를 혼자 끝낸다
+  const strong = (extra: Partial<GameState> = {}) => at(0, 0, { tapLevel: 30, ...extra });
+  it('힘이 충분하면 강타 한 번에 taps개가 터진다', () => {
+    const h = heavyHit(strong(), never, 12);
+    expect(h.chain).toBe(12);
+    expect(h.bursts.map((b) => b.chain)).toEqual([...Array(12).keys()].map((i) => i + 1));
+    expect(h.state.unpack.box).toBe(12);
+  });
+  it('힘이 모자라면 덜 터지고 남은 피해가 다음 상자에 남는다', () => {
+    const h = heavyHit(at(0), never, 5);
+    expect(h.chain).toBeLessThan(5);
+    expect(h.state.unpack.box).toBe(h.chain);
+    expect(h.state.unpack.damage).toBeGreaterThan(0);
+  });
+  it('일반 탭은 그대로 상자당 3번 이상', () => {
+    let s = strong();
+    let taps = 0;
+    while (s.unpack.box === 0) {
+      s = tapAndHit(s, never).state;
+      taps++;
+    }
+    expect(taps).toBeGreaterThanOrEqual(3);
+  });
+  it('연쇄 보너스는 순서대로 붙고 20에서 멈춘다', () => {
+    expect([0, 1, 5, 20, 21, 50].map((i) => chainBonus(i))).toEqual([1, 1.1, 1.5, 3, 3, 3].map((x) => expect.closeTo(x, 9)));
+    // 같은 종류(작은 상자 0·1번)끼리 보상 비율이 보너스와 같다
+    const h = heavyHit(strong(), never, 2);
+    expect(h.bursts[0].kind).toBe(h.bursts[1].kind);
+    expect(h.bursts[1].gain / h.bursts[0].gain).toBeCloseTo(1.1);
+  });
+  it('연쇄 상금: 4개는 없고 5·10·20개에서 가장 높은 단계 하나', () => {
+    const tiers = [4, 5, 9, 10, 19, 20, 25].map((n) => heavyHit(strong(), never, n).prize?.tier ?? null);
+    expect(tiers).toEqual([null, 0, 0, 1, 1, 2, 2]);
+    const s = strong();
+    const h = heavyHit(s, never, 10);
+    expect(h.prize?.n).toBe(10);
+    expect(h.prize?.gain).toBeCloseTo(tapValue(s) * CHAIN_PRIZES[1].taps);
+    const sum = h.bursts.reduce((a, b) => a + b.gain, 0);
+    expect(h.state.points).toBeCloseTo(sum + h.gain + h.prize!.gain);
+    expect(h.state.earned).toBeCloseTo(h.state.points);
+  });
+  it('최고 연쇄를 갱신한다(더 작으면 그대로)', () => {
+    expect(heavyHit(strong(), never, 6).state.bestChain).toBe(6);
+    expect(heavyHit(strong({ bestChain: 9 }), never, 3).state.bestChain).toBe(9);
+  });
+});
+
+describe('강타 힘 강화', () => {
+  it('비용·배율', () => {
+    expect(strikeCost(0)).toBe(60);
+    expect(strikeCost(2)).toBeCloseTo(60 * 1.69);
+    expect(strikeMult(0)).toBe(1);
+    expect(strikeMult(5)).toBeCloseTo(2);
+  });
+  it('구매: 포인트가 모자라면 안 사진다', () => {
+    expect(buyStrikeUpgrade(defaultState())).toBeNull();
+    const r = buyStrikeUpgrade({ ...defaultState(), points: 100 })!;
+    expect(r.strikeLevel).toBe(1);
+    expect(r.points).toBeCloseTo(40);
   });
 });

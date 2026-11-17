@@ -67,6 +67,11 @@ describe('급소 맞힘', () => {
     expect(weakHitTest(w, 0.52, 0.6, 0.1)).toBe(false);
     expect(weakHitTest({ ...w, remainMs: 0 }, 0.4, 0.6, 0.1)).toBe(false);
   });
+  it('hitWeak: 강타 힘 강화가 탭 수에 곱해진다', () => {
+    const s = { ...defaultState(), strikeLevel: 5 };
+    const r = hitWeak(s, never, due({ remainMs: 900, u: 0.3, v: 0.7 }), 1);
+    expect(r.gain).toBeCloseTo(tapValue(s) * 16);
+  });
   it('hitWeak: 탭 8번어치, 콤보 5, 피버 3, 급소 사라짐', () => {
     expect(WEAK_REWARD).toEqual({ taps: 8, combo: 5, fever: 3 });
     const s = defaultState();

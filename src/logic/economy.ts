@@ -2,23 +2,21 @@ import {
   TAPS_PER_SEC_ACCEPT,
   TAPS_PER_SEC_FULL,
   PERMANENT_MULT_PER_MOVE,
-  SERVICES,
-  SERVICE_MILESTONES,
   TAP_BASE_COST,
   TAP_COST_RATE,
-  TAP_RATIO_BASE,
-  TAP_RATIO_MILESTONE_BONUS,
-  TAP_RATIO_PER_LEVEL,
+  STRIKE_BASE_COST,
+  STRIKE_COST_RATE,
+  STRIKE_MULT_PER_LEVEL,
+  DAMPED_RATIO,
+  HOME_MULT_PER_LV,
   TAP_MILESTONES,
   TAP_BOX_SCALE,
-} from '../data/services';
-import { bundleMultFor } from './bundle';
+} from '../data/tap';
 import { collectionMultOf, setEffects } from './collection';
-import { advanceContracts, contractMultFor } from './contract';
-import { advanceEvent, eventMultOf } from './event';
 import { advanceFever, advanceParcel, feverMultOf } from './fever';
-import { perkEffects } from './perks';
+import { dexBoostMult, homeBoostMult, perkEffects } from './perks';
 import type { GameState } from './state';
+import { tierOf } from './unpack';
 
 export function milestoneMult(level: number, milestones: readonly number[]): number {
   let count = 0;
@@ -30,110 +28,48 @@ export function permMult(moves: number): number {
   return 1 + PERMANENT_MULT_PER_MOVE * moves;
 }
 
+/** 도감 배율 C = 칸 기여 x 세트 곱 x 도감 특전 */
 export function collectionMult(state: GameState): number {
-  return collectionMultOf(state.collection);
+  return collectionMultOf(state.collection) * dexBoostMult(state);
 }
 
-export function eventMult(state: GameState): number {
-  return eventMultOf(state.event);
+/** 살림 배율 H = (1 + 0.05 x sum(칸 Lv x 2^단계)) x 살림 특전. 탭 수익에만 곱한다(상자 피해 제외) */
+export function homeMult(state: GameState): number {
+  let sum = 0;
+  for (const lv of state.homeLv) sum += lv * 2 ** tierOf(lv);
+  return (1 + HOME_MULT_PER_LV * sum) * homeBoostMult(state);
 }
 
 export function globalMult(state: GameState): number {
-  return permMult(state.moves) * collectionMult(state) * eventMult(state) * feverMultOf(state.fever);
-}
-
-export function serviceCost(index: number, level: number): number {
-  const s = SERVICES[index];
-  return s.baseCost * s.costRate ** level;
-}
-
-export function serviceBaseProd(index: number, level: number): number {
-  return SERVICES[index].baseProd * level * milestoneMult(level, SERVICE_MILESTONES);
-}
-
-/** 영구·도감·결합·특전만 반영한 서비스 배율(일시 배율·약정 제외). */
-function serviceStableMult(state: GameState, index: number): number {
-  return permMult(state.moves) * collectionMult(state) * bundleMultFor(state, index) * perkEffects(state).serviceMult;
-}
-
-/** 약정을 뺀 서비스 수익(초당). 피버·이벤트 포함. */
-export function serviceProdNoContract(state: GameState, index: number): number {
-  return (
-    serviceBaseProd(index, state.services[index]) *
-    serviceStableMult(state, index) *
-    eventMult(state) *
-    feverMultOf(state.fever)
-  );
-}
-
-export function serviceProd(state: GameState, index: number): number {
-  return serviceProdNoContract(state, index) * contractMultFor(state, index);
-}
-
-/** 약정으로 늘어난 서비스 수익(초당) = 약정 포함 - 약정 제외 */
-export function contractExtraPps(state: GameState, index: number): number {
-  return serviceProd(state, index) - serviceProdNoContract(state, index);
-}
-
-export function pps(state: GameState): number {
-  let sum = 0;
-  for (let i = 0; i < SERVICES.length; i++) sum += serviceProd(state, i);
-  return sum;
-}
-
-/** 약정을 뺀 초당 수익(오프라인·tick 계산용) */
-export function ppsNoContract(state: GameState): number {
-  let sum = 0;
-  for (let i = 0; i < SERVICES.length; i++) sum += serviceProdNoContract(state, i);
-  return sum;
-}
-
-/** 일시 배율(피버·이벤트 E·약정)을 뺀 기본 초당 수익. 상자 가격 기준. */
-export function ppsStable(state: GameState): number {
-  let sum = 0;
-  for (let i = 0; i < SERVICES.length; i++) sum += serviceBaseProd(i, state.services[i]) * serviceStableMult(state, i);
-  return sum;
+  return permMult(state.moves) * collectionMult(state) * homeMult(state) * feverMultOf(state.fever);
 }
 
 export interface MultBreakdown {
   /** 영구(이사) */
   permanent: number;
   collection: number;
-  event: number;
+  home: number;
   fever: number;
-  /** 결합(서비스 대상일 때만, 탭은 1) */
-  bundle: number;
-  /** 약정(서비스 대상일 때만, 탭은 1) */
-  contract: number;
-  /** 특전(서비스 대상이면 서비스 수익 특전, 탭이면 탭 수익 특전) */
+  /** 탭 수익 특전 */
   perk: number;
-  /** 도감 세트 효과(서비스면 서비스 수익 세트, 탭이면 탭 수익 세트). perk에는 포함하지 않는다 */
+  /** 도감 세트 효과(탭 수익 세트). perk에는 포함하지 않는다 */
   set: number;
-  /** 위 항목의 곱 = 서비스 수익이면 serviceProd/기본, 탭이면 tapValue/기본 */
+  /** 위 항목의 곱 = tapValue/기본 */
   total: number;
 }
 
-/** 배율 분해. target은 서비스 인덱스 또는 'tap'. 치명타는 별도(perkEffects.critChance). */
-export function multBreakdown(state: GameState, target: number | 'tap'): MultBreakdown {
-  const e = perkEffects(state);
-  const isTap = target === 'tap';
-  const set = setEffects(state);
-  const setM = isTap ? set.tapMult : set.serviceMult;
+/** 배율 분해. target은 'tap'만 쓴다. 치명타는 별도(perkEffects.critChance). collection은 세트 곱을 뺀 도감 몫 */
+export function multBreakdown(state: GameState, _target: 'tap'): MultBreakdown {
+  const setM = setEffects(state).dexMult;
   const b = {
     permanent: permMult(state.moves),
-    collection: collectionMult(state),
-    event: eventMult(state),
+    collection: collectionMult(state) / setM,
+    home: homeMult(state),
     fever: feverMultOf(state.fever),
-    bundle: isTap ? 1 : bundleMultFor(state, target),
-    contract: isTap ? 1 : contractMultFor(state, target),
-    perk: (isTap ? e.tapMult : e.serviceMult) / setM,
+    perk: perkEffects(state).tapMult,
     set: setM,
   };
-  return { ...b, total: b.permanent * b.collection * b.event * b.fever * b.bundle * b.contract * b.perk * b.set };
-}
-
-export function isUnlocked(state: GameState, index: number): boolean {
-  return index === 0 || state.services[index - 1] >= 1;
+  return { ...b, total: b.permanent * b.collection * b.home * b.fever * b.perk * b.set };
 }
 
 export function nextMilestone(level: number, milestones: readonly number[]): number | null {
@@ -141,92 +77,55 @@ export function nextMilestone(level: number, milestones: readonly number[]): num
   return null;
 }
 
-export function bulkCost(index: number, level: number, count: number): number {
-  const s = SERVICES[index];
-  const r = s.costRate;
-  return (s.baseCost * r ** level * (r ** count - 1)) / (r - 1);
-}
-
-export function maxAffordable(index: number, level: number, points: number): number {
-  const s = SERVICES[index];
-  const r = s.costRate;
-  const first = s.baseCost * r ** level;
-  if (!(points >= first)) return 0;
-  let n = Math.floor(Math.log(1 + (points * (r - 1)) / first) / Math.log(r));
-  while (n > 0 && bulkCost(index, level, n) > points) n--;
-  while (bulkCost(index, level, n + 1) <= points) n++;
-  return n;
-}
-
 export function tapCost(level: number): number {
   return TAP_BASE_COST * TAP_COST_RATE ** level;
+}
+
+export function strikeCost(level: number): number {
+  return STRIKE_BASE_COST * STRIKE_COST_RATE ** level;
+}
+
+/** 강타·급소 탭 수에 곱하는 배율 */
+export function strikeMult(level: number): number {
+  return 1 + STRIKE_MULT_PER_LEVEL * level;
 }
 
 export function tapBase(level: number): number {
   return (1 + level) * milestoneMult(level, TAP_MILESTONES);
 }
 
-/** 탭 비율: 레벨 L에서 탭 1회가 (기본값 외에) 더 버는 초당 수익(ppsStable) 배수. 레벨에 선형 + 마일스톤 가산(곱 아님). */
-export function tapRatio(level: number): number {
-  let r = TAP_RATIO_BASE + TAP_RATIO_PER_LEVEL * level;
-  TAP_MILESTONES.forEach((m, i) => {
-    if (level >= m) r += TAP_RATIO_MILESTONE_BONUS[i] ?? 0;
-  });
-  return r;
+/** 피버를 뺀 탭 1회 값 = tapBase x 영구 x 도감 x 살림 x 탭 특전 x 0.6. 상자 가격·택배의 기준 */
+export function tapStable(state: GameState): number {
+  return tapBase(state.tapLevel) * permMult(state.moves) * collectionMult(state) * homeMult(state) * perkEffects(state).tapMult * TAP_BOX_SCALE;
 }
 
-export function nextTapRatio(level: number): number {
-  return tapRatio(level + 1);
-}
-
-/**
- * 탭 1회 수익 = (기본값 몫 + 비율 몫) x 탭 특전 x 이벤트 x 피버. 치명타 제외.
- * 기본값 몫 = tapBase x 영구 x 도감, 비율 몫 = tapRatio x ppsStable(영구·도감·결합만 포함, 서비스 특전·피버·이벤트·약정 제외).
- * 피버·이벤트는 끝에서 한 번만 곱하고, 약정은 탭 몫에 넣지 않는다.
- */
 export interface TapBreakdown {
-  level: number;
-  ratio: number;
-  /** 기본값 몫(탭 특전·이벤트·피버 적용 후) */
+  /** 피버를 뺀 탭 1회 값(tapStable) */
   flat: number;
-  /** 초당 수익 몫(같은 배율 적용 후) */
-  fromPps: number;
+  /** 피버까지 곱한 탭 1회 값 = tapValue */
   total: number;
 }
 
 export function tapBreakdown(state: GameState): TapBreakdown {
-  const level = state.tapLevel;
-  const ratio = tapRatio(level);
-  const outer = perkEffects(state).tapMult * eventMult(state) * feverMultOf(state.fever) * TAP_BOX_SCALE;
-  const flat = tapBase(level) * permMult(state.moves) * collectionMult(state) * outer;
-  const fromPps = ratio * (ppsStable(state) / perkEffects(state).serviceMult) * outer;
-  return { level, ratio, flat, fromPps, total: flat + fromPps };
+  const flat = tapStable(state);
+  return { flat, total: flat * feverMultOf(state.fever) };
 }
 
-/** damped(초당 6회 초과 탭)면 초당 수익 비례 몫 없이 기본값 몫만 */
+/** 탭 1회 수익(치명타 제외). damped(초당 6회 초과 탭)면 x0.3 */
 export function tapValue(state: GameState, damped = false): number {
-  const b = tapBreakdown(state);
-  return damped ? b.flat : b.total;
-}
-
-/** 탭 1회 수익 중 서비스 없이도 얻는 기본값 몫(택배 상자 최소 보장 기준) */
-export function tapFlatValue(state: GameState): number {
-  return tapBreakdown(state).flat;
-}
-
-export function buyService(state: GameState, index: number, count: number): GameState | null {
-  if (count < 1 || !isUnlocked(state, index)) return null;
-  const cost = bulkCost(index, state.services[index], count);
-  if (!Number.isFinite(cost) || cost > state.points) return null;
-  const services = state.services.slice();
-  services[index] += count;
-  return { ...state, points: state.points - cost, services };
+  return tapStable(state) * feverMultOf(state.fever) * (damped ? DAMPED_RATIO : 1);
 }
 
 export function buyTapUpgrade(state: GameState): GameState | null {
   const cost = tapCost(state.tapLevel);
   if (!Number.isFinite(cost) || cost > state.points) return null;
   return { ...state, points: state.points - cost, tapLevel: state.tapLevel + 1 };
+}
+
+export function buyStrikeUpgrade(state: GameState): GameState | null {
+  const cost = strikeCost(state.strikeLevel);
+  if (!Number.isFinite(cost) || cost > state.points) return null;
+  return { ...state, points: state.points - cost, strikeLevel: state.strikeLevel + 1 };
 }
 
 export function applyTap(state: GameState, damped = false): GameState {
@@ -239,20 +138,15 @@ export function applyTap(state: GameState, damped = false): GameState {
   };
 }
 
-/** rng는 이벤트(8~12분)·택배 상자(60~120초) 타이머 재설정에만 쓰인다. 없으면 중간값 고정. */
+/** rng는 택배 상자(60~120초) 타이머 재설정에만 쓰인다. 없으면 중간값 고정. */
 export function tick(state: GameState, dt: number, rng?: () => number): GameState {
   if (!(dt > 0)) return state;
-  let gain = ppsNoContract(state) * dt;
-  for (const c of state.contracts) gain += contractExtraPps(state, c.service) * Math.min(dt, Math.max(0, c.remainSec));
   return {
     ...state,
-    event: advanceEvent(state.event, dt, rng),
     fever: advanceFever(state.fever, dt),
     parcel: advanceParcel(state.parcel, dt, rng, perkEffects(state).parcelDelayScale),
-    contracts: advanceContracts(state.contracts, dt),
-    points: state.points + gain,
-    earned: state.earned + gain,
-    stats: { ...state.stats, totalEarned: state.stats.totalEarned + gain, playSec: state.stats.playSec + dt },
+    unpack: state.unpack.rushSec > 0 ? { ...state.unpack, rushSec: Math.max(0, state.unpack.rushSec - dt) } : state.unpack,
+    stats: { ...state.stats, playSec: state.stats.playSec + dt },
   };
 }
 

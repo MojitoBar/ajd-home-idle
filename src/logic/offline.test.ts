@@ -1,35 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { applyOffline, offlineReward } from './offline';
+import { RETURN_RUSH_AWAY_SEC, RUSH_MAX_SEC } from '../data/unpack';
+import { applyOffline } from './offline';
 import { defaultState } from './state';
 
 const T = 1_700_000_000_000;
 
-describe('오프라인 보상', () => {
-  it('60초 미만 무시, 60초부터 지급', () => {
-    expect(offlineReward(T, T + 59_000, 10).gain).toBe(0);
-    expect(offlineReward(T, T + 60_000, 10).gain).toBe(60 * 10 * 0.5);
+describe('돌아오면 러시', () => {
+  it('30분 이하로 비우면 러시가 없고 수익도 없다', () => {
+    const s = defaultState(T);
+    const r = applyOffline(s, T + RETURN_RUSH_AWAY_SEC * 1000);
+    expect(r.rush).toBe(false);
+    expect(r.awaySec).toBe(RETURN_RUSH_AWAY_SEC);
+    expect(r.state.unpack.rushSec).toBe(0);
+    expect(r.state.points).toBe(0);
+    expect(r.state.earned).toBe(0);
   });
-  it('8시간 상한과 capped 표시', () => {
-    const r = offlineReward(T, T + 20 * 3600 * 1000, 10);
-    expect(r.seconds).toBe(28800);
-    expect(r.gain).toBe(28800 * 10 * 0.5);
-    expect(r.capped).toBe(true);
-    expect(offlineReward(T, T + 28_800_000, 10).capped).toBe(false);
+  it('30분을 넘기면 rushSec이 RUSH_MAX_SEC(15)로 찬다. 수익은 0', () => {
+    const s = { ...defaultState(T), unpack: { ...defaultState().unpack, rushSec: 4 } };
+    const r = applyOffline(s, T + (RETURN_RUSH_AWAY_SEC + 1) * 1000);
+    expect(r.rush).toBe(true);
+    expect(RUSH_MAX_SEC).toBe(15);
+    expect(r.state.unpack.rushSec).toBe(15);
+    expect(r.state.points).toBe(0);
+    expect(r.state.stats.totalEarned).toBe(0);
   });
-  it('시계 역행이면 0이고 savedAt을 현재로 보정', () => {
-    const r = offlineReward(T, T - 5 * 3600 * 1000, 10);
-    expect(r.gain).toBe(0);
-    expect(r.savedAt).toBe(T - 5 * 3600 * 1000);
-  });
-  it('applyOffline은 points·earned·통계에 가산, 미달이면 report null', () => {
-    const s = { ...defaultState(T), services: [10, 0, 0, 0, 0, 0, 0, 0] };
-    const { state, report } = applyOffline(s, T + 120_000);
-    expect(report?.gain).toBeCloseTo(120 * 10 * 0.5);
-    expect(state.points).toBeCloseTo(600);
-    expect(state.earned).toBeCloseTo(600);
-    expect(state.stats.totalEarned).toBeCloseTo(600);
-    const none = applyOffline(s, T + 10_000);
-    expect(none.report).toBeNull();
-    expect(none.state.points).toBe(0);
+  it('시계가 거꾸로 가면 러시 없이 savedAt을 현재로 보정한다', () => {
+    const r = applyOffline(defaultState(T), T - 5 * 3600 * 1000);
+    expect(r.rush).toBe(false);
+    expect(r.awaySec).toBe(0);
+    expect(r.state.savedAt).toBe(T - 5 * 3600 * 1000);
   });
 });

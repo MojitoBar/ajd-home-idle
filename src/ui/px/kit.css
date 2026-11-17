@@ -2,7 +2,7 @@
    전역 금지 목록은 UI-GUIDE.md 참고 */
 
 /* .pf = 도트 테두리 믹스인. 기존 클래스도 같은 규칙을 쓴다 */
-.pf, .btn, .chip, .card, .info-btn, .ct-opt, .plan-card {
+.pf, .btn, .chip, .card, .info-btn {
   --ring: 0px;
   --face: var(--p1);
   --line: var(--k1);
@@ -17,8 +17,8 @@
   box-shadow: 0 0 0 var(--ring) var(--g2), 0 -2px 0 0 var(--line), 0 2px 0 0 var(--line), -2px 0 0 0 var(--line), 2px 0 0 0 var(--line),
     inset 0 2px 0 0 var(--hi), 0 6px 0 0 var(--drop);
 }
-.pf:focus-visible, .btn:focus-visible, .chip:focus-visible, .tab:focus-visible, .info-btn:focus-visible, .ct-opt:focus-visible, .plan-card:focus-visible { --ring: 4px; outline: none; }
-.pf:active:not(:disabled), .btn:active:not(:disabled), .chip:active:not(:disabled), .info-btn:active, .ct-opt:active:not(:disabled), .plan-card:active { --drop: transparent; transform: translateY(var(--press)); transition: none; }
+.pf:focus-visible, .btn:focus-visible, .chip:focus-visible, .tab:focus-visible, .info-btn:focus-visible { --ring: 4px; outline: none; }
+.pf:active:not(:disabled), .btn:active:not(:disabled), .chip:active:not(:disabled), .info-btn:active { --drop: transparent; transform: translateY(var(--press)); transition: none; }
 
 /* 버튼 7종: 보조 · primary · gold · danger · buy · quiet · icon/sm */
 .btn, .chip, .tab { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: var(--s1); font: 400 var(--fs-m)/var(--lh-m) var(--f-body); }
@@ -49,7 +49,4 @@
 /* 카드: 종이 면, 아래 받침 k1. 강조는 카드당 구매 버튼 1개 */
 .card { --drop: var(--k1); }
 
-/* 선택 카드(약정·이벤트·특전): 선택·추천은 금 연한 면 + 금 선 */
-.ct-opt, .plan-card { --drop: var(--k1); margin-bottom: 6px; }
-.plan-card.picked, .ct-opt.picked, .ct-opt.sel { --face: var(--g3); --line: var(--g1); --drop: var(--g1); }
-.ct-opt:disabled { --face: var(--k4); --fg: var(--k3); --line: var(--k3); --drop: transparent; transform: none; }
+/* 선택 카드(특전): 선택·추천은 금 연한 면 + 금 선 */

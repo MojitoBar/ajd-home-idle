@@ -98,7 +98,7 @@ body {
   overflow-wrap: break-word;
 }
 button, input, textarea { font-family: inherit; }
-.modal-body p, .note, .box-hint, .q-ask, .pr-desc { text-wrap: pretty; }
+.modal-body p, .note, .box-hint, .pr-desc { text-wrap: pretty; }
 /* 별: 2px 네모 점. 어두운 테마에서만 */
 body::before {
   content: '';
@@ -145,10 +145,9 @@ header.top.no-ico .top-ico { display: none; }
 .pts-rate { text-shadow: 1px 0 0 currentColor; margin-left: var(--s2); font-family: var(--f-bold); font-size: var(--fs-s); color: var(--on-bg-dim); }
 .speed-wrap { position: relative; display: inline-block; }
 .info-btn { position: absolute; left: 100%; margin-left: var(--s2); top: 50%; translate: 0 -50%; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
-button.info-btn, .chip.bundle-toggle { --hi: var(--k5); --drop: var(--k1); }
-.chip.bundle-toggle { margin-bottom: 6px; }
+button.info-btn { --hi: var(--k5); --drop: var(--k1); }
 .info-btn::after { content: ''; position: absolute; inset: -8px; }
-.speed-unit { line-height: 1; font-family: var(--f-bold); font-size: var(--fs-s); color: var(--on-bg-dim); }
+.speed-pre { line-height: 1; font-family: var(--f-bold); font-size: var(--fs-s); color: var(--on-bg-dim); }
 
 .room {
   position: relative;
@@ -257,10 +256,10 @@ body:has(.overlay) .fx-canvas:not(.in-scene) { visibility: hidden; }
 .panel { flex: none; padding-bottom: calc(var(--dock-h) + 34px); }
 .panel.surface { background: var(--paper); box-shadow: 0 0 0 2px var(--k1); padding: var(--s2); margin: 2px 2px calc(var(--dock-h) + 34px); }
 
-/* 태그: 높이 20, 면 없음, 2px 선은 자기 색 — 결합=금 · 약정=빨강 · 정보=회청 */
-.tag, .mini-chip, .ct-badge, .bundle-hint { display: inline-flex; align-items: center; gap: 2px; height: 20px; padding: 0 var(--s2); font: 700 var(--fs-s)/var(--lh-s) var(--f-bold); white-space: nowrap; background: none; color: var(--k1); box-shadow: 0 0 0 2px var(--k2) inset; font-variant-numeric: tabular-nums; }
-.tag.gold, .mini-chip.on, .bundle-hint { color: var(--g0); box-shadow: 0 0 0 2px var(--g1) inset; }
-.tag.red, .ct-badge { color: var(--r2); box-shadow: 0 0 0 2px var(--r2) inset; }
+/* 태그: 높이 20, 면 없음, 2px 선은 자기 색 — 금 · 빨강 · 정보=회청 */
+.tag { display: inline-flex; align-items: center; gap: 2px; height: 20px; padding: 0 var(--s2); font: 700 var(--fs-s)/var(--lh-s) var(--f-bold); white-space: nowrap; background: none; color: var(--k1); box-shadow: 0 0 0 2px var(--k2) inset; font-variant-numeric: tabular-nums; }
+.tag.gold { color: var(--g0); box-shadow: 0 0 0 2px var(--g1) inset; }
+.tag.red { color: var(--r2); box-shadow: 0 0 0 2px var(--r2) inset; }
 
 .card { position: relative; display: grid; grid-template-columns: 52px minmax(0, 1fr) 112px; column-gap: var(--s3); align-items: start; min-height: 108px; padding: var(--s3); margin: 0 2px var(--s3); }
 .card.locked { min-height: 76px; --face: var(--k4); --drop: transparent; color: var(--k3); }
@@ -279,9 +278,6 @@ body:has(.overlay) .fx-canvas:not(.in-scene) { visibility: hidden; }
 .card-info.key .v-n { color: var(--b2); }
 .card-info.key .v-u { font: 700 var(--fs-s)/var(--lh-s) var(--f-bold); color: var(--k2); }
 .tap-card .card-info.key { cursor: pointer; }
-.card-lead { width: 52px; min-width: 0; }
-.card-lead .card-chips { flex-direction: column; align-items: center; flex-wrap: nowrap; gap: var(--s1); margin-top: var(--s1); }
-.card-lead .tag, .card-lead .mini-chip, .card-lead .ct-badge { padding: 0 var(--s1); }
 .card.locked .card-info.key { font: 700 var(--fs-s)/var(--lh-s) var(--f-bold); color: var(--k3); text-shadow: none; }
 .card-info { font: 700 var(--fs-s)/var(--lh-s) var(--f-bold); color: var(--k2); margin-top: 2px; }
 .ms-bar { position: relative; height: 8px; margin-top: var(--s1); background: var(--k4); box-shadow: 0 0 0 2px var(--k3); overflow: hidden; }
@@ -311,3 +307,6 @@ body:has(.overlay) .fx-canvas:not(.in-scene) { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+.gear-card[hidden], .gear-max[hidden], .card .btn.buy[hidden] { display: none; }
+.card > .gear-max { align-self: center; justify-self: center; }
+button.badge { border: 0; background: transparent; cursor: pointer; font-variant-numeric: tabular-nums; white-space: nowrap; }

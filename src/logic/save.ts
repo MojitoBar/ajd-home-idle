@@ -1,12 +1,12 @@
-import { SERVICES } from '../data/services';
-import { BASE_CONTRACT_SLOTS, CONTRACTS } from '../data/contracts';
+import { GEARS } from '../data/gear';
 import { PERKS, PERK_OFFER_SIZE } from '../data/perks';
-import { contractPenaltyBase } from './contract';
-import { perkEffects, rollPerkOffer, seededRng } from './perks';
-import { BOX_PATTERN, ROOM_BOXES } from '../data/unpack';
+import { rollPerkOffer, seededRng } from './perks';
+import { BOX_PATTERN, ROOM_BOXES, RUSH_MAX_SEC } from '../data/unpack';
 import { boxHp, endlessHp } from './unpack';
+import { addToCollection, rollBox } from './gacha';
+import { houseInfo } from './house';
 import { UNLOCK_IDS } from './unlock';
-import { CURRENT_VERSION, HOME_SLOTS, defaultState, type CollectionSlot, type ContractState, type GameState } from './state';
+import { CURRENT_VERSION, HOME_SLOTS, defaultState, type CollectionSlot, type GameState } from './state';
 
 export const SAVE_KEY = 'ajd-home-idle:save';
 export const BACKUP_KEY = 'ajd-home-idle:save:backup';
@@ -14,6 +14,14 @@ export const BACKUP_KEY = 'ajd-home-idle:save:backup';
 type Raw = Record<string, unknown>;
 export type Migration = (save: Raw) => Raw;
 export type Migrations = Record<number, Migration>;
+
+/** v9 서비스 보상: 서비스 레벨 합 25마다 상자 1개, 최대 30개 */
+const V9_REWARD_PER_LEVELS = 25;
+const V9_REWARD_MAX_BOXES = 30;
+/** v9에서 사라진 특전 id(레벨 1마다 3택 묶음 1개로 돌려준다) */
+const V9_DEAD_PERKS = ['svc_power', 'bundle_boost', 'contract_slot', 'penalty_cut', 'offline_rate', 'offline_cap'];
+/** v9 수치 정리: 보유 P는 새 목표의 30%까지만 */
+const V9_POINTS_CAP_RATIO = 0.3;
 
 // 키 N: 버전 N 저장을 N+1로 올린다.
 export const MIGRATIONS: Migrations = {
@@ -25,26 +33,16 @@ export const MIGRATIONS: Migrations = {
     collection: isObj(s.collection) ? s.collection : {},
     event: { ...(isObj(s.event) ? s.event : {}), bannerSec: 0, question: null, questionSec: 0, result: null },
   }),
-  // 2 -> 3: 이사 특전·약정 추가. 이미 이사한 횟수만큼 선택 대기를 소급(이사 횟수 기반 결정적 시드)
+  // 2 -> 3: 이사 특전 추가. 이미 이사한 횟수만큼 선택 대기를 소급(이사 횟수 기반 결정적 시드)
   2: (s) => {
     const moves = typeof s.moves === 'number' && Number.isFinite(s.moves) && s.moves > 0 ? Math.floor(s.moves) : 0;
     const cap = PERKS.reduce((n, p) => n + p.maxLevel, 0);
     const perkOffers: string[][] = [];
     for (let i = 0; i < Math.min(moves, cap); i++) perkOffers.push(rollPerkOffer({}, seededRng(i * 7919 + 13)));
-    return { ...s, version: 3, perks: {}, perkOffers, contracts: [] };
+    return { ...s, version: 3, perks: {}, perkOffers };
   },
-  // 3 -> 4: 약정에 전체 기간·위약금 기준 금액 추가. 기존 약정은 현재 집 목표와 종류로 채운다
-  3: (s) => {
-    const moves = typeof s.moves === 'number' && Number.isFinite(s.moves) && s.moves > 0 ? Math.floor(s.moves) : 0;
-    const contracts = Array.isArray(s.contracts)
-      ? s.contracts.map((c) => {
-          if (!isObj(c)) return c;
-          const kind = CONTRACTS.find((k) => k.kind === c.kind);
-          return kind ? { ...c, totalSec: kind.sec, penaltyBase: contractPenaltyBase(moves, kind.kind) } : c;
-        })
-      : [];
-    return { ...s, version: 4, contracts };
-  },
+  // 3 -> 4: 약정 필드 정리(약정은 v9에서 사라져 버전만 올린다)
+  3: (s) => ({ ...s, version: 4 }),
   // 4 -> 5: 이삿짐 상자 진행(unpack) 추가. 기존 저장은 첫 상자부터
   4: (s) => ({ ...s, version: 5, unpack: { box: 0, damage: 0, roomDone: false } }),
   // 5 -> 6: 상자 HP 저장(hp 0 = 불러올 때 계산)과 살림 레벨. 푼 방 단계 큰 상자만큼 그 칸 Lv 1
@@ -52,6 +50,56 @@ export const MIGRATIONS: Migrations = {
     const old = isObj(s.unpack) ? s.unpack : {};
     const done = Math.floor(Math.min(num(old.box, 0, true), ROOM_BOXES) / BOX_PATTERN.length);
     return { ...s, version: 6, unpack: { ...old, hp: 0 }, homeLv: Array.from({ length: HOME_SLOTS }, (_, i) => (i < done ? 1 : 0)) };
+  },
+  // 6 -> 7: 강타 힘 강화 레벨과 최고 연쇄 추가
+  6: (s) => ({ ...s, version: 7, strikeLevel: 0, bestChain: 0 }),
+  // 7 -> 8: 특별 상자 배치 salt(이사 횟수·진행에서 유도)와 러시 시간 추가
+  7: (s) => {
+    const old = isObj(s.unpack) ? s.unpack : {};
+    const salt = (num(s.moves, 0, true) * 7919 + num(old.box, 0, true) * 31 + 17) & 0x7fffffff;
+    return { ...s, version: 8, unpack: { ...old, salt, rushSec: 0 } };
+  },
+  // 8 -> 9: 서비스·결합·약정 삭제. 서비스 레벨 25마다(최대 30개) 무료 상자를 도감에 넣고, P·누적을 새 목표 기준으로 자른다
+  8: (s) => {
+    const moves = num(s.moves, 0, true);
+    const lv = Array.isArray(s.services) ? s.services.reduce<number>((a, v) => a + num(v, 0, true), 0) : 0;
+    const boxes = Math.min(V9_REWARD_MAX_BOXES, Math.floor(lv / V9_REWARD_PER_LEVELS));
+    const rng = seededRng(moves * 7919 + 9);
+    let collection: Record<string, CollectionSlot> = isObj(s.collection) ? (s.collection as Record<string, CollectionSlot>) : {};
+    for (let i = 0; i < boxes; i++) {
+      const { item, variant } = rollBox(rng);
+      collection = addToCollection(collection, item, variant).collection;
+    }
+    const target = houseInfo(moves).target;
+    const { services, contracts, event, ...rest } = s;
+    void services, contracts, event;
+    // 죽은 특전: 레벨 1마다 3택 묶음 1개를 더하고, 기존 묶음에서는 죽은 id를 빼 3개로 다시 채운다
+    const oldPerks = isObj(s.perks) ? s.perks : {};
+    const perks: Record<string, number> = {};
+    let dead = 0;
+    for (const [id, v] of Object.entries(oldPerks)) {
+      if (V9_DEAD_PERKS.includes(id)) dead += num(v, 0, true);
+      else perks[id] = num(v, 0, true);
+    }
+    const prng = seededRng(moves * 7919 + 21);
+    const perkOffers: string[][] = [];
+    for (const o of Array.isArray(s.perkOffers) ? s.perkOffers : []) {
+      if (!Array.isArray(o)) continue;
+      const kept = o.filter((id): id is string => typeof id === 'string' && !V9_DEAD_PERKS.includes(id));
+      perkOffers.push(kept.length >= PERK_OFFER_SIZE ? kept : rollPerkOffer(perks, prng));
+    }
+    for (let i = 0; i < dead; i++) perkOffers.push(rollPerkOffer(perks, prng));
+    return {
+      ...rest,
+      version: 9,
+      gear: {},
+      collection,
+      perks,
+      perkOffers,
+      points: Math.min(num(s.points, 0), target * V9_POINTS_CAP_RATIO),
+      earned: Math.min(num(s.earned, 0), target),
+      notice: { kind: 'v9', boxes },
+    };
   },
 };
 
@@ -85,8 +133,6 @@ function num(x: unknown, fallback: number, int = false): number {
 
 export function sanitize(raw: Raw): GameState {
   const d = defaultState();
-  const services = Array.isArray(raw.services) ? raw.services : [];
-  const event = isObj(raw.event) ? raw.event : {};
   const stats = isObj(raw.stats) ? raw.stats : {};
   const settings = isObj(raw.settings) ? raw.settings : {};
   const collection: Record<string, CollectionSlot> = {};
@@ -108,6 +154,13 @@ export function sanitize(raw: Raw): GameState {
       if (lv > 0) perks[p.id] = lv;
     }
   }
+  const gear: GameState['gear'] = {};
+  if (isObj(raw.gear)) {
+    for (const g of GEARS) {
+      const lv = Math.min(g.maxLevel, num(raw.gear[g.id], 0, true));
+      if (lv > 0) gear[g.id] = lv;
+    }
+  }
   const perkOffers: string[][] = [];
   if (Array.isArray(raw.perkOffers)) {
     for (const o of raw.perkOffers) {
@@ -126,21 +179,9 @@ export function sanitize(raw: Raw): GameState {
     damage: num(rawUnpack.damage, 0, true),
     roomDone: rawUnpack.roomDone === true,
     hp: num(rawUnpack.hp, 0, true),
+    salt: num(rawUnpack.salt, 0, true),
+    rushSec: Math.min(RUSH_MAX_SEC, num(rawUnpack.rushSec, 0, true)),
   };
-  const contracts: ContractState[] = [];
-  if (Array.isArray(raw.contracts)) {
-    for (const c of raw.contracts) {
-      if (!isObj(c)) continue;
-      const service = num(c.service, -1, true);
-      const kind = CONTRACTS.find((k) => k.kind === c.kind);
-      const remainSec = Math.min(num(c.remainSec, 0), kind?.sec ?? 0);
-      if (service < 0 || service >= SERVICES.length || !kind || remainSec <= 0) continue;
-      if (contracts.some((x) => x.service === service)) continue;
-      if (contracts.length >= BASE_CONTRACT_SLOTS + perkEffects({ perks }).extraSlots) break;
-      const penaltyBase = num(c.penaltyBase, contractPenaltyBase(moves, kind.kind));
-      contracts.push({ service, kind: kind.kind, remainSec, totalSec: kind.sec, penaltyBase: Math.min(penaltyBase, contractPenaltyBase(moves, kind.kind)) });
-    }
-  }
   const out: GameState = {
     version: CURRENT_VERSION,
     savedAt: num(raw.savedAt, d.savedAt),
@@ -148,23 +189,16 @@ export function sanitize(raw: Raw): GameState {
     earned: num(raw.earned, d.earned),
     moves,
     tapLevel: num(raw.tapLevel, d.tapLevel, true),
-    services: SERVICES.map((_, i) => num(services[i], 0, true)),
+    strikeLevel: num(raw.strikeLevel, 0, true),
     boxesThisRun: num(raw.boxesThisRun, d.boxesThisRun, true),
     collection,
-    // 배너·문제·결과는 저장하지 않는다(불러오면 대기 상태). 진행 중이던 문제는 사라진다.
-    event: {
-      ...d.event,
-      nextInSec: num(event.nextInSec, d.event.nextInSec),
-      remainSec: num(event.remainSec, d.event.remainSec),
-      streak: num(event.streak, d.event.streak, true),
-    },
     fever: d.fever,
     parcel: d.parcel,
     unpack,
     homeLv,
+    gear,
     perks,
     perkOffers,
-    contracts,
     stats: {
       totalTaps: num(stats.totalTaps, 0, true),
       totalEarned: num(stats.totalEarned, 0),
@@ -173,6 +207,8 @@ export function sanitize(raw: Raw): GameState {
     },
     settings: { reduceMotion: settings.reduceMotion === true },
     bestCombo: num(raw.bestCombo, 0, true),
+    bestChain: num(raw.bestChain, 0, true),
+    ...(isObj(raw.notice) && raw.notice.kind === 'v9' ? { notice: { kind: 'v9' as const, boxes: num(raw.notice.boxes, 0, true) } } : {}),
     ...(Array.isArray(raw.unlocked) ? { unlocked: UNLOCK_IDS.filter((id) => (raw.unlocked as unknown[]).includes(id)) } : {}),
   };
   const k = out.unpack.box;
@@ -198,12 +234,10 @@ export function parseSave(raw: string | null): LoadResult {
 }
 
 export function serialize(state: GameState, now: number): string {
-  const { bannerSec, question, questionSec, result, ...event } = state.event;
-  void bannerSec, question, questionSec, result;
   // 피버·택배 상자는 저장하지 않는다(불러오면 초기값)
   const { fever, parcel, ...rest } = state;
   void fever, parcel;
-  return JSON.stringify({ ...rest, event, savedAt: now });
+  return JSON.stringify({ ...rest, savedAt: now });
 }
 
 export function exportString(state: GameState, now: number): string {

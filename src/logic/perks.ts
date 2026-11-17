@@ -1,7 +1,6 @@
 import { PERKS, PERK_OFFER_SIZE, type PerkDef } from '../data/perks';
 import { setEffects } from './collection';
 import { CRIT_MULT, CRIT_CHANCE, FEVER_SEC } from './fever';
-import { OFFLINE_CAP_SEC_BASE, OFFLINE_RATE_BASE } from './offlineBase';
 import type { GameState } from './state';
 
 export function perkDef(id: string): PerkDef | undefined {
@@ -17,22 +16,23 @@ export function tapPowerMult(state: Pick<GameState, 'perks'>): number {
   return 1 + perkDef('tap_power')!.per * perkLevel(state, 'tap_power');
 }
 
+/** 특전 `도감 수집가`의 도감 배율 곱 */
+export function dexBoostMult(state: Pick<GameState, 'perks'>): number {
+  return 1 + perkDef('dex_boost')!.per * perkLevel(state, 'dex_boost');
+}
+
+/** 특전 `살림 장인`의 살림 배율 곱 */
+export function homeBoostMult(state: Pick<GameState, 'perks'>): number {
+  return 1 + perkDef('home_boost')!.per * perkLevel(state, 'home_boost');
+}
+
 export interface PerkEffects {
   tapMult: number;
   critChance: number;
   critMult: number;
   feverSec: number;
-  serviceMult: number;
-  offlineRate: number;
-  offlineCapSec: number;
   boxPriceMult: number;
   parcelDelayScale: number;
-  /** 결합 배율의 (배율-1) 부분에 곱할 값 */
-  bundleBoost: number;
-  extraSlots: number;
-  penaltyMult: number;
-  /** 오프라인 보상에 곱할 값(세트 효과) */
-  offlineMult: number;
 }
 
 export function perkEffects(state: Pick<GameState, 'perks'> & { collection?: GameState['collection'] }): PerkEffects {
@@ -40,19 +40,12 @@ export function perkEffects(state: Pick<GameState, 'perks'> & { collection?: Gam
   const lv = (id: string) => perkLevel(state, id);
   const per = (id: string) => perkDef(id)!.per;
   return {
-    tapMult: (1 + per('tap_power') * lv('tap_power')) * set.tapMult,
+    tapMult: 1 + per('tap_power') * lv('tap_power'),
     critChance: CRIT_CHANCE + per('crit') * lv('crit'),
     critMult: CRIT_MULT + per('tap_crit_power') * lv('tap_crit_power') + set.critMult,
     feverSec: FEVER_SEC + per('fever_long') * lv('fever_long') + set.feverSec,
-    serviceMult: (1 + per('svc_power') * lv('svc_power')) * set.serviceMult,
-    offlineRate: OFFLINE_RATE_BASE + per('offline_rate') * lv('offline_rate'),
-    offlineCapSec: OFFLINE_CAP_SEC_BASE + per('offline_cap') * lv('offline_cap'),
     boxPriceMult: 1 - per('box_discount') * lv('box_discount'),
     parcelDelayScale: 1 - per('parcel_freq') * lv('parcel_freq'),
-    bundleBoost: 1 + per('bundle_boost') * lv('bundle_boost'),
-    extraSlots: per('contract_slot') * lv('contract_slot'),
-    penaltyMult: 1 - per('penalty_cut') * lv('penalty_cut'),
-    offlineMult: set.offlineMult,
   };
 }
 

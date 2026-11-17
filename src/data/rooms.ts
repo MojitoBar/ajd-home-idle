@@ -66,26 +66,31 @@ export const ROOMS: Record<string, RoomDef> = {
 export const roomFor = (theme: string): RoomDef => ROOMS[theme] ?? ONE_ROOM;
 
 /**
- * 선반 서비스 아이콘(24도트 그림)의 [왼쪽 투명 여백, 불투명 폭]. SERVICES 순서와 같다.
- * 그림 불투명 폭 기준이다. 아이콘 그림을 바꾸면 public/assets/px/icon/svc-*.png에서 다시 잴 것.
+ * 선반 공구 아이콘(24도트 그림)의 [왼쪽 투명 여백, 불투명 폭]. 순서: 공구(현재 단계 그림), 오함마, 수평계, 안전모, 빠루, 송곳, 돋보기.
+ * 공구 칸은 단계마다 그림이 바뀌는데 맨손·커터칼·드라이버가 같은 [1, 22]라 그 값으로 잡는다.
+ * 그림을 바꾸면 public/assets/px/tool/*.png의 불투명 범위(알파 bbox)에서 다시 잴 것.
  */
 export const SHELF_ICON_EXTENT: readonly (readonly [number, number])[] = [
-  [1, 22], // internet
-  [5, 14], // water
-  [4, 14], // air
-  [5, 13], // phone
-  [1, 22], // clean
-  [1, 22], // interior
-  [1, 22], // robot
-  [1, 21], // home
+  [1, 22], // 공구(gloves·cutter·drill)
+  [3, 18], // 오함마(sledge)
+  [1, 22], // 수평계(level)
+  [2, 20], // 안전모(hardhat)
+  [0, 22], // 빠루(crowbar)
+  [3, 20], // 송곳(awl)
+  [2, 21], // 돋보기(magnifier)
 ];
 
-/** 이웃 그림 사이 간격(도트). 묶음 폭 164도트(8~172)라 360 폭 판자(8~172) 끝에 딱 맞는다 */
+/** 선반 그림 아래쪽 투명 행 수(도트). 불투명 바닥이 판자 윗면에 닿게 이만큼 내려 놓는다. SHELF_ICON_EXTENT와 같은 순서 */
+export const SHELF_ICON_DROP: readonly number[] = [2, 1, 7, 10, 1, 3, 1];
+/** 공구 칸의 단계별 그림(tool id)의 아래쪽 투명 행 수. 위 표의 첫 값은 이 중 drill 기준 */
+export const SHELF_TOOL_DROP: Readonly<Record<string, number>> = { gloves: 4, cutter: 8, hammer: 1, drill: 2, 'robot-arm': 1 };
+
+/** 이웃 그림 사이 간격(도트). 묶음 폭 158도트라 360 폭 판자(8~172) 안에 들어간다 */
 export const SHELF_GAP = 2;
 
 /**
- * 8종이 다 있다고 보고 고정한 아이콘 자리: 아이콘 스프라이트 왼쪽 끝 x(도트)와 불투명 그림 범위.
- * 묶음 전체를 방 가운데(w/2)에 맞춘다(폭이 홀수면 왼쪽으로 반 도트 쏠림). 가진 서비스가 적어도 자리는 그대로다.
+ * 7종이 다 있다고 보고 고정한 아이콘 자리: 아이콘 스프라이트 왼쪽 끝 x(도트)와 불투명 그림 범위.
+ * 묶음 전체를 방 가운데(w/2)에 맞춘다(폭이 홀수면 왼쪽으로 반 도트 쏠림). 가진 공구가 적어도 자리는 그대로다.
  */
 export function shelfSlots(roomW = 180, gap = SHELF_GAP): { x: number; ink0: number; ink1: number }[] {
   const total = SHELF_ICON_EXTENT.reduce((a, [, w]) => a + w, 0) + gap * (SHELF_ICON_EXTENT.length - 1);

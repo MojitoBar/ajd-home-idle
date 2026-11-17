@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COLLECTIBLES, RARITIES, SLOT_TOTAL, VARIANTS } from '../data/collectibles';
-import { applyTap, collectionMult as econC, pps } from './economy';
+import { applyTap, collectionMult as econC } from './economy';
 import { boxPrice, collectionMult, collectionProgress, oddsTable, openBox, openBoxes, rollBox } from './gacha';
 import { move } from './prestige';
 import { defaultState } from './state';
@@ -37,12 +37,10 @@ describe('데이터·확률표', () => {
 });
 
 describe('상자', () => {
-  it('가격: 최소 5000, 60*pps, 개봉 수마다 x1.06', () => {
+  it('가격: 최소 5000, 개봉 수마다 x1.06', () => {
     const s = defaultState();
     expect(boxPrice(s)).toBe(5000);
     expect(boxPrice({ ...s, boxesThisRun: 2 })).toBeCloseTo(5000 * 1.06 ** 2, 6);
-    const big = { ...s, services: [1000, 0, 0, 0, 0, 0, 0, 0] };
-    expect(boxPrice(big)).toBeCloseTo(60 * pps(big), 6);
   });
   it('난수 경계: 0은 일반 첫 종·기본, 0.999..는 신화·무지개', () => {
     const lo = rollBox(() => 0);
@@ -101,24 +99,27 @@ describe('상자', () => {
 });
 
 describe('도감 배율 C', () => {
-  it('처음 1, 슬롯 등록마다 w*x 가산(개수 3은 Lv 2라 x1.5)', () => {
+  it('처음 1, 슬롯 등록마다 w*x 가산(개수 3은 Lv 2라 x2)', () => {
     expect(collectionMult(defaultState())).toBe(1);
     const s = { ...defaultState(), collection: { fan: { base: 3, shiny: 0, gold: 1, rainbow: 0 }, space_purifier: { base: 0, shiny: 1, gold: 0, rainbow: 0 } } };
-    expect(collectionMult(s)).toBeCloseTo(1 + 0.01 * 1.5 + 0.01 * 4 + 0.16 * 2, 10);
+    expect(collectionMult(s)).toBeCloseTo((1 + 0.05 * 2 + 0.05 * 4 + 0.8 * 2) * 5, 10); // 신화 세트(1종) 완성 x5
     expect(econC(s)).toBe(collectionMult(s));
   });
-  it('전부 등록하면 최대 11.05', () => {
+  it('전부 등록(Lv 1)하면 (1 + 50.25) x 세트 곱 180 = 9225, 전부 Lv 5면 약 1.4e5', () => {
     const collection: Record<string, { base: number; shiny: number; gold: number; rainbow: number }> = {};
     for (const c of COLLECTIBLES) collection[c.id] = { base: 1, shiny: 1, gold: 1, rainbow: 1 };
     const s = { ...defaultState(), collection };
-    expect(collectionMult(s)).toBeCloseTo(11.05, 10);
+    expect(collectionMult(s)).toBeCloseTo(51.25 * 180, 8);
     expect(collectionProgress(s).registered).toBe(80);
+    const max: Record<string, { base: number; shiny: number; gold: number; rainbow: number }> = {};
+    for (const c of COLLECTIBLES) max[c.id] = { base: 31, shiny: 31, gold: 31, rainbow: 31 };
+    expect(collectionMult({ ...s, collection: max })).toBeCloseTo((1 + 3.35 * 15 * 16) * 180, 6);
   });
   it('수익(탭)에 C가 곱해지고 이사 후에도 도감 유지', () => {
     const base = defaultState();
     const withC = { ...base, collection: { fan: { base: 1, shiny: 0, gold: 0, rainbow: 0 } } };
-    expect(applyTap(withC).points).toBeCloseTo(applyTap(base).points * 1.01, 10);
-    const moved = move({ ...withC, earned: 5.5e7, boxesThisRun: 5 })!;
+    expect(applyTap(withC).points).toBeCloseTo(applyTap(base).points * 1.05, 10);
+    const moved = move({ ...withC, earned: 3.7e15, boxesThisRun: 5 })!;
     expect(moved.collection).toEqual(withC.collection);
     expect(moved.boxesThisRun).toBe(0);
   });

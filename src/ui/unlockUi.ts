@@ -7,7 +7,7 @@ import * as fx from './fx';
 import { sfx } from './sound';
 import { vibrate } from './prefs';
 
-type DotTab = 'tap' | 'box' | 'dex';
+type DotTab = 'tap' | 'home' | 'box' | 'dex';
 
 interface UnlockHooks {
   ctx: UiCtx;
@@ -16,42 +16,38 @@ interface UnlockHooks {
   isActiveTab(id: DotTab): boolean;
 }
 
+/** 앞선 토스트에 이름이 묶여 따로 토스트를 띄우지 않을 열림 */
+const silent = new Set<UnlockId>();
 const GAP_MS = 600;
 const POP_MS = 300;
 
 /** 연출 때 튀어나오는 대상(CSS 숨김 규칙과 같은 대상) */
-const POP_SELECTOR: Record<UnlockId, string> = {
-  tap: '[data-ux="tap"]',
-  bundle: '.bundle-toggle, .bundle-row, .mini-chip, .bundle-hint',
+const POP_SELECTOR: Partial<Record<UnlockId, string>> = {
+  home: '[data-ux="home"]',
   box: '[data-ux="box"]',
   dex: '[data-ux="dex"]',
   move: '.move-block',
-  contract: '.slots-pill, .contract-btn',
   mult: '.speed-wrap .info-btn',
   badge: '.top .badge',
   perk: '.perk-btn',
 };
 /** 테두리 점멸을 그릴 대상(자리가 잡혀 있는 하나) */
-const EDGE_SELECTOR: Record<UnlockId, string> = {
-  tap: '[data-ux="tap"]',
-  bundle: '.bundle-toggle',
+const EDGE_SELECTOR: Partial<Record<UnlockId, string>> = {
+  home: '[data-ux="home"]',
   box: '[data-ux="box"]',
   dex: '[data-ux="dex"]',
   move: '.move-block',
-  contract: '.slots-pill',
   mult: '.speed-wrap .info-btn',
   badge: '.top .badge',
   perk: '.perk-btn',
 };
 
 /** 토스트에 붙는 열린 대상의 아이콘 */
-const ICON: Record<UnlockId, IconName> = {
-  tap: 'ui-tools',
-  bundle: 'bundle',
+const ICON: Partial<Record<UnlockId, IconName>> = {
+  home: 'perk-home_boost',
   box: 'box-closed',
   dex: 'ui-dex',
   move: 'ui-move',
-  contract: 'contract',
   mult: 'fever',
   badge: 'ui-rocket',
   perk: 'perk',
@@ -68,15 +64,19 @@ export function initUnlock(hooks: UnlockHooks): void {
   H = hooks;
 }
 
-/** 탭이 열려 있는가(서비스 탭은 항상 열림). 조건은 충족했지만 연출 순서를 기다리는 탭도 연다 */
+/** 탭이 열려 있는가(공구 탭은 항상 열림). 조건은 충족했지만 연출 순서를 기다리는 탭도 연다 */
 export function tabOpen(id: string): boolean {
-  if (id === 'services') return true;
+  if (id === 'tap') return true;
   if (!(UNLOCK_IDS as readonly string[]).includes(id)) return true;
   const s = H.ctx.get();
   return isOpen(s, id as UnlockId) || queue.includes(id as UnlockId) || pendingUnlocks(s).includes(id as UnlockId);
 }
 
 export const hasNewTabDot = (id: string): boolean => newTabs.has(id as DotTab);
+/** 탭 버튼에 알림 점을 한 번 찍는다(그 탭을 보고 있으면 찍지 않는다) */
+export function markTabDot(id: DotTab): void {
+  if (!H.isActiveTab(id)) newTabs.add(id);
+}
 export function clearNewTabDot(id: string): void {
   newTabs.delete(id as DotTab);
 }
@@ -94,6 +94,7 @@ function blocked(): boolean {
 }
 
 function pump(): void {
+  if (queue.length === 0) silent.clear();
   if (timer || queue.length === 0) return;
   const wait = Math.max(blocked() ? 300 : 0, GAP_MS - (performance.now() - lastPlay));
   if (wait > 0) {
@@ -115,17 +116,22 @@ function play(id: UnlockId): void {
   apply();
   const motion = !fx.isReduced();
   if (motion) {
-    for (const n of document.querySelectorAll<HTMLElement>(POP_SELECTOR[id])) {
+    for (const n of document.querySelectorAll<HTMLElement>(POP_SELECTOR[id] ?? '.ux-none')) {
       n.classList.remove('ux-pop');
       void n.offsetWidth;
       n.classList.add('ux-pop');
       window.setTimeout(() => n.classList.remove('ux-pop'), POP_MS);
     }
   }
-  const target = [...document.querySelectorAll(EDGE_SELECTOR[id])].find((n) => n.getBoundingClientRect().width > 0);
+  const target = [...document.querySelectorAll(EDGE_SELECTOR[id] ?? '.ux-none')].find((n) => n.getBoundingClientRect().width > 0);
   if (target) fx.edge(target, 'or', [1, 0, 1, 0, 1, 1]);
-  if ((id === 'tap' || id === 'box' || id === 'dex') && !H.isActiveTab(id)) newTabs.add(id);
-  H.toast(`새로 열렸어요 · ${UNLOCK_NAME[id]}`, false, ICON[id]);
+  if (id === 'home' || id === 'box' || id === 'dex') markTabDot(id);
+  // 같은 순간에 줄 선 것은 토스트 하나로 묶는다(연출은 하나씩 따로)
+  if (!silent.delete(id)) {
+    const names = [id, ...queue.filter((q) => !isOpen(s, q))].map((q) => UNLOCK_NAME[q]);
+    for (const q of queue) silent.add(q);
+    H.toast(`새로 열렸어요 · ${names.length <= 2 ? names.join(' · ') : `${names[0]} · ${names[1]} 외 ${names.length - 2}가지`}`, false, ICON[id]);
+  }
   sfx.ready();
   vibrate([10, 20, 10]);
   H.ctx.save();

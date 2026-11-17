@@ -1,72 +1,89 @@
 import { describe, expect, it } from 'vitest';
 import { tapWithRng } from './variety';
 import {
-  buyService,
   buyTapUpgrade,
-  bulkCost,
   globalMult,
-  maxAffordable,
   milestoneMult,
-  pps,
-  serviceCost,
-  nextTapRatio,
+  collectionMult,
+  homeMult,
+  multBreakdown,
+  tapStable,
   tapBase,
   tapBreakdown,
   tapCost,
-  tapFlatValue,
   tapGate,
   initialTapGate,
   type TapGateState,
-  tapRatio,
   tapValue,
   applyTap,
   tick,
 } from './economy';
 import { defaultState } from './state';
-import { TAPS_PER_SEC_FULL, SERVICE_MILESTONES, TAP_BOX_SCALE, TAP_COST_RATE, TAP_MILESTONES } from '../data/services';
+import { DAMPED_RATIO, TAPS_PER_SEC_FULL, TAP_BOX_SCALE, TAP_COST_RATE, TAP_MILESTONES } from '../data/tap';
 import { perkEffects } from './perks';
 
-describe('서비스 비용·수익', () => {
-  it('비용은 기본*1.15^레벨', () => {
-    expect(serviceCost(0, 0)).toBe(15);
-    expect(serviceCost(0, 1)).toBeCloseTo(17.25);
-    expect(serviceCost(1, 2)).toBeCloseTo(120 * 1.15 ** 2);
+describe('마일스톤', () => {
+  it('마일스톤 배수는 10·25·50·100·150·200·300·400에서 x2 누적', () => {
+    expect(milestoneMult(9, TAP_MILESTONES)).toBe(1);
+    expect(milestoneMult(10, TAP_MILESTONES)).toBe(2);
+    expect(milestoneMult(24, TAP_MILESTONES)).toBe(2);
+    expect(milestoneMult(25, TAP_MILESTONES)).toBe(4);
+    expect(milestoneMult(100, TAP_MILESTONES)).toBe(16);
+    expect(milestoneMult(149, TAP_MILESTONES)).toBe(16);
+    expect(milestoneMult(150, TAP_MILESTONES)).toBe(32);
+    expect(milestoneMult(299, TAP_MILESTONES)).toBe(64);
+    expect(milestoneMult(400, TAP_MILESTONES)).toBe(256);
+    expect(tapBase(400)).toBe(401 * 256);
   });
-  it('마일스톤 배수는 10·25·50·100·200·400에서 x2 누적', () => {
-    expect(milestoneMult(9, SERVICE_MILESTONES)).toBe(1);
-    expect(milestoneMult(10, SERVICE_MILESTONES)).toBe(2);
-    expect(milestoneMult(24, SERVICE_MILESTONES)).toBe(2);
-    expect(milestoneMult(25, SERVICE_MILESTONES)).toBe(4);
-    expect(milestoneMult(400, SERVICE_MILESTONES)).toBe(64);
-  });
-  it('수익 = 기본*레벨*마일스톤*G', () => {
-    const s = defaultState();
-    s.services[0] = 10;
-    expect(pps(s)).toBeCloseTo(0.5 * 10 * 2);
-    s.moves = 2;
+  it('영구 배율만 있으면 globalMult는 1 + 1.5 x 이사', () => {
+    const s = { ...defaultState(), moves: 2 };
     expect(globalMult(s)).toBe(4);
-    expect(pps(s)).toBeCloseTo(0.5 * 10 * 2 * 4);
   });
-  it('벌크 비용과 MAX 구매 수량', () => {
-    let sum = 0;
-    for (let l = 3; l < 13; l++) sum += serviceCost(2, l);
-    expect(bulkCost(2, 3, 10)).toBeCloseTo(sum, 6);
-    const pts = 5000;
-    const n = maxAffordable(1, 4, pts);
-    expect(bulkCost(1, 4, n)).toBeLessThanOrEqual(pts);
-    expect(bulkCost(1, 4, n + 1)).toBeGreaterThan(pts);
-    expect(maxAffordable(0, 0, 14.9)).toBe(0);
+});
+
+describe('살림 배율 H', () => {
+  const home = (lv: number, boost = 0) => ({ ...defaultState(), homeLv: Array(8).fill(lv), perks: (boost ? { home_boost: boost } : {}) as Record<string, number> });
+  it('살림이 없으면 x1, 8칸 모두 Lv1 x1.4 · Lv3 x3.4 · Lv12 약 x20(20.2)', () => {
+    expect(homeMult(defaultState())).toBe(1);
+    expect(homeMult(home(1))).toBeCloseTo(1.4, 10);
+    expect(homeMult(home(3))).toBeCloseTo(3.4, 10);
+    expect(homeMult(home(12))).toBeCloseTo(20.2, 10);
   });
-  it('구매: 포인트 차감, 부족하면 null, 미해금이면 null', () => {
-    const s = defaultState();
-    s.points = 15;
-    const b = buyService(s, 0, 1);
-    expect(b?.points).toBe(0);
-    expect(b?.services[0]).toBe(1);
-    expect(buyService(s, 1, 1)).toBeNull();
-    expect(buyService({ ...s, points: 14 }, 0, 1)).toBeNull();
-    const u = { ...s, points: 1000, services: [1, 0, 0, 0, 0, 0, 0, 0] };
-    expect(buyService(u, 1, 1)?.services[1]).toBe(1);
+  it('단계(Lv 3·12·48·192)가 오르면 그 칸의 기여가 2배', () => {
+    const at = (lv: number) => ({ ...defaultState(), homeLv: [lv, 0, 0, 0, 0, 0, 0, 0] });
+    expect((homeMult(at(3)) - 1) / (homeMult(at(2)) - 1)).toBeCloseTo((3 * 2) / 2, 10);
+    expect((homeMult(at(12)) - 1) / (homeMult(at(11)) - 1)).toBeCloseTo((12 * 4) / (11 * 2), 10);
+    expect(homeMult(at(48)) - 1).toBeCloseTo(0.05 * 48 * 8, 10);
+    expect(homeMult(at(192)) - 1).toBeCloseTo(0.05 * 192 * 16, 10);
+  });
+  it('살림 장인 특전은 곱해지고 탭 수익에만 들어간다', () => {
+    expect(homeMult(home(3, 2))).toBeCloseTo(3.4 * 1.5, 10);
+    const a = { ...defaultState(), homeLv: Array(8).fill(3) };
+    expect(tapValue(a)).toBeCloseTo(tapValue(defaultState()) * 3.4, 10);
+    expect(multBreakdown(a, 'tap').home).toBeCloseTo(3.4, 10);
+  });
+});
+
+describe('탭 식', () => {
+  it('tapStable = tapBase x 영구 x 도감 x 살림 x 탭 특전 x 0.6, 피버 제외', () => {
+    const s = {
+      ...defaultState(),
+      tapLevel: 12,
+      moves: 1,
+      homeLv: Array(8).fill(1),
+      perks: { tap_power: 1 },
+      collection: { fan: { base: 1, shiny: 0, gold: 0, rainbow: 0 } },
+      fever: { gauge: 0, activeSec: 5, cooldownSec: 0 },
+    };
+    const want = tapBase(12) * 2.5 * collectionMult(s) * 1.4 * perkEffects(s).tapMult * TAP_BOX_SCALE;
+    expect(tapStable(s)).toBeCloseTo(want, 10);
+    expect(tapValue(s)).toBeCloseTo(want * 3, 10);
+    expect(multBreakdown(s, 'tap').total * tapBase(12) * TAP_BOX_SCALE).toBeCloseTo(tapValue(s), 8);
+  });
+  it('감쇠 탭은 x0.3', () => {
+    const s = { ...defaultState(), tapLevel: 9 };
+    expect(tapValue(s, true)).toBeCloseTo(tapValue(s) * DAMPED_RATIO, 12);
+    expect(DAMPED_RATIO).toBe(0.3);
   });
 });
 
@@ -92,53 +109,24 @@ describe('탭', () => {
     expect(up?.points).toBe(0);
     expect(buyTapUpgrade({ ...s, points: 19 })).toBeNull();
   });
-  it('서비스가 없으면 탭 수익은 기본값뿐(예전과 동일)', () => {
-    for (const lv of [0, 5, 10, 30]) {
-      const s = { ...defaultState(), tapLevel: lv };
-      expect(tapValue(s)).toBeCloseTo(tapBase(lv) * TAP_BOX_SCALE);
-      expect(tapBreakdown(s).fromPps).toBe(0);
-    }
-  });
-  it('탭 수익 = 기본값 + 탭 비율 x 초당 수익(서비스 수에 비례)', () => {
-    const a = { ...defaultState(), tapLevel: 10, services: [10, 0, 0, 0, 0, 0, 0, 0] };
-    const b = { ...a, services: [20, 0, 0, 0, 0, 0, 0, 0] };
+  it('탭 내역은 {flat, total}: flat = tapStable, total = tapValue', () => {
+    const a = { ...defaultState(), tapLevel: 10, fever: { gauge: 0, activeSec: 5, cooldownSec: 0 } };
     const bd = tapBreakdown(a);
-    expect(bd.ratio).toBe(tapRatio(10));
-    expect(bd.fromPps).toBeCloseTo(tapRatio(10) * pps(a) * TAP_BOX_SCALE, 10);
-    expect(tapBreakdown(b).fromPps).toBeCloseTo(bd.fromPps * 2, 10);
+    expect(Object.keys(bd).sort()).toEqual(['flat', 'total']);
+    expect(bd.flat).toBeCloseTo(tapStable(a), 10);
     expect(bd.total).toBeCloseTo(tapValue(a), 10);
-    expect(tapFlatValue(a)).toBeCloseTo(bd.flat, 10);
   });
-  it('피버·이벤트는 탭 수익에 한 번만 곱해진다', () => {
-    const base = { ...defaultState(), tapLevel: 12, services: [20, 5, 0, 0, 0, 0, 0, 0] };
+  it('피버는 탭 수익에 한 번만 곱해진다', () => {
+    const base = { ...defaultState(), tapLevel: 12, };
     const fever = { ...base, fever: { ...base.fever, activeSec: 5 } };
-    const event = { ...base, event: { ...base.event, remainSec: 30 } };
     expect(tapValue(fever)).toBeCloseTo(tapValue(base) * 3, 8);
-    expect(tapValue(event)).toBeCloseTo(tapValue(base) * 3, 8);
   });
-  it('약정은 탭 수익에 영향 없음', () => {
-    const base = { ...defaultState(), tapLevel: 12, services: [20, 5, 0, 0, 0, 0, 0, 0] };
-    const withC = { ...base, contracts: [{ service: 0, kind: 'normal' as const, remainSec: 100, totalSec: 900, penaltyBase: 1 }] };
-    expect(tapValue(withC)).toBe(tapValue(base));
-  });
-  it('탭 특전은 기본값 몫과 비율 몫 모두에 곱해진다', () => {
-    const base = { ...defaultState(), tapLevel: 12, services: [20, 5, 0, 0, 0, 0, 0, 0] };
+  it('탭 특전은 탭 수익에 곱해진다', () => {
+    const base = { ...defaultState(), tapLevel: 12, };
     const perked = { ...base, perks: { tap_power: 2 } };
     expect(tapValue(perked)).toBeCloseTo(tapValue(base) * perkEffects(perked).tapMult, 8);
   });
-  it('탭 비율은 레벨마다 단조 증가하고 레벨 0에서 1%, 마일스톤에서 크게 뛴다', () => {
-    expect(tapRatio(0)).toBeCloseTo(0.01, 12);
-    let prev = tapRatio(0);
-    for (let l = 1; l <= 200; l++) {
-      const r = tapRatio(l);
-      expect(r).toBeGreaterThan(prev);
-      prev = r;
-    }
-    for (const m of TAP_MILESTONES) expect(tapRatio(m) - tapRatio(m - 1)).toBeGreaterThan(tapRatio(m - 1) - tapRatio(m - 2) + 0.005);
-    expect(nextTapRatio(7)).toBe(tapRatio(8));
-    expect(tapRatio(100)).toBeLessThan(0.5);
-  });
-  it('강화 가격은 초당 수익과 무관한 지수 곡선', () => {
+  it('강화 가격은 지수 곡선', () => {
     for (let l = 0; l < 150; l++) expect(tapCost(l + 1) / tapCost(l)).toBeCloseTo(TAP_COST_RATE, 10);
   });
   const run = (perSec: number, sec: number, from = 1000, gate: TapGateState = initialTapGate()) => {
@@ -192,29 +180,30 @@ describe('탭', () => {
     }
     expect(fullRun).toBe(TAPS_PER_SEC_FULL);
   });
-  it('감쇠된 탭은 기본값 몫만 준다(초당 수익 비례 몫 없음)', () => {
-    const s = { ...defaultState(), tapLevel: 12, services: [20, 5, 0, 0, 0, 0, 0, 0] };
-    expect(tapValue(s, true)).toBeCloseTo(tapFlatValue(s), 10);
-    expect(tapValue(s, true)).toBeLessThan(tapValue(s));
+  it('감쇠된 탭은 기본값 몫만 준다', () => {
+    const s = { ...defaultState(), tapLevel: 12, };
+    expect(tapValue(s, true)).toBeCloseTo(tapStable(s) * DAMPED_RATIO, 10);
+    expect(tapValue(s, true)).toBeLessThanOrEqual(tapValue(s));
     expect(tapValue(s, false)).toBe(tapValue(s));
     const a = applyTap(s, true);
-    expect(a.points - s.points).toBeCloseTo(tapFlatValue(s), 10);
+    expect(a.points - s.points).toBeCloseTo(tapStable(s) * DAMPED_RATIO, 10);
     expect(tapWithRng(s, () => 0.99, true).damped).toBe(true);
-    expect(tapWithRng(s, () => 0.99, true).gain).toBeCloseTo(tapFlatValue(s), 10);
+    expect(tapWithRng(s, () => 0.99, true).gain).toBeCloseTo(tapStable(s) * DAMPED_RATIO, 10);
     expect(tapWithRng(s, () => 0.99).damped).toBe(false);
     expect(tapWithRng(s, () => 0.99, true).state.fever.gauge).toBe(s.fever.gauge + 0.5);
     expect(tapWithRng(s, () => 0, true).crit).toBe(false);
-    expect(tapWithRng(s, () => 0, true).gain).toBeCloseTo(tapFlatValue(s), 10);
+    expect(tapWithRng(s, () => 0, true).gain).toBeCloseTo(tapStable(s) * DAMPED_RATIO, 10);
     expect(tapWithRng(s, () => 0.99).state.fever.gauge).toBeGreaterThan(s.fever.gauge);
   });
 });
 
 describe('tick', () => {
-  it('pps*dt를 points와 earned에 더함', () => {
-    const s = { ...defaultState(), services: [4, 0, 0, 0, 0, 0, 0, 0] };
+  it('자동 수익은 없고 플레이 시간만 쌓인다', () => {
+    const s = defaultState();
     const t = tick(s, 2);
-    expect(t.points).toBeCloseTo(4);
-    expect(t.earned).toBeCloseTo(4);
+    expect(t.points).toBe(0);
+    expect(t.earned).toBe(0);
+    expect(t.stats.playSec).toBe(2);
     expect(tick(s, 0)).toBe(s);
   });
 });

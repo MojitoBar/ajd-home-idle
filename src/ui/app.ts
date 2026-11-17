@@ -15,70 +15,71 @@ import './m9-unlock.css';
 import './m11-charge.css';
 import './m12-weak.css';
 import './px/room.css';
-import { SERVICES, SERVICE_MILESTONES, TAP_MILESTONES } from '../data/services';
+import { TAP_MILESTONES } from '../data/tap';
 import { MOON_STAGE } from '../data/houses';
 import {
-  buyService,
+  buyStrikeUpgrade,
   buyTapUpgrade,
-  bulkCost,
+  multBreakdown,
   permMult,
-  isUnlocked,
-  maxAffordable,
   milestoneMult,
   nextMilestone,
-  pps,
-  nextTapRatio,
-  serviceProd,
+  strikeCost,
   tapCost,
+  strikeMult,
   tapGate,
   initialTapGate,
   type TapGateState,
-  tapRatio,
   tapValue,
   tick,
 } from '../logic/economy';
-import { tapAndHit } from '../logic/unpack';
+import type { SpecialBox } from '../data/unpack';
+import { heavyHit, rollSalt, rushTap, specialAt, tapAndHit } from '../logic/unpack';
+import { ROOM_ITEMS, RUSH_RATE } from '../data/unpack';
 import { addEarned, comboAdd, comboBonus, comboExpired, comboHit, comboMult, comboTier, comboWindowMs, initialCombo, type ComboState } from '../logic/combo';
 import * as comboUi from './comboUi';
 import * as chargeUi from './chargeUi';
 import * as weakUi from './weakUi';
+import { buyGear, gearEffects, gearLevel, initialShield, resolveStreak, type ShieldState } from '../logic/gear';
+import { streakMult } from '../logic/charge';
+import { createGearCards, GEAR_ICON, syncGearCards, type GearCard } from './gearUi';
+import { gearDef, type GearId } from '../data/gear';
 import { advanceWeak, hitWeak, initialWeak, weakVisible, type WeakState } from '../logic/weak';
-import { chargeZoneAt, releaseCharge, rollChargeZone, type ChargeZone, CHARGE_ZONE_DEFAULT } from '../logic/charge';
+import { chargeTaps, chargeZoneAt, releaseCharge, rollChargeZone, type ChargeZone, CHARGE_ZONE_DEFAULT } from '../logic/charge';
 import { advanceHeat, heatAdd, heatDamped, heatStrikeMult, heatTap, heatTapMult, heatZone, HEAT_WEAK, initialHeat, ventHeat, type HeatAdd, type HeatState } from '../logic/heat';
 import * as heatUi from './heatUi';
-import { formatDuration, formatNumber, speedTitle } from '../logic/format';
-import { applyOffline, offlineCapSec, type OfflineResult } from '../logic/offline';
+import { formatNumber } from '../logic/format';
+import { applyOffline } from '../logic/offline';
 import { houseInfo, move, moveProgress, moveStatus, permMultAfterMove } from '../logic/prestige';
 import { exportString, importString, parseSave, serialize } from '../logic/save';
 import type { GameState } from '../logic/state';
 import { defaultState } from '../logic/state';
-import { houseIcon, iconImg, iconUrl, preloadIcons, setLabel, svcIcon, type IconName } from './icons';
+import { houseIcon, iconImg, preloadIcons, setLabel, type IconName } from './icons';
 import { desktopMq, el, glyph, openModal, setDisabled, setText, toggleClass } from './dom';
 import { initKeys } from './keys';
 import { clearSave, readSave, writeBackup, writeSave } from './storage';
 import * as fx from './fx';
 import { sfx } from './sound';
 import { getPrefs, hapticsSupported, setPrefs, vibrate } from './prefs';
-import { boxAnchor, boxCenter, dockToolEl, initUnpack, makeToolEl, roomStrip, shelfItemEl, syncUnpack, unpackHeavy, unpackHit } from './unpackUi';
+import { boxAnchor, boxCenter, chainVisible, dockToolEl, initUnpack, makeToolEl, roomStrip, syncUnpack, chainInfo, chainPlaying, unpackHeavy, unpackHit, unpackRush } from './unpackUi';
+import { textBoxes } from './clutter';
 import { fresh, type UiCtx } from './collectUi';
 import { canBuyBox, initBox, panel as boxPanel, updateBox } from './box';
 import { initDex, panel as dexPanel, renderDex, updateDex } from './dex';
 import { badge as feverBadge, gauge as feverGauge, initFever, syncFever } from './feverUi';
+import { initRush, syncRush } from './rushUi';
 import { initParcel, syncParcel } from './parcelUi';
 import { dropTapNumber, tapEffect } from './tapFx';
 import * as strat from './strategyUi';
-import { nextUnlock, UNLOCK_NAME } from '../logic/unlock';
+import { homePanel, syncHome } from './homeUi';
 import { clearNewTabDot, hasNewTabDot, initUnlock, syncUnlock, tabOpen } from './unlockUi';
-import { badgeEl as eventBadge, callBtn as eventCall, initEvent, syncEvent } from './eventUi';
 
-type BuyMode = 1 | 10 | 'max';
 preloadIcons();
 
-type TabId = 'services' | 'tap' | 'box' | 'dex';
+type TabId = 'tap' | 'home' | 'box' | 'dex';
 
 let state: GameState = defaultState();
-let buyMode: BuyMode = 1;
-let activeTab: TabId = 'services';
+let activeTab: TabId = 'tap';
 let tapGateState: TapGateState = initialTapGate();
 let closeModal: (() => void) | null = null;
 let moving = false;
@@ -89,6 +90,11 @@ let combo: ComboState = initialCombo();
 let comboBest0 = 0;
 /** 연속 퍼펙트 수(저장하지 않는 실행 중 상태) */
 let chargeStreak = 0;
+/** 안전모 실드(저장하지 않음). 불러오기·이사 때 가득 찬다. shieldMax는 마지막으로 맞춘 칸 수 */
+let shield: ShieldState = initialShield(0);
+let shieldMax = 0;
+/** 지금 게이지에 그린 퍼펙트 반폭(수평계가 바뀌면 구간을 새 폭으로 다시 그린다) */
+let zoneHalf = -1;
 let chargeTipDone = false;
 let weak: WeakState = initialWeak(Math.random);
 let lastTapMs = 0;
@@ -102,8 +108,6 @@ let chargeZone: ChargeZone = CHARGE_ZONE_DEFAULT;
 let heatTipPending = false;
 let heatAuto = !location.search.includes('debug');
 let zoneAuto = !location.search.includes('debug');
-let lastTitle = '';
-let lastP = 0;
 let lastReady: boolean | null = null;
 const lastPointer = { x: 195, y: 420 };
 window.addEventListener('pointerdown', (e) => {
@@ -114,10 +118,10 @@ window.addEventListener('pointerdown', (e) => {
 const refs = {
   topIco: el('span', { cls: 'top-ico' }),
   houseName: el('span', { cls: 'house-name' }),
-  badge: el('span', { cls: 'badge' }),
+  badgeVal: el('span', { cls: 'badge-val' }),
+  badge: el('button', { cls: 'badge', attrs: { type: 'button', 'aria-label': '배율 내역' } }),
   speedVal: el('span'),
   speed: el('div', { cls: 'speed-num' }),
-  speedTitle: el('div', { cls: 'speed-title' }),
   points: el('div', { cls: 'points' }),
   ptsMain: el('span', { cls: 'pts-main' }),
   ptsRate: el('span', { cls: 'pts-rate' }),
@@ -126,7 +130,6 @@ const refs = {
   miniPhone: el('button', { cls: 'dock-phone', attrs: { 'aria-label': '상담 전화 받기(독 버튼)' } }, dockToolEl),
   dockPts: el('span', { cls: 'dock-pts-main' }),
   dockRate: el('span', { cls: 'dock-pts-rate' }),
-  seg: el('div', { cls: 'seg', attrs: { role: 'group', 'aria-label': '구매 수량' } }),
   tapHint: el('div', { cls: 'tap-hint' }),
   tip: el('div', { cls: 'first-tip', attrs: { hidden: '', 'aria-hidden': 'true' } }, el('span', { cls: 'first-tip-t' }), el('i', { cls: 'first-tip-tail' })),
   barFill: el('div', { cls: 'bar-fill' }),
@@ -136,6 +139,7 @@ const refs = {
   toast: el('div', { cls: 'toasts', attrs: { 'aria-live': 'polite' } }),
 };
 
+const rollBadge = fx.roller(refs.badgeVal, (v) => `x${formatNumber(v)}`, { flashRatio: 1.2, flashMin: 0.5 });
 const rollSpeed = fx.roller(refs.speedVal, formatNumber, { flashRatio: 1.5, flashMin: 0.4 });
 /** 포인트가 모이는 목표: 모바일은 독의 포인트, PC는 왼쪽 단 머리 */
 function ptsTarget(): Element {
@@ -172,29 +176,9 @@ function fitHead(): void {
 }
 new ResizeObserver(fitHead).observe(refs.houseName);
 
-const prevCan: (boolean | undefined)[] = [];
-const lastSpark: number[] = [];
-
-interface ServiceRow {
-  card: HTMLElement;
-  msFill: HTMLElement;
-  msLabel: HTMLElement;
-  icon: HTMLElement;
-  name: HTMLElement;
-  lv: HTMLElement;
-  info: HTMLElement;
-  btn: HTMLButtonElement;
-  buyHead: HTMLElement;
-  buyPrice: HTMLElement;
-  chips: HTMLElement;
-}
-const serviceRows: ServiceRow[] = [];
-let cardListEl: HTMLElement | null = null;
-const modeBtns = new Map<BuyMode, HTMLButtonElement>();
 const tabBtns = new Map<TabId, HTMLButtonElement>();
 const tabDots = new Map<TabId, HTMLElement>();
 const multBtn = el('button', { cls: 'info-btn', attrs: { type: 'button', 'aria-label': '배율 내역 보기', title: '배율 내역 보기' } });
-const servicesPanel = el('div', { cls: 'panel-inner' });
 const tapPanel = el('div', { cls: 'panel-inner' });
 const tapRefs = {
   lv: el('div', { cls: 'card-lv' }),
@@ -206,6 +190,17 @@ const tapRefs = {
   buyPrice: el('span', { cls: 'buy-p fb' }),
 };
 const tapBtn = el('button', { cls: 'btn buy fb' }, tapRefs.buyHead, tapRefs.buyPrice);
+const strikeRefs = {
+  lv: el('div', { cls: 'card-lv' }),
+  info: el('div', { cls: 'card-info key' }),
+  best: el('div', { cls: 'card-info dim' }),
+  buyHead: el('span', { cls: 'buy-h' }),
+  buyPrice: el('span', { cls: 'buy-p fb' }),
+};
+const strikeBtn = el('button', { cls: 'btn buy fb' }, strikeRefs.buyHead, strikeRefs.buyPrice);
+let gearCards: GearCard[] = [];
+const gearNext = el('p', { cls: 'note dim tool-note gear-next', attrs: { hidden: '' } });
+let gearOpenSeen: Set<GearId> | null = null;
 
 function button(cls: string, text: string, onClick: () => void): HTMLButtonElement {
   const b = el('button', { cls, text });
@@ -272,7 +267,7 @@ function build(): void {
   settingsBtn.setAttribute('aria-label', '설정');
   multBtn.append(glyph('i'));
   settingsBtn.title = '설정';
-  const header = el('header', { cls: 'top' }, refs.topIco, refs.houseName, refs.badge, eventBadge, strat.perkBtn, settingsBtn);
+  const header = el('header', { cls: 'top' }, refs.topIco, refs.houseName, refs.badge, strat.perkBtn, settingsBtn);
 
   refs.phone.type = 'button';
   refs.phone.addEventListener('pointerdown', (e) => {
@@ -302,13 +297,14 @@ function build(): void {
     }
   });
   refs.points.append(iconImg('coin', { size: 32, cls: 'pts-coin' }), refs.ptsMain, refs.ptsRate, feverBadge);
-  refs.room.append(refs.phone, refs.tapHint, eventCall, refs.tip);
+  refs.room.append(refs.phone, refs.tapHint, refs.tip);
   initFever(refs.room, refs.phone);
-  initUnpack({ room: refs.room, eventCall, tapHint: refs.tapHint, toast: showToast });
+  initRush(refs.room);
+  initUnpack({ room: refs.room, tapHint: refs.tapHint, toast: showToast });
   comboUi.attach(refs.room, refs.phone, document.getElementById('app')!);
   chargeUi.initCharge({
     room: refs.room,
-    canStart: () => !moving && document.visibilityState === 'visible' && !document.querySelector('.overlay, .box-scene, .move-scene'),
+    canStart: () => !moving && !chainPlaying() && document.visibilityState === 'visible' && !document.querySelector('.overlay, .box-scene, .move-scene'),
     streak: () => chargeStreak,
     onRelease: applyCharge,
   });
@@ -334,8 +330,8 @@ function build(): void {
   const tabsL = el('div', { cls: 'tab-grp' });
   const tabsR = el('div', { cls: 'tab-grp' });
   const defs: [TabId, string, HTMLElement][] = [
-    ['services', '서비스', iconImg('svc-internet', { size: 48 })],
     ['tap', '공구 강화', iconImg('ui-tools', { size: 48 })],
+    ['home', '살림', iconImg('perk-home_boost', { size: 32 })],
     ['box', '상자', iconImg('box-closed', { size: 32 })],
     ['dex', '도감', iconImg('ui-dex', { size: 32 })],
   ];
@@ -345,28 +341,14 @@ function build(): void {
     b.append(el('span', { cls: 'tab-ico' }, icon, dot), el('span', { cls: 'tab-lbl', text: label }));
     tabDots.set(id, dot);
     tabBtns.set(id, b);
-    if (id !== 'services') b.dataset.ux = id;
-    const grp = id === 'services' || id === 'tap' ? tabsL : tabsR;
+    if (id !== 'tap') b.dataset.ux = id;
+    const grp = id === 'tap' || id === 'home' ? tabsL : tabsR;
     grp.append(b);
-    if (id !== 'services') grp.append(el('span', { cls: 'tab-lock', attrs: { 'aria-hidden': 'true', 'data-lock': id } }));
+    if (id !== 'tap') grp.append(el('span', { cls: 'tab-lock', attrs: { 'aria-hidden': 'true', 'data-lock': id } }));
   }
   tabs.append(tabsL, el('span', { cls: 'tab-gap', attrs: { 'aria-hidden': 'true' } }), tabsR, refs.miniPhone);
-  const modes: [BuyMode, string][] = [
-    [1, 'x1'],
-    [10, 'x10'],
-    ['max', 'MAX'],
-  ];
-  for (const [m, label] of modes) {
-    const b = button('chip fb', label, () => {
-      buyMode = m;
-      update();
-    });
-    modeBtns.set(m, b);
-    refs.seg.append(b);
-  }
-  const dock = el('nav', { cls: 'dock', attrs: { 'aria-label': '메뉴' } }, el('div', { cls: 'dock-band' }, el('div', { cls: 'dock-pts' }, iconImg('coin', { size: 32, alt: '', cls: 'pts-coin' }), el('span', { cls: 'dock-pts-txt' }, refs.dockPts, refs.dockRate)), refs.seg), tabs);
+  const dock = el('nav', { cls: 'dock', attrs: { 'aria-label': '메뉴' } }, el('div', { cls: 'dock-band' }, el('div', { cls: 'dock-pts' }, iconImg('coin', { size: 32, alt: '', cls: 'pts-coin' }), el('span', { cls: 'dock-pts-txt' }, refs.dockPts, refs.dockRate))), tabs);
 
-  buildServicesPanel();
   buildTapPanel();
   const uiCtx: UiCtx = {
     get: () => state,
@@ -382,25 +364,19 @@ function build(): void {
   initUnlock({ ctx: uiCtx, toast: showToast, isActiveTab: (id) => activeTab === id });
   initBox(uiCtx);
   initDex(uiCtx);
-  initEvent(uiCtx);
   initParcel(refs.room, ptsTarget, uiCtx);
-  strat.initStrategy({
-    ctx: uiCtx,
-    card: (i) => serviceRows[i]?.card ?? null,
-    icon: (i) => serviceRows[i]?.icon ?? null,
-    servicesVisible: () => activeTab === 'services',
-    toast: showToast,
-    buyCount,
-  });
-  refs.speed.append(refs.speedVal, el('span', { cls: 'speed-unit', text: ' Mbps' }));
+  strat.initStrategy({ ctx: uiCtx });
+  refs.speed.append(el('span', { cls: 'speed-pre', text: '탭 1회 ' }), refs.speedVal);
+  refs.badge.append(refs.badgeVal);
+  refs.badge.addEventListener('click', () => strat.toggleMult(refs.points));
   for (const n of [refs.speed, refs.ptsRate, multBtn]) n.addEventListener('click', () => strat.toggleMult(refs.points));
-  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = s; }, combo: (n: number) => { combo = { n, lastMs: performance.now(), earned: n * 100 }; comboBest0 = state.bestCombo; }, getCombo: () => combo, holdAt: chargeUi.holdAt, release: chargeUi.releaseHeld, charge: (pos: number) => { chargeUi.holdAt(pos); chargeUi.releaseHeld(); }, streak: (n: number) => { chargeStreak = n; }, tip: chargeUi.showTip, keep: () => { if (combo.n) combo = { ...combo, lastMs: performance.now() }; }, weak: showWeakAt, weakHit: () => { const r = document.querySelector('.weak:not([hidden])')?.getBoundingClientRect(); if (r) applyWeak(r.left + r.width / 2, r.top + r.height / 2); }, weakAuto: (on: boolean) => { weakAuto = on; }, weakTip: () => weakUi.showTip(), getWeak: () => weak, heatAuto: (on: boolean) => { heatAuto = on; }, zoneAuto: (on: boolean) => { zoneAuto = on; }, heat: (v: number) => setHeat(v >= 100 ? heatAdd(initialHeat(), 100) : { heat: { v, overMs: 0 }, overheated: false }), getHeat: () => heat, zone: (center: number) => { chargeZone = chargeZoneAt(center); chargeUi.setZone(chargeZone); }, getZone: () => chargeZone };
+  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { v9: showV9Notice, returnToast: () => { returnRush = true; announceReturn(); }, textBoxes, special: debugSpecial, rush: (sec: number) => { state = { ...state, unpack: { ...state.unpack, rushSec: sec } }; update(); }, say: (g: 'perfect' | 'good' | 'miss', streak = 0, gain = 1234, power = 1, chain = 0) => chargeUi.say(g, streak, gain, power, chain), fever: () => { state = { ...state, fever: { gauge: 0, activeSec: 10, cooldownSec: 0 } }; update(); }, particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = s; }, combo: (n: number) => { combo = { n, lastMs: performance.now(), earned: n * 100 }; comboBest0 = state.bestCombo; }, getCombo: () => combo, chain: (n: number) => { const r = refs.room.getBoundingClientRect(); applyCharge(0.5, r.left + r.width / 2, r.top + r.height / 2, n); }, getChain: chainInfo, holdAt: chargeUi.holdAt, release: chargeUi.releaseHeld, charge: (pos: number) => { chargeUi.holdAt(pos); chargeUi.releaseHeld(); }, streak: (n: number) => { chargeStreak = n; }, tip: chargeUi.showTip, keep: () => { if (combo.n) combo = { ...combo, lastMs: performance.now() }; }, weak: showWeakAt, weakHit: () => { const r = document.querySelector('.weak:not([hidden])')?.getBoundingClientRect(); if (r) applyWeak(r.left + r.width / 2, r.top + r.height / 2); }, weakAuto: (on: boolean) => { weakAuto = on; }, weakTip: () => weakUi.showTip(), getWeak: () => weak, heatAuto: (on: boolean) => { heatAuto = on; }, zoneAuto: (on: boolean) => { zoneAuto = on; }, heat: (v: number) => setHeat(v >= 100 ? heatAdd(initialHeat(), 100) : { heat: { v, overMs: 0 }, overheated: false }), getHeat: () => heat, zone: (center: number) => { chargeZone = chargeZoneAt(center, zoneHalf); chargeUi.setZone(chargeZone); }, home: (id: string | number, lv: number) => { const i = typeof id === 'number' ? id : ROOM_ITEMS.findIndex((x) => x.id === id); state = { ...state, homeLv: state.homeLv.map((x, j) => (j === i ? lv : x)) }; update(); }, gear: (id: GearId, lv: number) => { state = { ...state, gear: { ...state.gear, [id]: lv } }; update(); }, shield: (n: number, toNext = shield.toNext) => { shield = { n, toNext }; chargeUi.syncShield(shieldMax, shield); }, save: () => chargeUi.shieldSave(Math.max(0, shield.n - 1), streakMult(chargeStreak), refs.room, true), getZone: () => chargeZone };
 
   const keyHint = el('p', { cls: 'key-hint' });
-  for (const [keys, label] of [[['Space'], '상자 치기 · 꾹 강타'], [['1~4'], '탭 전환'], [['Q', 'W', 'E'], '수량'], [['Esc'], '닫기']] as [string[], string][]) {
+  for (const [keys, label] of [[['Space'], '상자 치기 · 꾹 강타'], [['1~4'], '탭 전환'], [['Esc'], '닫기']] as [string[], string][]) {
     keyHint.append(el('span', { cls: 'kh' }, el('span', {}, ...keys.map((k) => el('kbd', { text: k }))), label));
   }
-  const colPlay = el('div', { cls: 'col-play' }, header, el('section', { cls: 'hero' }, el('div', { cls: 'speed-wrap' }, refs.speed, multBtn), refs.speedTitle, refs.points), refs.room, feverGauge, ...(roomStrip() ? [roomStrip()!] : []), moveBlock, keyHint);
+  const colPlay = el('div', { cls: 'col-play' }, header, el('section', { cls: 'hero' }, el('div', { cls: 'speed-wrap' }, refs.speed, multBtn), refs.points), refs.room, feverGauge, ...(roomStrip() ? [roomStrip()!] : []), moveBlock, keyHint);
   const colList = el('div', { cls: 'col-list' }, refs.panel);
   const page = el('div', { cls: 'page' }, colPlay, colList);
   app.append(
@@ -409,14 +385,8 @@ function build(): void {
     dock,
   );
   const placeDock = (): void => {
-    if (desktopMq.matches) {
-      colList.prepend(dock);
-      strat.topBar.firstElementChild?.append(refs.seg);
-    } else {
-      app.append(dock);
-      dock.querySelector('.dock-band')?.append(refs.seg);
-    }
-    servicesPanel.prepend(strat.topBar);
+    if (desktopMq.matches) colList.prepend(dock);
+    else app.append(dock);
   };
   placeDock();
   desktopMq.addEventListener('change', placeDock);
@@ -428,51 +398,11 @@ function build(): void {
     },
     release: () => chargeUi.releaseKey(),
     tab: (n) => {
-      const id = (['services', 'tap', 'box', 'dex'] as TabId[])[n];
+      const id = (['tap', 'home', 'box', 'dex'] as TabId[])[n];
       if (tabOpen(id)) selectTab(id);
     },
-    mode: (m) => {
-      buyMode = m;
-      update();
-    },
   });
-  selectTab('services');
-}
-
-const nextText = el('span', { cls: 'next-unlock-t' });
-const nextLine = el('div', { cls: 'next-unlock', attrs: { hidden: '' } });
-
-function buildServicesPanel(): void {
-  const cardList = el('div', { cls: 'card-list' });
-  cardListEl = cardList;
-  servicesPanel.append(strat.topBar, cardList);
-  nextLine.append(nextText);
-  cardList.after(nextLine);
-  SERVICES.forEach((def, i) => {
-    const icon = el('div', { cls: 'card-icon' }, iconImg(svcIcon(def.id), { size: 48, alt: def.name }));
-    icon.style.setProperty('--ic', `url(${iconUrl(svcIcon(def.id))})`);
-    const name = el('span', { cls: 'card-name', text: def.name });
-    const lv = el('span', { cls: 'card-lv' });
-    const info = el('div', { cls: 'card-info key' });
-    const buyHead = el('span', { cls: 'buy-h' });
-    const buyPrice = el('span', { cls: 'buy-p fb' });
-    const btn = el('button', { cls: 'btn buy fb' }, buyHead, buyPrice);
-    btn.type = 'button';
-    onBuy(btn, (repeat) => buyServiceClick(i, repeat));
-    const msFill = el('div', { cls: 'ms-fill' });
-    const msLabel = el('span', { cls: 'ms-label' });
-    const ms = el('div', { cls: 'ms-bar' }, msFill);
-    const ex = strat.buildCardExtras(i);
-    const card = el(
-      'div',
-      { cls: 'card' },
-      el('div', { cls: 'card-lead' }, icon, ex.chips),
-      el('div', { cls: 'card-main' }, el('div', { cls: 'card-title' }, name, lv), info, ex.hint, msLabel, ms),
-      el('div', { cls: 'card-side' }, btn, ex.contractBtn),
-    );
-    serviceRows.push({ card, msFill, msLabel, icon, name, lv, info, btn, buyHead, buyPrice, chips: ex.chips });
-    cardList.append(card);
-  });
+  selectTab('tap');
 }
 
 function buildTapPanel(): void {
@@ -509,12 +439,57 @@ function buildTapPanel(): void {
     ),
     tapBtn,
   );
+  strikeBtn.type = 'button';
+  onBuy(strikeBtn, (repeat) => {
+    const next = buyStrikeUpgrade(state);
+    if (!next) return false;
+    state = next;
+    update();
+    sfx.buy();
+    vibrate(repeat ? 6 : 12);
+    fx.bounce(strikeBtn.closest('.card')!, repeat ? 0.98 : 0.95);
+    fx.pop(strikeRefs.lv, 1.5);
+    if (!repeat) {
+      fx.burst(lastPointer.x, lastPointer.y, { n: 5, size: 6 });
+      fx.bounce(refs.phone, 0.84);
+    }
+    return true;
+  });
+  const strikeCard = el(
+    'div',
+    { cls: 'card tap-card strike-card' },
+    el('div', { cls: 'card-icon' }, iconImg('tool/sledge', { size: 48 })),
+    el('div', { cls: 'card-main' }, el('div', { cls: 'card-title' }, el('span', { cls: 'card-name', text: '오함마' }), strikeRefs.lv), strikeRefs.info, strikeRefs.best),
+    strikeBtn,
+  );
   const tapRow = tapRefs.info.parentElement!;
   tapRow.setAttribute('role', 'button');
   tapRow.setAttribute('aria-label', '탭 수익 내역 보기');
-  tapRow.addEventListener('click', () => strat.toggleMult(tapRefs.info, 'tap'));
+  tapRow.addEventListener('click', () => strat.toggleMult(tapRefs.info));
+  gearCards = createGearCards((c) =>
+    onBuy(c.btn, (repeat) => {
+      const before = state;
+      const next = buyGear(state, c.id);
+      if (!next) return false;
+      state = next;
+      update();
+      sfx.buy();
+      vibrate(repeat ? 6 : 12);
+      fx.bounce(c.card, repeat ? 0.98 : 0.95);
+      fx.pop(c.lv, 1.5);
+      if (!repeat) {
+        fx.burst(lastPointer.x, lastPointer.y, { n: 5, size: 6 });
+        fx.bounce(refs.phone, 0.84);
+      }
+      if (c.id === 'level' || c.id === 'helmet') chargeUi.gearBuy(c.id, gearLevel(before, c.id) + 1);
+      return true;
+    }),
+  );
   tapPanel.append(
     card,
+    strikeCard,
+    ...gearCards.map((c) => c.card),
+    gearNext,
     el('p', { cls: 'note dim tool-note', text: '상자를 치면 포인트가 들어와요. 강화하면 한 번 칠 때 수익이 늘어요.' }),
     el('p', { cls: 'note dim tool-note', text: '탭 1회 줄을 누르면 내역이 보여요.' }),
   );
@@ -523,20 +498,13 @@ function buildTapPanel(): void {
 function selectTab(id: TabId): void {
   activeTab = id;
   clearNewTabDot(id);
-  const panels: Record<TabId, HTMLElement> = { services: servicesPanel, tap: tapPanel, box: boxPanel, dex: dexPanel };
+  const panels: Record<TabId, HTMLElement> = { tap: tapPanel, home: homePanel, box: boxPanel, dex: dexPanel };
   refs.panel.replaceChildren(panels[id]);
-  strat.topBar.hidden = id !== 'services';
   toggleClass(refs.panel, 'surface', id === 'box' || id === 'dex');
   const top = refs.panel.getBoundingClientRect().top + window.scrollY - 8;
   if (!desktopMq.matches && window.scrollY > top) window.scrollTo(0, top);
   if (id === 'dex') renderDex(true);
   update();
-}
-
-function buyCount(i: number): number {
-  const lv = state.services[i];
-  if (buyMode === 'max') return Math.max(1, maxAffordable(i, lv, state.points));
-  return buyMode;
 }
 
 /** PC(900px 이상)에서는 왼쪽 단(.col-play) 가운데, 모바일은 화면 가운데 */
@@ -583,102 +551,6 @@ function moveBorderSparks(): void {
   };
   wave();
   window.setTimeout(wave, 166);
-}
-
-let lastBuyGain = 0;
-/** 구매 때 뜨는 +N/초: 항상 자기 카드 안. 기본은 생산량 글자 오른쪽에서 떠오르고, 이름·Lv 칩·"Lv N에서 x2"·막대·버튼·아이콘의 칸(2px 여유)과 겹치는 떠오름 폭은 줄여서(최소 6px) 비킨다. 그래도 자리가 없으면 구매 버튼 왼쪽 4px 앞에 붙인다 */
-function buyGainText(row: ServiceRow, text: string): void {
-  const place = (w: number, h: number): { x: number; y: number; rise: number } => {
-    const textBox = (n: Element): DOMRect => {
-      const rg = document.createRange();
-      rg.selectNodeContents(n);
-      const r = rg.getBoundingClientRect();
-      return r.width > 0 ? r : n.getBoundingClientRect();
-    };
-    const cr = row.card.getBoundingClientRect();
-    const tr = textBox(row.info);
-    const ir = row.info.getBoundingClientRect();
-    const btnL = row.btn.getBoundingClientRect().left;
-    const obs: DOMRect[] = [row.name, row.lv, row.icon, row.chips, row.btn.parentElement!].map((n) => n.getBoundingClientRect());
-    for (const c of Array.from(row.info.parentElement?.children ?? [])) if (c !== row.info && c !== row.name.parentElement) obs.push(textBox(c));
-    const gap = 2;
-    const hit = (l: number, t: number, r: number, b: number): boolean => obs.some((o) => o.width > 0 && o.height > 0 && l < o.right + gap && r > o.left - gap && t < o.bottom + gap && b > o.top - gap);
-    const midY = ir.top + ir.height / 2 - h / 2;
-    const xs = [tr.right + 8, btnL - 4 - w];
-    let pos: { x: number; y: number; rise: number } | null = null;
-    search: for (const x of xs) {
-      if (x + w > btnL - 4 || x < cr.left + 2) continue;
-      for (let dy = 0; dy <= 40; dy += 2) {
-        for (const sy of dy ? [midY + dy, midY - dy] : [midY]) {
-          if (sy + h > cr.bottom - 2) continue;
-          for (let rise = 12; rise >= 6; rise -= 2) {
-            if (sy - rise < cr.top + 2) continue;
-            if (!hit(x, sy - rise, x + w, sy + h)) {
-              pos = { x, y: sy, rise };
-              break search;
-            }
-          }
-        }
-      }
-    }
-    const x = pos ? pos.x : Math.max(cr.left + 2, btnL - 4 - w);
-    const y = pos ? pos.y : Math.min(Math.max(midY, cr.top + 14), cr.bottom - 2 - h);
-    return { x, y, rise: pos ? pos.rise : 12 };
-  };
-  fx.floatText(0, 0, text, { scale: 1, ms: 900, cls: 'buy-gain', left: true, at: place });
-}
-function buyServiceClick(i: number, repeat = false): boolean {
-  const before = state.services[i];
-  const ppsBefore = pps(state);
-  const next = buyService(state, i, buyCount(i));
-  if (!next) return false;
-  state = next;
-  update();
-  const row = serviceRows[i];
-  const now = performance.now();
-  if (!repeat || now - lastBuyGain > 320) {
-    lastBuyGain = now;
-    const dp = pps(state) - ppsBefore;
-    if (dp > 0) buyGainText(row, `+${formatNumber(dp)}/초`);
-  }
-  sfx.buy();
-  vibrate(repeat ? 6 : 12);
-  fx.bounce(row.card, repeat ? 0.98 : 0.95);
-  fx.pop(row.lv, 1.5);
-  if (!repeat) buyFlourish(i, row);
-  checkMilestone(SERVICES[i].name, before, state.services[i], SERVICE_MILESTONES, row.card);
-  return true;
-}
-
-/** 서비스 목록(스크롤 영역) 윗변: 구매 연출은 이 위로 올라가지 않는다 */
-function listTop(): number {
-  if (window.innerWidth >= 900) {
-    const head = document.querySelector<HTMLElement>('.strat-line');
-    if (head && head.offsetParent) return head.getBoundingClientRect().bottom + 8;
-  }
-  let e: HTMLElement | null = cardListEl;
-  while (e && e !== document.body) {
-    const oy = getComputedStyle(e).overflowY;
-    if (oy === 'auto' || oy === 'scroll') return e.getBoundingClientRect().top;
-    e = e.parentElement;
-  }
-  return cardListEl ? cardListEl.getBoundingClientRect().top : 0;
-}
-
-function buyFlourish(i: number, row: ServiceRow): void {
-  const bp = row.btn.getBoundingClientRect();
-  fx.burst(bp.left + bp.width / 2, bp.top - 4, { n: 5, size: 6, colors: ['g2', 'g3', 'k5'], gravity: 400, up: true, avoid: bp, top: listTop() });
-  fx.wobble(row.icon);
-  const item = shelfItemEl(i);
-  fx.flyIcon(svcIcon(SERVICES[i].id), row.icon, item ?? refs.room, {
-    onArrive: () => {
-      const it = shelfItemEl(i);
-      if (!it) return;
-      fx.wobble(it);
-      const r = it.getBoundingClientRect();
-      fx.burst(r.left + r.width / 2, r.top + r.height / 2, { n: 8, kind: 'star', colors: ['#ffc83d', '#ffffff'], speed: 160, size: 5 });
-    },
-  });
 }
 
 /** 콤보 정산: 보너스를 포인트에 더한다. quiet이면 연출·대기 없이 더하기만(숨김·이사), 아니면 코인이 포인트 표시로 날아가 도착할 때 숫자가 오른다 */
@@ -739,22 +611,30 @@ function applyHeavy<T extends { state: GameState; gain: number; comboAdd: number
 }
 
 /** 꾹 눌러 강타: 떼는 순간의 표시 위치 pos로 판정한다 */
-function applyCharge(pos: number, x: number, y: number): void {
-  if (moving || document.visibilityState !== 'visible') return;
+function applyCharge(pos: number, x: number, y: number, only?: number): void {
+  if (moving || chainPlaying() || document.visibilityState !== 'visible') return;
   let power = 1;
+  let saved = false;
+  let savedAt = 0;
   const { r, wasFever } = applyHeavy(x, y, (mult) => {
-    const c = releaseCharge(state, () => Math.random(), pos, chargeStreak, mult, (g) => (power = heatStrikeMult(heat, g)), chargeZone);
-    chargeStreak = c.streak;
+    const c = only ? debugChain(only, mult, (g) => (power = heatStrikeMult(heat, g))) : releaseCharge(state, () => Math.random(), pos, chargeStreak, mult, (g) => (power = heatStrikeMult(heat, g)), chargeZone);
+    const sr = resolveStreak(chargeStreak, c.grade, shield, shieldMax);
+    saved = sr.saved;
+    savedAt = shield.n;
+    chargeStreak = sr.streak;
+    shield = sr.shield;
+    c.streak = sr.streak;
     return c;
   });
   heat = ventHeat(heat);
   if (zoneAuto) {
-    chargeZone = rollChargeZone(Math.random, chargeZone);
+    chargeZone = rollChargeZone(Math.random, chargeZone, gearEffects(state).perfectHalf);
     chargeUi.setZone(chargeZone);
   }
-  chargeUi.say(r.grade, r.streak, r.gain, power);
-  chargeUi.strikeFx(r.grade, r.streak, document.getElementById('app')!, refs.room, power);
-  unpackHeavy({ x, y, grade: r.grade, streak: r.streak, bursts: r.bursts, pointsEl: ptsTarget(), fever: wasFever });
+  chargeUi.say(r.grade, r.streak, r.gain, power, r.bursts.length, saved ? streakMult(chargeStreak) : 0);
+  chargeUi.strikeFx(r.grade, r.streak, document.getElementById('app')!, refs.room, power, r.bursts.length);
+  if (saved) chargeUi.shieldSave(savedAt - 1, streakMult(chargeStreak), refs.room);
+  unpackHeavy({ x, y, grade: r.grade, streak: r.streak, gain: r.gain, bursts: r.bursts, prize: r.prize, pointsEl: ptsTarget(), fever: wasFever });
   const c = boxCenter();
   const r2 = ptsTarget().getBoundingClientRect();
   fx.absorb({ x: c.x, y: c.y }, ptsTarget(), r.grade === 'perfect' ? 6 : r.grade === 'good' ? 3 : 1, { offset: { x: 0, y: r2.height / 2 + 12 } });
@@ -763,9 +643,34 @@ function applyCharge(pos: number, x: number, y: number): void {
   update();
 }
 
+/** 디버그: 지금 상자에서 offset번째 상자가 kind가 되는 salt를 찾아 바꾼다(null이면 앞 8개 안에 특별 상자가 없는 salt). more는 {offset: 종류} 추가 조건. 처음 20개에는 특별 상자가 없어 box 20 이상에서만 된다. 찾았으면 true */
+function debugSpecial(kind: SpecialBox | null, offset = 0, more: Record<number, SpecialBox> = {}): boolean {
+  const k = state.unpack.box;
+  const want: Array<[number, SpecialBox]> = [...(kind ? ([[offset, kind]] as Array<[number, SpecialBox]>) : []), ...Object.entries(more).map(([o, v]): [number, SpecialBox] => [Number(o), v])];
+  for (let salt = 1; salt < 400000; salt++) {
+    const ok = kind ? want.every(([o, v]) => specialAt(salt, k + o) === v) : Array.from({ length: 8 }, (_, i) => specialAt(salt, k + i)).every((x) => x === null);
+    if (!ok) continue;
+    state = { ...state, unpack: { ...state.unpack, salt } };
+    update();
+    return true;
+  }
+  return false;
+}
+
+/** 디버그: 지금 상태에서 상자 n개가 터지는 퍼펙트 강타. 로직 규칙은 그대로 두고 heavyHit에 넘기는 탭 수만 맞춘다 */
+function debugChain(n: number, mult: number, showPower: (g: 'perfect' | 'good' | 'miss') => void): ReturnType<typeof releaseCharge> {
+  const rng = (): number => 0.999;
+  let taps = 1;
+  while (taps < 20000 && heavyHit(state, rng, taps, mult).chain < n) taps = Math.ceil(taps * 1.1) + 1;
+  let lo = Math.max(1, Math.floor(taps / 1.1) - 1);
+  while (lo < taps && heavyHit(state, rng, lo, mult).chain < n) lo++;
+  const base = chargeTaps('perfect', chargeStreak) * strikeMult(state.strikeLevel);
+  return releaseCharge(state, rng, 0.5, chargeStreak, mult, (g) => (showPower(g), lo / base), chargeZoneAt(0.5));
+}
+
 /** 급소 노리기: 과녁을 눌렀다. 묵직한 한 방(8탭 몫) + 콤보 +5. (x, y)는 과녁 중심 화면 좌표 */
 function applyWeak(x: number, y: number): void {
-  if (moving || document.visibilityState !== 'visible' || !weakVisible(weak)) return;
+  if (moving || chainPlaying() || document.visibilityState !== 'visible' || !weakVisible(weak)) return;
   const w = weak;
   const { r, wasFever } = applyHeavy(x, y, (mult) => {
     const h = hitWeak(state, () => Math.random(), w, mult);
@@ -774,8 +679,8 @@ function applyWeak(x: number, y: number): void {
   });
   weakPin = false;
   if (heatAuto) setHeat(heatAdd(heat, HEAT_WEAK));
-  weakUi.hitFx(x, y, r.gain, document.getElementById('app')!);
-  unpackHeavy({ x, y, grade: 'perfect', streak: 0, bursts: r.bursts, pointsEl: ptsTarget(), fever: wasFever });
+  weakUi.hitFx(x, y, r.gain, document.getElementById('app')!, r.bursts.length);
+  unpackHeavy({ x, y, grade: 'perfect', streak: 0, gain: r.gain, bursts: r.bursts, prize: r.prize, pointsEl: ptsTarget(), fever: wasFever });
   const c = boxCenter();
   const r2 = ptsTarget().getBoundingClientRect();
   fx.absorb({ x: c.x, y: c.y }, ptsTarget(), 6, { offset: { x: 0, y: r2.height / 2 + 12 } });
@@ -833,7 +738,7 @@ function stepWeak(nowMs: number, dtMs: number): void {
     weakUi.frame(weak.remainMs);
     return;
   }
-  const a = advanceWeak(weak, dtMs, weakActive(nowMs), Math.random);
+  const a = advanceWeak(weak, dtMs, weakActive(nowMs), Math.random, gearEffects(state).weakDelayMult);
   weak = a.weak;
   if (a.appeared) presentWeak();
   else if (a.vanished) weakUi.vanish();
@@ -842,7 +747,7 @@ function stepWeak(nowMs: number, dtMs: number): void {
 
 /** 탭을 어느 정도 친 뒤 한 번만 알려 준다. 강타에 성공한 적이 있으면 다시 안 뜬다 */
 function syncChargeTip(): void {
-  if (fx.bannerActive() || document.querySelector('.charge-say, .weak-say')) {
+  if (fx.headBusy() || chainVisible()) {
     if (chargeUi.tipShown()) {
       if (chargeUi.shownTipKind() === 'heat') heatTipPending = true;
       else chargeTipDone = false;
@@ -869,6 +774,7 @@ function syncChargeTip(): void {
 }
 
 function doTap(x: number, y: number, via: HTMLElement = refs.phone): void {
+  if (chainPlaying()) return;
   const nowMs = performance.now();
   lastTapMs = nowMs;
   const gate = tapGate(tapGateState, nowMs);
@@ -886,14 +792,18 @@ function doTap(x: number, y: number, via: HTMLElement = refs.phone): void {
   if (combo.n > state.bestCombo) state = { ...state, bestCombo: combo.n };
   comboUi.hit({ n: combo.n, tierUp: h.tierUp, damped: gate.damped, x, y });
   fx.bounce(via, 0.86);
-  tapEffect({ x, y, gain: r.gain, crit: r.crit, damped: r.damped, fever: wasFever, combo: combo.n, lite: true, anchor: boxAnchor(), pointsEl: ptsTarget(), phone: refs.phone, app: document.getElementById('app')! });
-  unpackHit({ x, y, crit: r.crit, damped: r.damped, burst: r.burst, fever: wasFever, pointsEl: ptsTarget() });
+  tapEffect({ x, y, gain: r.gain, crit: r.crit, damped: r.damped, fever: wasFever, combo: combo.n, lite: true, noNumber: r.bursts.length >= 2, anchor: boxAnchor(), pointsEl: ptsTarget(), phone: refs.phone, app: document.getElementById('app')! });
+  unpackHit({ x, y, crit: r.crit, damped: r.damped, burst: r.burst, bursts: r.bursts, gain: r.gain, prize: r.prize, fever: wasFever, pointsEl: ptsTarget() });
   if (h.tierUp >= 2) dropTapNumber();
   update();
 }
 
 /** 토스트: 일반 = k1 면, 보상(gold) = g2 면, 열림(icon) = k1 면 + or 테두리. 글자 폭 칩, 방 윗변 4px 아래 가운데. 아래로 쌓고 최대 2개 */
 function showToast(msg: string, gold = false, icon?: IconName): void {
+  fx.whenHeadQuiet(() => putToast(msg, gold, icon));
+}
+
+function putToast(msg: string, gold: boolean, icon?: IconName): void {
   const t = el('div', { cls: `toast show${gold ? ' gold' : icon ? ' open' : ''}`, attrs: { role: 'status' } });
   if (icon) t.append(iconImg(icon, { size: 24, cls: 'toast-ico' }), el('span', { text: msg }));
   else t.textContent = msg;
@@ -909,14 +819,132 @@ function showToast(msg: string, gold = false, icon?: IconName): void {
   }, 2200);
 }
 
-function update(): void {
-  if (activeTab !== 'services' && !tabOpen(activeTab)) {
-    selectTab('services');
+const RATE_WINDOW_MS = 5000;
+const RATE_STEP_MS = 250;
+let rateSamples: { t: number; earned: number }[] = [];
+/** 최근 5초 실제 수익(초당): 화면에서 earned 차이를 재는 이동평균. 이사로 earned가 줄면 다시 잰다. 0.25초 간격으로만 표본을 쌓는다 */
+function recentRate(earned: number, reset: boolean): number {
+  const now = performance.now();
+  const last = rateSamples[rateSamples.length - 1];
+  if (reset || (last && earned < last.earned)) rateSamples = [];
+  if (!rateSamples.length || now - rateSamples[rateSamples.length - 1].t >= RATE_STEP_MS) rateSamples.push({ t: now, earned });
+  while (rateSamples.length > 2 && now - rateSamples[1].t >= RATE_WINDOW_MS) rateSamples.shift();
+  const first = rateSamples[0];
+  const dt = (now - first.t) / 1000;
+  return dt >= 1 ? Math.max(0, (earned - first.earned) / Math.min(dt, RATE_WINDOW_MS / 1000)) : 0;
+}
+
+/** 수평계·안전모 레벨에 맞춰 게이지 구간 폭과 실드 칸을 맞춘다(구매·디버그 set·불러오기 모두 여기로 모인다). 칸이 늘면 늘어난 만큼 채운다 */
+function syncGearState(): void {
+  const e = gearEffects(state);
+  if (e.perfectHalf !== zoneHalf) {
+    zoneHalf = e.perfectHalf;
+    chargeZone = chargeZoneAt((chargeZone.perfect[0] + chargeZone.perfect[1]) / 2, e.perfectHalf);
+    chargeUi.setZone(chargeZone);
+  }
+  if (e.shieldMax !== shieldMax) {
+    shield = { n: Math.min(e.shieldMax, shield.n + Math.max(0, e.shieldMax - shieldMax)), toNext: shield.toNext };
+    shieldMax = e.shieldMax;
+  }
+  chargeUi.syncShield(shieldMax, shield);
+}
+
+/** 총 배율(영구 × 살림 × 도감·세트 × 탭 특전, 피버 제외) */
+function totalMult(st: GameState): number {
+  const b = multBreakdown(st, 'tap');
+  return b.total / b.fever;
+}
+
+/** 배율 돌파: 총 배율이 2의 거듭제곱 계단을 넘는 순간. 불러오기·이사 직후는 기준값만 맞추고, 1.5초 안에 또 넘으면 쉬었다가 그때 가장 높은 계단 하나만 알린다 */
+let tierBase: number | null = null;
+let tierMoves = -1;
+let tierAt = 0;
+const TIER_GAP_MS = 1500;
+function checkTier(total: number): void {
+  const tier = total >= 2 ? Math.floor(Math.log2(total) + 1e-9) : 0;
+  if (snapNext || tierBase === null || state.moves !== tierMoves) {
+    tierBase = tier;
+    tierMoves = state.moves;
     return;
   }
-  const house = houseInfo(state.moves);
-  const p = pps(state);
+  if (tier <= tierBase) {
+    tierBase = tier;
+    return;
+  }
+  const now = performance.now();
+  if (now - tierAt < TIER_GAP_MS) return;
+  tierAt = now;
+  tierBase = tier;
+  breakSay(2 ** tier);
+}
 
+function breakSay(m: number): void {
+  const text = `배율 x${formatNumber(m)} 돌파!`;
+  sfx.breakthrough();
+  vibrate([30, 20, 50]);
+  const r = refs.badge.getBoundingClientRect();
+  if (!fx.isReduced() && r.width > 0) {
+    fx.pxFrames(refs.badge, [{ scale: '1.6', background: 'var(--or)', color: 'var(--k0)' }, { scale: '1.3', background: 'var(--k5)', color: 'var(--k0)' }, { scale: '1.15', background: 'var(--or)', color: 'var(--k0)' }, { scale: '1.05', background: 'var(--k5)', color: 'var(--k0)' }, { scale: '1' }], 83);
+    fx.burst(r.left + r.width / 2, r.top + r.height / 2, { n: 10, kind: 'star', colors: ['#ff8a1f', '#ffc83d', '#ffffff'], size: 8, speed: 220, gravity: 0, life: 0.5 });
+  }
+  fx.headline('notice', (end) => {
+    const room = refs.room;
+    const k = room.offsetWidth ? room.getBoundingClientRect().width / room.offsetWidth : 1;
+    const e = el('div', { cls: 'un-home-say' }, el('b', { text }));
+    e.style.top = `${fx.headTop(room, k)}px`;
+    room.append(e);
+    const fit = fx.fitHead(e, 'un-home-say', ['', 'long', 'xl'], room);
+    const rm = (): void => {
+      e.remove();
+      end();
+    };
+    if (fx.isReduced()) {
+      window.setTimeout(rm, 1100);
+      return () => e.remove();
+    }
+    const f: Keyframe[] = [1.5, 1.35, 1.2, 1.1].map((sc) => ({ scale: String(Math.min(sc, fit)), visibility: 'visible' }));
+    for (let i = 0; i < 24; i++) f.push({ scale: '1', visibility: 'visible' });
+    for (let i = 0; i < 4; i++) f.push({ scale: '1', visibility: i % 2 ? 'visible' : 'hidden' });
+    fx.pxFrames(e, f, 40).onfinish = rm;
+    return () => e.remove();
+  }, { maxWait: 8000, tag: 'break', data: text });
+}
+
+/** 옛 저장(v8) 안내 창: 시작할 때 한 번. 닫으면 notice를 지우고 저장한다 */
+function showV9Notice(boxes: number): void {
+  const body = [p('서비스가 사라지고, 상자를 까서 살림과 공구를 키워요.')];
+  if (boxes > 0) body.push(p(`쓰던 서비스는 선물 상자 ${boxes}개로 바꿔 드렸어요.`));
+  body.push(p('자리를 비운 동안의 수익은 없지만, 돌아오면 15초 동안 자동으로 쳐 줘요.'));
+  showModal('집 키우기가 바뀌었어요', body, [
+    {
+      label: '확인',
+      primary: true,
+      onClick: () => {
+        const { notice: _n, ...rest } = state;
+        state = rest;
+        save();
+        dismissModal();
+        announceReturn();
+      },
+    },
+  ], { noClose: true });
+}
+
+/** 돌아오면 러시 알림: 한 번만 */
+let returnRush = false;
+function announceReturn(): void {
+  if (!returnRush || state.notice) return;
+  returnRush = false;
+  showToast('다녀오셨어요! 15초 동안 자동으로 쳐 줘요', true);
+}
+
+function update(): void {
+  if (!tabOpen(activeTab)) {
+    selectTab('tap');
+    return;
+  }
+  syncGearState();
+  const house = houseInfo(state.moves);
   document.body.dataset.theme = house.theme;
   if (refs.houseName.textContent !== house.name) {
     refs.houseName.textContent = house.name;
@@ -926,33 +954,29 @@ function update(): void {
     refs.topIco.dataset.theme = house.theme;
     refs.topIco.replaceChildren(iconImg(houseIcon(house.theme), { size: 48, alt: '' }));
   }
-  setText(refs.badge, `영구 x${formatNumber(permMult(state.moves))}`);
   fx.setReduced(state.settings.reduceMotion);
   const shownPoints = Math.max(0, state.points - pendingReward);
+  const tapNow = tapValue(state);
+  const rate = recentRate(state.earned - pendingReward, snapNext);
+  const total = totalMult(state);
+  checkTier(total);
   if (snapNext) {
-    rollSpeed.snap(p);
+    rollBadge.snap(total);
+    rollSpeed.snap(tapNow);
     rollPoints.snap(shownPoints);
-    rollRate.snap(p);
+    rollRate.snap(rate);
     rollDockPts.snap(shownPoints);
-    rollDockRate.snap(p);
+    rollDockRate.snap(rate);
   } else {
-    rollSpeed.set(p);
+    rollBadge.set(total);
+    rollSpeed.set(tapNow);
     rollPoints.set(shownPoints);
-    rollRate.set(p);
+    rollRate.set(rate);
     rollDockPts.set(shownPoints);
-    rollDockRate.set(p);
+    rollDockRate.set(rate);
   }
-  const title = speedTitle(p);
-  if (lastTitle && title !== lastTitle && p > lastP && !snapNext) {
-    fx.flash('#5b92ff', 600);
-    fx.banner(title, { sub: '회선 등급이 올라갔어요', tone: 'gold', ms: 1800 });
-    sfx.title();
-    vibrate([20, 40, 20]);
-  }
-  lastTitle = title;
-  lastP = p;
-  setText(refs.speedTitle, title);
   syncFever(state);
+  syncRush(state);
   syncParcel(state);
   syncUnpack(state);
   setText(refs.tapHint, `탭 +${formatNumber(tapValue(state))}`);
@@ -964,11 +988,9 @@ function update(): void {
   const ready = mst.ok;
   refs.barFill.style.width = `${(prog * 100).toFixed(1)}%`;
   toggleClass(refs.barFill, 'full', prog >= 1);
-  const special = strat.moveBarText(state, '');
   const pct = Math.floor(prog * 100);
   const goal = `이사 목표 ${pct}% · ${formatNumber(house.target)} P`;
-  refs.barText.parentElement?.classList.toggle('warn', !!special);
-  setBarOptions(special ? [special, special.replace(/^이사할 수 있어요 · /, '')] : ready ? ['이사할 수 있어요'] : [goal, `이사 목표 ${pct}%`, `이사 ${pct}%`]);
+  setBarOptions(ready ? ['이사할 수 있어요'] : [goal, `이사 목표 ${pct}%`, `이사 ${pct}%`]);
   setDisabled(refs.moveBtn, !ready);
   toggleClass(refs.moveBtn, 'ready', ready);
   if (lastReady === false && ready && !moving) {
@@ -980,20 +1002,19 @@ function update(): void {
     vibrate([15, 30, 15]);
   }
   lastReady = ready;
-  strat.sync(state, snapNext);
+  strat.sync(state);
   snapNext = false;
 
-  refs.seg.hidden = activeTab !== 'services';
-  for (const [m, b] of modeBtns) toggleClass(b, 'active', m === buyMode);
   for (const [id, b] of tabBtns) toggleClass(b, 'active', id === activeTab);
 
-  if (activeTab === 'services') updateServices();
-  else if (activeTab === 'tap') updateTapPanel();
+  if (activeTab === 'tap') updateTapPanel();
+  else if (activeTab === 'home') syncHome(state);
   else if (activeTab === 'box') updateBox();
-  else updateDex();
+  else if (activeTab === 'dex') updateDex();
 
   const dots: [TabId, boolean][] = [
     ['tap', activeTab !== 'tap' && hasNewTabDot('tap')],
+    ['home', activeTab !== 'home' && hasNewTabDot('home')],
     ['box', activeTab !== 'box' && (canBuyBox() || hasNewTabDot('box'))],
     ['dex', activeTab !== 'dex' && (fresh.size > 0 || hasNewTabDot('dex'))],
   ];
@@ -1001,7 +1022,6 @@ function update(): void {
     const d = tabDots.get(id)!;
     if (d.hidden === on) d.hidden = !on;
   }
-  syncEvent();
   syncUnlock();
 }
 
@@ -1044,61 +1064,7 @@ function placeTip(): void {
   tip.style.top = `${Math.round((a.y - a.half - r.top) / a.k - h - 12)}px`;
 }
 
-let firstBuyHinted = false;
-
-function updateNextLine(): void {
-  const n = nextUnlock(state);
-  nextLine.hidden = n === null;
-  if (n) setText(nextText, `다음: ${UNLOCK_NAME[n.id]} · ${n.cond}`);
-}
-
-function updateServices(): void {
-  updateNextLine();
-  const firstLocked = SERVICES.findIndex((_, i) => !isUnlocked(state, i));
-  SERVICES.forEach((def, i) => {
-    const row = serviceRows[i];
-    const unlocked = isUnlocked(state, i);
-    toggleClass(row.card, 'ux-none', firstLocked >= 0 && i > firstLocked);
-    toggleClass(row.card, 'locked', !unlocked);
-    if (!unlocked) {
-      setText(row.name, '???');
-      setText(row.lv, '');
-      delete row.info.dataset.v;
-      setText(row.info, `${SERVICES[i - 1].name} Lv 1이 필요해요`);
-      setText(row.buyHead, '잠김');
-      setText(row.buyPrice, '');
-      setDisabled(row.btn, true);
-      toggleClass(row.card, 'affordable', false);
-      prevCan[i] = undefined;
-      return;
-    }
-    const lv = state.services[i];
-    const count = buyCount(i);
-    const cost = bulkCost(i, lv, count);
-    const can = Number.isFinite(cost) && cost <= state.points;
-    const nm = nextMilestone(lv, SERVICE_MILESTONES);
-    setText(row.name, def.name);
-    setText(row.lv, `Lv ${formatNumber(lv)}`);
-    setVal(row.info, '', `+${formatNumber(serviceProd(state, i))}`, '/초');
-    const prevMs = SERVICE_MILESTONES.filter((m) => m <= lv).pop() ?? 0;
-    row.msFill.style.transform = `scaleX(${nm ? Math.min(1, (lv - prevMs) / (nm - prevMs)).toFixed(3) : 1})`;
-    setText(row.msLabel, nm ? `Lv ${nm}에서 x2` : '마일스톤 모두 달성');
-    setText(row.buyHead, `${count > 1 ? `x${formatNumber(count)} ` : ''}구매`);
-    setText(row.buyPrice, `${formatNumber(cost)} P`);
-    setDisabled(row.btn, !can);
-    toggleClass(row.card, 'affordable', can);
-    const now = performance.now();
-    if (can && prevCan[i] === false && now - (lastSpark[i] ?? 0) > 2000) {
-      lastSpark[i] = now;
-      fx.sparkle(row.card, row.icon);
-    }
-    prevCan[i] = can;
-    if (i === 0 && can && !firstBuyHinted && activeTab === 'services' && state.services.every((v) => v === 0)) {
-      firstBuyHinted = true;
-      fx.edge(row.btn, 'or', [1, 0, 1, 0, 1, 1]);
-    }
-  });
-}
+let firstToolHinted = false;
 
 function updateTapPanel(): void {
   const lv = state.tapLevel;
@@ -1106,20 +1072,48 @@ function updateTapPanel(): void {
   const can = cost <= state.points;
   const nm = nextMilestone(lv, TAP_MILESTONES);
   setText(tapRefs.lv, `Lv ${formatNumber(lv)}`);
-  const pct = (r: number): string => `${formatNumber(r * 100)}%`;
-  setVal(tapRefs.info, '탭 1회 ', `+${formatNumber(tapValue(state))}`, ' P');
-  const ra = tapRatio(lv);
-  const rb = nextTapRatio(lv);
-  const shown = (r: number, d?: number): string => `${d === undefined ? formatNumber(r * 100) : +(r * 100).toFixed(d)}%`;
-  const dig = [undefined, 2, 3].find((d) => shown(ra, d) !== shown(rb, d));
-  setText(tapRefs.next, dig === undefined && shown(ra) === shown(rb) ? `탭 비율 ${shown(ra, 3)}` : `탭 비율 ${shown(ra, dig)} → ${shown(rb, dig)}`);
-  setText(tapRefs.msLabel, nm ? `Lv ${nm}에서 비율 ${pct(tapRatio(nm))}` : '마일스톤 모두 달성');
+  const now = tapValue(state);
+  setVal(tapRefs.info, '탭 1회 ', `+${formatNumber(now)}`, ' P');
+  setText(tapRefs.next, `→ +${formatNumber(tapValue({ ...state, tapLevel: lv + 1 }))} P`);
+  setText(tapRefs.msLabel, nm ? `x2까지 ${formatNumber(nm - lv)}레벨` : '마일스톤 모두 달성');
   const prevTapMs = TAP_MILESTONES.filter((m) => m <= lv).pop() ?? 0;
   tapRefs.msFill.style.transform = `scaleX(${nm ? Math.min(1, (lv - prevTapMs) / (nm - prevTapMs)).toFixed(3) : 1})`;
   setText(tapRefs.buyHead, '강화');
   setText(tapRefs.buyPrice, `${formatNumber(cost)} P`);
   setDisabled(tapBtn, !can);
   toggleClass(tapBtn.closest('.card') as Element, 'affordable', can);
+  if (can && !firstToolHinted && lv === 0) {
+    firstToolHinted = true;
+    fx.edge(tapBtn, 'or', [1, 0, 1, 0, 1, 1]);
+  }
+
+  const sl = state.strikeLevel;
+  const sCost = strikeCost(sl);
+  const sCan = sCost <= state.points;
+  setText(strikeRefs.lv, `Lv ${formatNumber(sl)}`);
+  setVal(strikeRefs.info, '강타·급소 ', `x${formatNumber(strikeMult(sl))}`, ` → x${formatNumber(strikeMult(sl + 1))}`);
+  strikeRefs.best.hidden = state.bestChain < 2;
+  setText(strikeRefs.best, `최고 ${formatNumber(state.bestChain)}연쇄`);
+  setText(strikeRefs.buyHead, '강화');
+  setText(strikeRefs.buyPrice, `${formatNumber(sCost)} P`);
+  setDisabled(strikeBtn, !sCan);
+  toggleClass(strikeBtn.closest('.card') as Element, 'affordable', sCan);
+
+  const nx = syncGearCards(gearCards, state);
+  gearNext.hidden = !nx;
+  if (nx) setText(gearNext, `상자 ${formatNumber(Math.max(1, nx.left))}개 더 열면 · ${nx.name}`);
+  announceGear();
+}
+
+/** 공구가 새로 열린 순간 토스트 한 번(불러오기 직후 처음 맞춤은 조용히). 한꺼번에 여러 개면(첫 이사) 한 줄로 */
+function announceGear(): void {
+  const open = new Set(gearCards.filter((c) => !c.card.hidden).map((c) => c.id));
+  const seen = gearOpenSeen;
+  gearOpenSeen = open;
+  if (!seen) return;
+  const fresh = [...open].filter((id) => !seen.has(id));
+  if (fresh.length === 1) showToast(`새로 열렸어요 · ${gearDef(fresh[0]).name}`, false, GEAR_ICON[fresh[0]]);
+  else if (fresh.length > 1) showToast(`공구 ${fresh.length}종이 열렸어요`, false, GEAR_ICON[fresh[0]]);
 }
 
 function dismissModal(): void {
@@ -1144,14 +1138,13 @@ function openMoveConfirm(): void {
   showModal(
     '이사 갈까요?',
     [
-      p('포인트, 서비스, 공구 강화가 처음으로 돌아가요.'),
+      p('포인트와 공구 강화가 처음으로 돌아가요.'),
       el(
         'div',
         { cls: 'mv-box pf' },
         iconImg(houseIcon(target.theme), { size: 48, alt: '' }),
         el('div', { cls: 'mv-main' }, el('b', { cls: 'fb', text: `다음 집: ${target.name}` }), el('span', {}, '영구 배율은 ', el('b', { cls: 'nowrap mv-num', text: `x${formatNumber(cur)} → x${formatNumber(next)}` }), '가 돼요.')),
       ),
-      ...strat.moveConfirmNotes(state),
     ],
     [
       { label: '취소', onClick: dismissModal },
@@ -1180,6 +1173,8 @@ function doMove(): void {
     onSwap: () => {
       const next = move(state, () => Math.random());
       if (next) state = next;
+      shield = initialShield(gearEffects(state).shieldMax);
+      shieldMax = shield.n;
       snapNext = true;
       lastReady = false;
       save();
@@ -1237,16 +1232,6 @@ function openHouseTable(): void {
   showModal('집 단계', [p('목표 포인트를 모으면 이사할 수 있어요.', 'dim'), el('div', { cls: 'house-table' }, ...rows)], [{ label: '닫기', onClick: dismissModal }], { icon: iconImg(houseIcon(houseInfo(state.moves).theme), { size: 32, cls: 'title-ico' }) });
 }
 
-function openOfflinePopup(r: OfflineResult): void {
-  pendingReward += r.gain;
-  const gain = el('b', { cls: 'reward-num', text: '0' });
-  const body: HTMLElement[] = [p('집이 그동안 혼자 일했어요.'), p(`${formatDuration(r.seconds)} 동안 모인 포인트예요`, 'dim'), el('div', { cls: 'reward-box' }, gain, document.createTextNode(' P'))];
-  if (r.capped) body.push(p(`최대 ${formatDuration(offlineCapSec(state))}까지 쌓여요`, 'dim small'));
-  showModal('어서 와요!', body, [{ label: '받기', reward: true, onClick: receiveReward }], { chip: '보상', noClose: true, icon: iconImg('coin-pile', { size: 32, cls: 'title-ico' }) });
-  fx.countUp(gain, r.gain, 900, formatNumber);
-  sfx.reward();
-}
-
 function settingRow(label: string, on: boolean, onChange: (v: boolean) => void, disabled = false): HTMLElement {
   const box = el('input', { attrs: { type: 'checkbox' } });
   box.checked = on;
@@ -1301,7 +1286,7 @@ function openSettings(): void {
             resetCombo();
             resetWeak();
             snapNext = true;
-            state = defaultState(Date.now());
+            state = defaultState(Date.now(), rollSalt(Math.random));
             save();
             dismissModal();
             update();
@@ -1336,7 +1321,7 @@ function save(): void {
   writeSave(serialize(state, now));
 }
 
-function load(): OfflineResult | null {
+function load(): void {
   const now = Date.now();
   const raw = readSave();
   const r = parseSave(raw);
@@ -1345,10 +1330,10 @@ function load(): OfflineResult | null {
     showToast('더 새로운 버전의 저장 데이터라 불러오지 않았어요. 따로 보관해 뒀어요.');
   }
   if (r.kind === 'corrupt' && raw) writeBackup(raw);
-  const base = r.kind === 'ok' ? r.state : defaultState(now);
+  const base = r.kind === 'ok' ? r.state : defaultState(now, rollSalt(Math.random));
   const out = applyOffline({ ...base, savedAt: base.savedAt || now }, now);
   state = out.state;
-  return out.report;
+  returnRush = out.rush;
 }
 
 function onVisibility(): void {
@@ -1361,9 +1346,32 @@ function onVisibility(): void {
   }
   const out = applyOffline(state, Date.now());
   state = out.state;
-  if (out.report) openOfflinePopup(out.report);
+  if (out.rush) {
+    returnRush = true;
+    announceReturn();
+  }
   lastFrame = performance.now();
   update();
+}
+
+/** 시계 상자 러시: 남은 시간이 있는 동안 초당 RUSH_RATE번 자동 탭(한 프레임 최대 3번, 밀린 시간은 버림). 강타 연쇄가 재생되는 동안은 쉰다 */
+let rushAcc = 0;
+function rushFrame(dt: number): void {
+  if (!(state.unpack.rushSec > 0) || chainPlaying()) {
+    rushAcc = 0;
+    return;
+  }
+  rushAcc += dt;
+  const n = Math.min(3, Math.floor(rushAcc * RUSH_RATE));
+  rushAcc = Math.min(rushAcc - n / RUSH_RATE, 1 / RUSH_RATE);
+  for (let i = 0; i < n; i++) {
+    const wasFever = state.fever.activeSec > 0;
+    const r = rushTap(state, () => Math.random(), comboMult(combo.n));
+    state = r.state;
+    const c = boxCenter();
+    unpackRush({ x: c.x, y: c.y, crit: false, damped: false, burst: r.burst, bursts: r.bursts, gain: r.gain, prize: r.prize, fever: wasFever, pointsEl: ptsTarget() });
+    sfx.rushTick();
+  }
 }
 
 let lastFrame = performance.now();
@@ -1378,13 +1386,14 @@ function frame(now: number): void {
     chargeUi.sync(heat);
     if (combo.n > 0) {
       const win = comboWindowMs(state.fever.activeSec > 0);
-      if (chargeUi.isCharging()) combo = { ...combo, lastMs: nowMs };
+      if (chargeUi.isCharging() || chainPlaying() || state.unpack.rushSec > 0) combo = { ...combo, lastMs: nowMs };
       else if (comboExpired(combo, nowMs, win)) {
         const c = combo;
         combo = initialCombo();
         settleCombo(c, false);
       } else comboUi.tick(nowMs, combo, win);
     }
+    rushFrame(dt);
     state = tick(state, dt, () => Math.random());
     update();
   }
@@ -1392,12 +1401,12 @@ function frame(now: number): void {
 }
 
 build();
-const report = load();
+load();
 snapNext = true;
-lastTitle = '';
 lastReady = null;
-if (report) openOfflinePopup(report);
 update();
+if (state.notice?.kind === 'v9') showV9Notice(state.notice.boxes);
+else announceReturn();
 document.addEventListener('visibilitychange', onVisibility);
 window.addEventListener('beforeunload', save);
 setInterval(save, 10_000);

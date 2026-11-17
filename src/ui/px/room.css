@@ -41,7 +41,7 @@ html:root .un-slot:not(.cur) .un-silw { display: none; }
 html:root .un-colw { position: absolute; left: 0; right: 0; bottom: 0; height: 0; overflow: hidden; }
 html:root .un-slot .un-colw img { position: absolute; left: 0; top: auto; bottom: 0; width: 100%; height: var(--h); image-rendering: pixelated; max-width: none; }
 
-/* 서비스 선반: 벽 위 판자(CSS) 위에 아이콘 24도트 8종(숫자 없음). 판자 윗면이 아이콘 바닥 */
+/* 선반: 벽 위 판자(CSS) 위에 아이콘 24도트(숫자 없음). 판자 윗면이 아이콘 바닥 */
 html:root .px-shelf { position: absolute; z-index: 1; pointer-events: none; left: 0; right: 0; top: calc(var(--y) * 1px); height: 8px; }
 /* 판자: 방 가운데 기준. 방이 그림보다 좁게 보이면(360) 양 끝이 안쪽 가장자리에서 4px씩 떨어지게 좌우 모두 줄인다 */
 html:root .px-pl { position: absolute; top: 0; height: 8px; width: min(calc(var(--w) * 1px), calc(100% - 8px)); left: calc(50% + var(--x) * 1px - min(calc(var(--w) * 1px), calc(100% - 8px)) / 2); }
@@ -52,15 +52,12 @@ html:root .px-sup.r { right: 0; }
 html:root .px-svc { position: absolute; display: block; }
 html:root .px-svc .px-img { display: block; }
 
-/* 벽 전화(자리는 JS가 rooms.ts 표에서 넣는다), 독·카드·휘두름의 도구 그림은 48px 그대로 */
+/* 벽 전화(방 장식, 자리는 JS가 rooms.ts 표에서 넣는다), 독·카드·휘두름의 도구 그림은 48px 그대로 */
 html:root .un-wall { right: auto; width: 40px; height: 40px; padding: 0; display: block; }
 html:root .un-wall .px-img { display: block; }
 /* 짧은 전화기(rooms.ts의 short): 줄 3행(20행 중 15%)만 잘라낸다. 몸통 아래 외곽선은 그대로 */
 html:root .un-wall.short { height: 34px; }
 html:root .un-wall.short .px-img { clip-path: inset(0 0 15% 0); }
-/* 평소에는 벨 그림을 숨긴다. 전화가 울릴 때만 2프레임 교대(m8-unpack.css) */
-html:root .un-wall .un-wall-b { display: none; }
-html:root .room:has(.event-call:not([hidden])) .un-wall.ring2 .un-wall-b { display: block; }
 html:root .un-dock-tool .px-img, html:root .un-tool-ico .px-img, html:root .un-swing .px-img { display: block; }
 html:root .un-dock-tool.un-tool-out { left: 50%; top: 50%; margin: -24px 0 0 -24px; }
 html:root .un-swing { filter: none; font-size: 0; }

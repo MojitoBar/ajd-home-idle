@@ -1,6 +1,8 @@
 /** 급소: 최근 탭을 치고 있을 때 상자 위에 잠깐 뜨는 표시를 맞히면 묵직한 한 방. 저장하지 않는 실행 중 상태. */
 import { heavyHit, type HeavyResult } from './unpack';
 import type { GameState } from './state';
+import { strikeMult } from './economy';
+import { gearEffects } from './gear';
 
 export interface WeakState {
   /** 다음 급소까지 남은 시간(ms). 탭을 치고 있을 때만 준다 */
@@ -21,9 +23,11 @@ export const WEAK_POS_MAX = 0.85;
 export const WEAK_MIN_DIST = 0.3;
 export const WEAK_RETRIES = 6;
 
+/** taps는 송곳 없을 때의 기본값(실제 값은 `gearEffects(state).weakTaps`) */
 export const WEAK_REWARD = { taps: 8, combo: 5, fever: 3 } as const;
 
-const nextDelay = (rng: () => number) => WEAK_NEXT_MIN_MS + rng() * (WEAK_NEXT_MAX_MS - WEAK_NEXT_MIN_MS);
+/** 다음 급소까지의 간격. mult는 송곳의 간격 배율 */
+const nextDelay = (rng: () => number, mult = 1) => (WEAK_NEXT_MIN_MS + rng() * (WEAK_NEXT_MAX_MS - WEAK_NEXT_MIN_MS)) * mult;
 const coord = (rng: () => number) => WEAK_POS_MIN + rng() * (WEAK_POS_MAX - WEAK_POS_MIN);
 
 export function initialWeak(rng: () => number): WeakState {
@@ -43,11 +47,11 @@ export interface WeakAdvance {
 }
 
 /** active(최근에 탭을 치고 있음)일 때만 대기 시간이 준다. 떠 있는 급소는 active와 무관하게 시간이 간다 */
-export function advanceWeak(w: WeakState, dtMs: number, active: boolean, rng: () => number): WeakAdvance {
+export function advanceWeak(w: WeakState, dtMs: number, active: boolean, rng: () => number, delayMult = 1): WeakAdvance {
   if (w.remainMs > 0) {
     const remainMs = w.remainMs - dtMs;
     if (remainMs > 0) return { weak: { ...w, remainMs }, appeared: false, vanished: false };
-    return { weak: { ...w, remainMs: 0, nextInMs: nextDelay(rng) }, appeared: false, vanished: true };
+    return { weak: { ...w, remainMs: 0, nextInMs: nextDelay(rng, delayMult) }, appeared: false, vanished: true };
   }
   if (!active) return { weak: w, appeared: false, vanished: false };
   const nextInMs = w.nextInMs - dtMs;
@@ -74,6 +78,7 @@ export interface WeakHit extends HeavyResult {
 
 /** 급소를 맞혔다: 묵직한 한 방 + 급소는 사라지고 다음 간격을 뽑는다(자리는 직전 자리로 남는다) */
 export function hitWeak(state: GameState, rng: () => number, w: WeakState, comboMult = 1): WeakHit {
-  const h = heavyHit(state, rng, WEAK_REWARD.taps, comboMult, WEAK_REWARD.fever);
-  return { ...h, weak: { ...w, remainMs: 0, nextInMs: nextDelay(rng) }, comboAdd: WEAK_REWARD.combo };
+  const g = gearEffects(state);
+  const h = heavyHit(state, rng, Math.round(g.weakTaps * strikeMult(state.strikeLevel)), comboMult, WEAK_REWARD.fever);
+  return { ...h, weak: { ...w, remainMs: 0, nextInMs: nextDelay(rng, g.weakDelayMult) }, comboAdd: WEAK_REWARD.combo };
 }

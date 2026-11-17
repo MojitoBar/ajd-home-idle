@@ -1,21 +1,17 @@
-type BuyMode = 1 | 10 | 'max';
-
 interface KeyHandlers {
   tap: () => void;
   /** Space·Enter를 뗐을 때(누르고 있기 = 모으기) */
   release: () => void;
   tab: (index: number) => void;
-  mode: (m: BuyMode) => void;
 }
 
 const FIELD = 'input, textarea, select, [contenteditable="true"]';
-const MODES: Record<string, BuyMode> = { q: 1, w: 10, e: 'max' };
 
 function modalOpen(): boolean {
   return document.querySelector('.overlay, .box-scene, .move-scene') !== null;
 }
 
-/** PC 키보드 단축키. 입력란·모달이 떠 있을 때는 Space·숫자·QWE를 건드리지 않는다. */
+/** PC 키보드 단축키. 입력란·모달이 떠 있을 때는 Space·숫자를 건드리지 않는다. */
 export function initKeys(h: KeyHandlers): void {
   let tapKeyDown = false;
   let kbNav = false;
@@ -49,9 +45,6 @@ export function initKeys(h: KeyHandlers): void {
     if (key >= '1' && key <= '4') {
       e.preventDefault();
       h.tab(Number(key) - 1);
-    } else if (key in MODES) {
-      e.preventDefault();
-      h.mode(MODES[key]);
     }
   });
   window.addEventListener('keyup', (e) => {

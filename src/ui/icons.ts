@@ -4,20 +4,15 @@ import { glyphSvg } from './px/glyphs';
 const BASE = import.meta.env.BASE_URL;
 
 export type IconName =
-  | 'svc-internet' | 'svc-water' | 'svc-air' | 'svc-phone' | 'svc-clean' | 'svc-interior' | 'svc-robot' | 'svc-home'
-  | 'box-closed' | 'box-open' | 'parcel' | 'coin' | 'coin-pile' | 'fever' | 'crit' | 'contract' | 'bundle' | 'perk'
-  | 'ui-settings' | 'ui-dex' | 'ui-rocket' | 'ui-event' | 'ui-move' | 'ui-tools'
-  | `house-${string}` | `bundle-${string}` | `perk-${string}`;
+  | 'box-closed' | 'box-open' | 'parcel' | 'coin' | 'coin-pile' | 'fever' | 'crit' | 'perk'
+  | 'ui-settings' | 'ui-dex' | 'ui-rocket' | 'ui-move' | 'ui-tools'
+  | `house-${string}` | `perk-${string}` | `tool/${string}`;
 
 export const collectibleUrl = (id: string, variant: string): string => `${BASE}assets/px/col/${id}${variant === 'gold' || variant === 'rainbow' ? `-${variant}` : ''}.png`;
 
-export const iconUrl = (name: IconName): string => `${BASE}assets/px/icon/${name}.png`;
+export const iconUrl = (name: IconName): string => `${BASE}assets/px/${name.startsWith('tool/') ? '' : 'icon/'}${name}.png`;
 
-/** 서비스 id 로 아이콘 이름을 얻는다(데이터의 id 와 같다). */
-export const svcIcon = (id: string): IconName => `svc-${id}` as IconName;
-
-/** 결합·특전 아이콘(데이터의 id 와 같다) */
-export const bundleIcon = (id: string): IconName => `bundle-${id}`;
+/** 특전 아이콘(데이터의 id 와 같다) */
 export const perkIcon = (id: string): IconName => `perk-${id}`;
 /** 집 단계 아이콘(24도트, 화면 48px). 집 테마 id 와 파일 이름이 같다 */
 export const houseIcon = (theme: string): IconName => `house-${theme}`;
@@ -71,7 +66,7 @@ export function readyIcon(name: IconName): HTMLImageElement | null {
 
 /** 첫 화면에 필요한 그림을 미리 불러온다. */
 export function preloadIcons(): void {
-  for (const n of ['svc-internet', 'svc-water', 'svc-air', 'coin', 'box-closed', 'box-open', 'parcel', 'fever', 'crit'] as IconName[]) loadIcon(n);
+  for (const n of ['coin', 'box-closed', 'box-open', 'parcel', 'fever', 'crit'] as IconName[]) loadIcon(n);
 }
 
 // ---------- 아이콘 + 글자 라벨 ----------

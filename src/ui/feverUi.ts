@@ -75,7 +75,7 @@ export function syncFever(state: GameState): void {
 function start(): void {
   document.body.classList.add('fever');
   sfx.setPitch(1.5);
-  fx.banner('피버!', { tone: 'red', ms: 600 });
+  fx.banner('피버!', { tone: 'red', ms: 600, head: 'now', keep: true });
   fx.flash('#ff8a1f', 450);
   const r = document.querySelector('.room')?.getBoundingClientRect();
   if (r) fx.confetti(r.left + r.width / 2, r.top + r.height * 0.6, 40, { clip: true });

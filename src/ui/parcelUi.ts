@@ -1,7 +1,6 @@
 // 떠다니는 택배 상자: 방 영역을 가로질러 8초 동안 떠다니고, 잡으면 보상 연출. 상태는 로직(catchParcel)이 바꾼다.
 import { PARCEL_STAY_SEC } from '../logic/fever';
-import { formatDuration, formatNumber } from '../logic/format';
-import { pps } from '../logic/economy';
+import { formatNumber } from '../logic/format';
 import { catchParcel, parcelVisible } from '../logic/variety';
 import type { GameState } from '../logic/state';
 import { pxImg } from './px/art';
@@ -45,7 +44,6 @@ function grab(): void {
   const out = catchParcel(ctx.get(), () => Math.random());
   if (!out) return;
   const at = center();
-  const p = pps(ctx.get());
   ctx.set(out.state);
   hide();
   sfx.parcelCatch();
@@ -53,8 +51,7 @@ function grab(): void {
   fx.burst(at.x, at.y, { n: 24, kind: 'star', colors: ['#c8924a', '#ffd9a0', '#ffc83d', '#ffffff'], speed: 320, size: 7 });
   const reward = out.reward;
   if (reward.kind === 'points') {
-    const secs = p > 0 ? Math.max(1, Math.round(reward.gain / p)) : Math.round(reward.seconds);
-    fx.floatText(Math.max(150, Math.min(window.innerWidth - 150, at.x)), roomEl.getBoundingClientRect().top + 135, `+${formatNumber(reward.gain)} (${formatDuration(secs)}치)`, { scale: 1, spread: 12, ms: 1500, cls: 'parcel-gain' });
+    fx.floatText(Math.max(150, Math.min(window.innerWidth - 150, at.x)), roomEl.getBoundingClientRect().top + 135, `+${formatNumber(reward.gain)}`, { scale: 1, spread: 12, ms: 1500, cls: 'parcel-gain' });
     const pointsEl = pointsOf();
     const h = pointsEl.getBoundingClientRect().height;
     fx.coinShower(at, pointsEl, 26, undefined, { x: 0, y: h / 2 + 12 });

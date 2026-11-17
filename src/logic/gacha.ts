@@ -1,11 +1,11 @@
 import { COLLECTIBLES, RARITIES, SLOT_TOTAL, VARIANTS, type CollectibleDef, type Rarity, type Variant } from '../data/collectibles';
-import { ppsStable } from './economy';
-import { perkEffects } from './perks';
+import { tapStable } from './economy';
+import { dexBoostMult, perkEffects } from './perks';
 import { collectionMultOf, completedSetRarities, slotLevel, slotNextNeed } from './collection';
 import type { GameState } from './state';
 
 export const BOX_MIN_PRICE = 5000;
-export const BOX_PPS_FACTOR = 60;
+export const BOX_TAP_FACTOR = 900;
 export const BOX_PRICE_GROWTH = 1.06;
 
 export interface BoxResult {
@@ -25,8 +25,8 @@ export interface BoxResult {
 export const GUARANTEE_BOX_COUNT = 10;
 
 export function boxPrice(state: GameState): number {
-  // 일시 배율(피버·이벤트·약정)은 가격에 넣지 않는다
-  return Math.max(BOX_MIN_PRICE, BOX_PPS_FACTOR * ppsStable(state)) * BOX_PRICE_GROWTH ** state.boxesThisRun * perkEffects(state).boxPriceMult;
+  // 일시 배율(피버)은 가격에 넣지 않는다. 탭 약 900번(30초)분
+  return Math.max(BOX_MIN_PRICE, BOX_TAP_FACTOR * tapStable(state)) * BOX_PRICE_GROWTH ** state.boxesThisRun * perkEffects(state).boxPriceMult;
 }
 
 function pickByProb<T extends { prob: number }>(list: readonly T[], r: number): T {
@@ -109,7 +109,7 @@ export function openBoxes(state: GameState, rng: () => number, count: number): {
 }
 
 export function collectionMult(state: GameState): number {
-  return collectionMultOf(state.collection);
+  return collectionMultOf(state.collection) * dexBoostMult(state);
 }
 
 export interface RarityProgress {

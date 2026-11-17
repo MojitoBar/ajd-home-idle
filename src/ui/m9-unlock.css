@@ -1,21 +1,15 @@
 /* 단계적 공개(unlock.ts): body.ux-<id>가 없으면 대상을 접는다. 자리도 남기지 않는다. */
 body:not(.ux-tap) [data-ux="tap"],
+body:not(.ux-home) [data-ux="home"],
 body:not(.ux-box) [data-ux="box"],
 body:not(.ux-dex) [data-ux="dex"],
-body:not(.ux-bundle) .bundle-toggle,
-body:not(.ux-bundle) .bundle-row,
-body:not(.ux-bundle) .mini-chip,
-body:not(.ux-bundle) .bundle-hint,
 body:not(.ux-move) .move-block,
-body:not(.ux-contract) .slots-pill,
-body:not(.ux-contract) .contract-btn,
 body:not(.ux-mult) .speed-wrap .info-btn,
 body:not(.ux-badge) .top .badge,
 body:not(.ux-perk) .perk-btn,
-body:not(.ux-bundle):not(.ux-contract) .strat-top,
 .ux-none { display: none !important; }
 
-.move-block, .top .badge, .slots-pill { position: relative; }
+.move-block, .top .badge { position: relative; }
 
 /* 튀어나오기: 2~3프레임, 정수 px */
 .ux-pop { animation: ux-pop 300ms 1 both; }
@@ -27,7 +21,7 @@ body:not(.ux-bundle):not(.ux-contract) .strat-top,
 }
 @media (prefers-reduced-motion: reduce) { .ux-pop { animation: none; } }
 
-/* 탭 바: 가운데 도구 버튼을 기준으로 왼쪽(서비스·공구 강화)·오른쪽(상자·도감) 두 무리. 탭이 2~5개여도 가운데 위치 유지 */
+/* 탭 바: 가운데 도구 버튼을 기준으로 왼쪽(공구 강화·살림)·오른쪽(상자·도감) 두 무리. 탭이 2~5개여도 가운데 위치 유지 */
 .tab-grp { flex: 1; min-width: 0; display: flex; gap: var(--s1); }
 @media (min-width: 900px) { .tab-grp { display: contents; } }
 .dock-tabs { gap: 0; }
@@ -36,7 +30,7 @@ body:not(.ux-bundle):not(.ux-contract) .strat-top,
 /* 아직 안 열린 탭 칸: 자리를 비우지 않고 잠긴 칸(k4 면 + k3 선 + 자물쇠)으로 둔다 */
 .tab-lock { flex: 1; min-width: 0; min-height: 64px; display: flex; align-items: center; justify-content: center; background: var(--k4); box-shadow: 0 0 0 2px var(--k3) inset; }
 .tab-lock::before { content: ''; width: 32px; height: 32px; background: var(--k3); -webkit-mask: url(/assets/px/ui/lock.png) center / 32px 32px no-repeat; mask: url(/assets/px/ui/lock.png) center / 32px 32px no-repeat; image-rendering: pixelated; }
-body.ux-tap .tab-lock[data-lock="tap"], body.ux-box .tab-lock[data-lock="box"], body.ux-dex .tab-lock[data-lock="dex"] { display: none; }
+body.ux-tap .tab-lock[data-lock="tap"], body.ux-home .tab-lock[data-lock="home"], body.ux-box .tab-lock[data-lock="box"], body.ux-dex .tab-lock[data-lock="dex"] { display: none; }
 @media (min-width: 900px) { .dock .tab-lock { min-height: 68px; } }
 
 /* 첫 탭 전 안내 말풍선: k5 면 + k1 2px 선, 꼬리는 정사각형 계단. 탭을 가로막지 않는다 */
@@ -46,7 +40,21 @@ body.ux-tap .tab-lock[data-lock="tap"], body.ux-box .tab-lock[data-lock="box"], 
 
 /* 열림 토스트: 열린 대상 아이콘 + 글자 */
 
-/* 다음 열림 조건 한 줄: 잠긴 카드 모양(k4 면 + k3 선), 12px k2 글자 */
-.next-unlock { margin-top: var(--s3); padding: var(--s2) var(--s3); background: var(--k4); box-shadow: 0 0 0 2px var(--k3) inset; font: 700 var(--fs-s)/var(--lh-s) var(--f-bold); color: var(--k2); text-align: center; }
-.next-unlock[hidden] { display: none; }
-@media (min-width: 900px) { .next-unlock { grid-column: 1 / -1; } }
+
+.dock .tab[hidden] { display: none; }
+
+/* 살림 탭 */
+.home-sum { grid-template-columns: 52px minmax(0, 1fr); min-height: auto; }
+.home-sum-lbl { font: 700 var(--fs-s)/var(--lh-s) var(--f-bold); color: var(--k2); }
+.home-sum-num { font: 700 36px/40px var(--f-bold); text-shadow: 1px 0 0 currentColor; color: var(--or); font-variant-numeric: tabular-nums; }
+.home-sum .card-info { margin-top: var(--s1); }
+.home-card { grid-template-columns: 72px minmax(0, 1fr); min-height: 96px; }
+.home-ico { width: 72px; height: auto; min-height: 52px; align-self: center; }
+.home-ico .px-img { display: block; image-rendering: pixelated; }
+.home-ghost { display: block; background: var(--k3); -webkit-mask: var(--ic) center / 100% 100% no-repeat; mask: var(--ic) center / 100% 100% no-repeat; image-rendering: pixelated; }
+.home-card.empty { background: none; box-shadow: none; border: 2px dashed var(--k3); color: var(--k3); }
+.home-card.empty .card-name { color: var(--k2); }
+.home-card.empty .ms-bar, .home-card.empty .ms-label { display: none; }
+.home-card .tag[hidden] { display: none; }
+.home-card .card-title { align-items: center; }
+.home-note { text-align: center; }

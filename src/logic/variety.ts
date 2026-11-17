@@ -1,9 +1,9 @@
-import { pps, tapFlatValue, tapValue } from './economy';
+import { tapStable, tapValue } from './economy';
 import {
   PARCEL_FREE_BOX_CHANCE,
   PARCEL_MAX_PPS_SEC,
   PARCEL_MIN_PPS_SEC,
-  PARCEL_MIN_TAPS,
+  PARCEL_TAPS_PER_SEC,
   chargeFever,
   nextParcelDelay,
 } from './fever';
@@ -65,7 +65,7 @@ export function catchParcel(state: GameState, rng: () => number): { state: GameS
     return { state: { ...free.state, parcel }, reward: { kind: 'box', result: free.result } };
   }
   const seconds = PARCEL_MIN_PPS_SEC + rng() * (PARCEL_MAX_PPS_SEC - PARCEL_MIN_PPS_SEC);
-  const gain = Math.max(pps(state) * seconds, tapFlatValue(state) * PARCEL_MIN_TAPS);
+  const gain = tapStable(state) * PARCEL_TAPS_PER_SEC * seconds;
   return {
     state: {
       ...state,

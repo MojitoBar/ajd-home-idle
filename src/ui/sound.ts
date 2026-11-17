@@ -6,6 +6,7 @@ let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let unlocked = false;
 let lastTap = 0;
+let lastRush = 0;
 let lastCoin = 0;
 let pitch = 1;
 
@@ -138,13 +139,39 @@ export const sfx = {
       [523, 659, 784].forEach((f, i) => tone(f, 0.14, 'square', 0.14, 0.04 + i * 0.05));
       return;
     }
-    const up = Math.min(streak, 5);
+    const up = 2 ** (Math.min(streak, 18) / 12);
     tone(80, 0.5, 'sawtooth', 0.5, 0, 32);
     tone(150, 0.3, 'sine', 0.5, 0, 50);
     noise(0.26, 0.36, 0, 1100);
     noise(0.2, 0.2, 0.05, 5000);
-    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f * (1 + up * 0.03), 0.2, 'square', 0.15, 0.06 + i * 0.05));
-    tone(2093, 0.5, 'sine', 0.14, 0.34);
+    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f * up, 0.2, 'square', 0.15, 0.06 + i * 0.05));
+    tone(2093 * up, 0.5, 'sine', 0.14, 0.34);
+  },
+  /** 배수 칩이 깨짐: 낮은 툭 + 부서지는 소리 */
+  streakBreak(): void {
+    tone(110, 0.2, 'square', 0.22, 0, 55);
+    noise(0.12, 0.18, 0, 1200);
+  },
+  /** 안전모가 연속을 막음: 아주 낮은 쿵 + 깨지는 소리 + 쇳소리 두 음 */
+  shieldSave(): void {
+    tone(70, 0.5, 'sawtooth', 0.55, 0, 28);
+    tone(190, 0.22, 'square', 0.3, 0, 60);
+    noise(0.3, 0.4, 0, 2600);
+    noise(0.16, 0.22, 0.06, 6000);
+    tone(880, 0.16, 'square', 0.16, 0.08);
+    tone(1320, 0.3, 'square', 0.14, 0.15);
+  },
+  /** 배율 돌파: 짧은 팡 (올라가는 세 음 + 짧은 바람 소리) */
+  breakthrough(): void {
+    tone(392, 0.08, 'square', 0.16);
+    tone(784, 0.1, 'square', 0.16, 0.06);
+    tone(1568, 0.22, 'square', 0.14, 0.12);
+    noise(0.12, 0.18, 0, 5200);
+  },
+  /** 안전모 칸이 참 / 새로 얻음: 짧은 두 음 */
+  shieldGain(): void {
+    tone(880, 0.07, 'square', 0.13);
+    tone(1760, 0.14, 'square', 0.13, 0.07);
   },
   /** 열기가 달아오름에 들어섬: 올라가는 세 음 */
   heatUp(): void {
@@ -176,6 +203,20 @@ export const sfx = {
     noise(0.14, 0.3, 0, 4500);
     [1047, 1568, 2093].forEach((f, i) => tone(f, 0.12, 'square', 0.16, i * 0.035));
     tone(2637, 0.3, 'sine', 0.14, 0.12);
+  },
+  /** 연쇄 j번째(0부터) 터짐: 한 단계씩 올라가는 짧은 음(12단계에서 상한) */
+  chainStep(j: number): void {
+    const f = noteFreq(440, Math.min(j, 12)) * pitch;
+    tone(f, 0.07, 'square', 0.14);
+    noise(0.03, 0.1, 0, 2800);
+  },
+  /** 연쇄 마무리: 쾅 + 올라가는 화음. tier 0~3(상금이 클수록 길고 높다) */
+  chainEnd(tier: number): void {
+    const t = Math.max(0, Math.min(tier, 3));
+    tone(130, 0.22 + t * 0.05, 'sawtooth', 0.3, 0, 45);
+    noise(0.14 + t * 0.04, 0.2, 0, 1800 + t * 800);
+    [523, 659, 784, 1047].slice(0, 2 + t).forEach((f, i) => tone(f * pitch, 0.2 + t * 0.04, 'square', 0.15, 0.04 + i * 0.06));
+    if (t >= 2) tone(1568 * pitch, 0.5, 'sine', 0.16, 0.35);
   },
   /** 콤보 단계 오름: 단계가 높을수록 음이 높고 길다 */
   comboUp(tier: number): void {
@@ -245,6 +286,35 @@ export const sfx = {
     if (tier >= 3) tone(1568, 0.7, 'sine', 0.16, 0.45);
     if (tier >= 4) noise(0.5, 0.12, 0.4, 6000);
   },
+  /** 황금 상자 터짐: 밝게 올라가는 네 음 + 반짝 꼬리 */
+  goldBurst(): void {
+    tone(260, 0.16, 'sine', 0.3, 0, 90);
+    [784, 1047, 1319, 1568].forEach((f, i) => tone(f * pitch, 0.18, 'square', 0.14, 0.03 + i * 0.06));
+    tone(2093 * pitch, 0.5, 'sine', 0.14, 0.28);
+    noise(0.12, 0.14, 0.02, 6000);
+  },
+  /** 시계 상자 터짐: 째깍-째깍-딩 */
+  clockBurst(): void {
+    tone(1568 * pitch, 0.05, 'square', 0.16, 0);
+    tone(1175 * pitch, 0.05, 'square', 0.16, 0.1);
+    tone(1568 * pitch, 0.05, 'square', 0.16, 0.2);
+    tone(2349 * pitch, 0.45, 'sine', 0.2, 0.3);
+    noise(0.04, 0.1, 0, 5000);
+  },
+  /** 러시 탭 한 번(초당 10번): 아주 짧고 작은 틱. 기존 탭 소리보다 작다 */
+  rushTick(): void {
+    const now = performance.now();
+    if (now - lastRush < 70) return;
+    lastRush = now;
+    tone(1760 * pitch, 0.02, 'square', 0.05, 0);
+  },
+  /** 폭탄 상자 터짐: 낮은 쿵 + 거친 잡음 */
+  bombBlast(): void {
+    tone(70, 0.4, 'sawtooth', 0.5, 0, 28);
+    tone(140, 0.2, 'square', 0.22, 0, 50);
+    noise(0.35, 0.4, 0, 1400);
+    noise(0.15, 0.2, 0.05, 4000);
+  },
   newItem(): void {
     tone(988, 0.1, 'sine', 0.16);
     tone(1480, 0.2, 'sine', 0.16, 0.08);
@@ -260,11 +330,6 @@ export const sfx = {
     tone(660, 0.1, 'square', 0.1, 0.06);
     tone(880, 0.16, 'square', 0.1, 0.14);
   },
-  bundleUp(): void {
-    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.16, 'triangle', 0.15, i * 0.06));
-    tone(1760, 0.45, 'sine', 0.14, 0.34);
-    noise(0.15, 0.08, 0.3, 4500);
-  },
   perkFlip(i: number): void {
     tone(700 + i * 160, 0.07, 'triangle', 0.13);
     noise(0.04, 0.1, 0, 2500);
@@ -273,10 +338,6 @@ export const sfx = {
     [659, 880, 1109, 1319].forEach((f, k) => tone(f, 0.2, 'square', 0.13, k * 0.07));
     tone(1760, 0.5, 'sine', 0.15, 0.3);
     noise(0.2, 0.1, 0.25, 5000);
-  },
-  contractEnd(): void {
-    tone(784, 0.14, 'sine', 0.14);
-    tone(587, 0.22, 'sine', 0.12, 0.12);
   },
   wrong(): void {
     tone(220, 0.25, 'sawtooth', 0.14, 0, 110);

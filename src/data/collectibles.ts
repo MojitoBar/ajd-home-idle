@@ -24,11 +24,11 @@ export interface CollectibleDef {
 }
 
 export const RARITIES: readonly RarityDef[] = [
-  { id: 'common', name: '일반', prob: 0.6, weight: 0.01 },
-  { id: 'rare', name: '레어', prob: 0.27, weight: 0.02 },
-  { id: 'epic', name: '에픽', prob: 0.1, weight: 0.04 },
-  { id: 'legend', name: '전설', prob: 0.027, weight: 0.08 },
-  { id: 'myth', name: '신화', prob: 0.003, weight: 0.16 },
+  { id: 'common', name: '일반', prob: 0.6, weight: 0.05 },
+  { id: 'rare', name: '레어', prob: 0.27, weight: 0.1 },
+  { id: 'epic', name: '에픽', prob: 0.1, weight: 0.2 },
+  { id: 'legend', name: '전설', prob: 0.027, weight: 0.4 },
+  { id: 'myth', name: '신화', prob: 0.003, weight: 0.8 },
 ];
 
 export const VARIANTS: readonly VariantDef[] = [
@@ -63,23 +63,25 @@ export const COLLECTIBLES: readonly CollectibleDef[] = [
 
 export const SLOT_TOTAL = COLLECTIBLES.length * VARIANTS.length;
 
-export type SetEffectKey = 'tapMult' | 'serviceMult' | 'offlineMult' | 'feverSec' | 'critMult';
+export type SetEffectKey = 'feverSec' | 'critMult';
 
 export interface SetDef {
   rarity: Rarity;
   name: string;
-  effect: SetEffectKey;
-  /** 효과량: 배율이면 곱할 값, 초·배율 가산이면 더할 값 */
-  value: number;
+  /** 세트 완성 시 도감 배율에 곱할 값 */
+  dexMult: number;
+  /** 추가 효과(전설·신화). 초·배율 가산이라 value를 더한다 */
+  effect?: SetEffectKey;
+  value?: number;
   /** 화면용 효과 문구 */
   desc: string;
 }
 
 /** 등급 세트: 그 등급의 모든 종을 변이와 상관없이 1개 이상 가지면 켜진다. */
 export const SETS: readonly SetDef[] = [
-  { rarity: 'common', name: '일반 세트', effect: 'tapMult', value: 1.5, desc: '탭 수익 x1.5' },
-  { rarity: 'rare', name: '레어 세트', effect: 'serviceMult', value: 1.25, desc: '서비스 수익 x1.25' },
-  { rarity: 'epic', name: '에픽 세트', effect: 'offlineMult', value: 1.5, desc: '오프라인 보상 x1.5' },
-  { rarity: 'legend', name: '전설 세트', effect: 'feverSec', value: 5, desc: '피버 시간 +5초' },
-  { rarity: 'myth', name: '신화 세트', effect: 'critMult', value: 2, desc: '치명타 배율 +2' },
+  { rarity: 'common', name: '일반 세트', dexMult: 2, desc: '도감 배율 x2' },
+  { rarity: 'rare', name: '레어 세트', dexMult: 2, desc: '도감 배율 x2' },
+  { rarity: 'epic', name: '에픽 세트', dexMult: 3, desc: '도감 배율 x3' },
+  { rarity: 'legend', name: '전설 세트', dexMult: 3, effect: 'feverSec', value: 5, desc: '도감 배율 x3 · 피버 +5초' },
+  { rarity: 'myth', name: '신화 세트', dexMult: 5, effect: 'critMult', value: 2, desc: '도감 배율 x5 · 치명 +2' },
 ];

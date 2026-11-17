@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { TAP_BOX_SCALE } from '../data/services';
-import { applyTap, pps, tapValue, tick } from './economy';
-import { advanceFever, chargeFever, CRIT_CHANCE, CRIT_MULT, FEVER_COOLDOWN_SEC, FEVER_MULT, FEVER_SEC, FEVER_TAPS, feverRatio, PARCEL_MIN_TAPS, PARCEL_STAY_SEC } from './fever';
+import { TAP_BOX_SCALE } from '../data/tap';
+import { applyTap, tapStable, tapValue, tick } from './economy';
+import { advanceFever, chargeFever, CRIT_CHANCE, CRIT_MULT, FEVER_COOLDOWN_SEC, FEVER_MULT, FEVER_SEC, FEVER_TAPS, feverRatio, PARCEL_STAY_SEC, PARCEL_TAPS_PER_SEC } from './fever';
 import { boxPrice } from './gacha';
-import { applyOffline } from './offline';
 import { perkEffects } from './perks';
 import { move } from './prestige';
 import { parseSave, serialize } from './save';
@@ -15,7 +14,7 @@ const fill = (s: GameState): GameState => {
   for (let i = 0; i < FEVER_TAPS; i++) cur = tapWithRng(cur, () => 0.99).state;
   return cur;
 };
-const withPps = (): GameState => ({ ...defaultState(), points: 1e4, services: [20, 5, 0, 0, 0, 0, 0, 0] });
+const withPps = (): GameState => ({ ...defaultState(), points: 1e4 });
 const seq = (...v: number[]) => { let i = 0; return () => v[Math.min(i++, v.length - 1)]; };
 
 describe('치명타', () => {
@@ -48,13 +47,12 @@ describe('피버', () => {
     expect(s.fever.gauge).toBeCloseTo(7.6);
     expect(tick(s, 100).fever.gauge).toBe(0);
   });
-  it('가득 차면 발동하고 수익이 x3(탭·자동)', () => {
+  it('가득 차면 발동하고 탭 수익이 x3', () => {
     const base = withPps();
-    const before = { tap: tapValue(base), pps: pps(base) };
+    const before = { tap: tapValue(base) };
     const s = fill(base);
     expect(s.fever.activeSec).toBe(FEVER_SEC);
     expect(tapValue(s)).toBeCloseTo(before.tap * FEVER_MULT);
-    expect(pps(s)).toBeCloseTo(before.pps * FEVER_MULT);
     expect(feverRatio(s)).toBe(1);
   });
   it('피버 중엔 충전되지 않고, 끝나면 게이지 0 + 재충전 제한', () => {
@@ -73,12 +71,9 @@ describe('피버', () => {
     expect(r.gain).toBeCloseTo(tapValue(s) * perkEffects(s).critMult, 10);
     expect(r.gain).toBeGreaterThan(tapValue(s));
   });
-  it('이사하면 초기화, 오프라인엔 미적용', () => {
-    const f = fill({ ...defaultState(), earned: 5.5e7 });
+  it('이사하면 초기화', () => {
+    const f = fill({ ...defaultState(), earned: 3.7e15 });
     expect(move(f)!.fever).toEqual(defaultState().fever);
-    const s = { ...fill(withPps()), savedAt: 0 };
-    const plain = applyOffline({ ...withPps(), savedAt: 0 }, 3600_000).report!.gain;
-    expect(applyOffline(s, 3600_000).report!.gain).toBeCloseTo(plain);
   });
   it('저장하지 않는다(불러오면 0)', () => {
     const raw = serialize(fill(defaultState()), 5);
@@ -111,19 +106,26 @@ describe('떠다니는 택배 상자', () => {
   it('떠 있지 않으면 잡을 수 없음', () => {
     expect(catchParcel(defaultState(), () => 0.5)).toBeNull();
   });
-  it('포인트 보상: 현재 pps의 N초분, earned에도 반영, 사라짐', () => {
+  it('포인트 보상: tapStable x 2.5 x 초, earned에도 반영, 사라짐', () => {
     const s = appear(withPps());
     const r = catchParcel(s, seq(0.9, 0.5, 0.5))!; // 다음 대기, 종류(포인트), 초 수 -> 30초
     expect(r.reward).toMatchObject({ kind: 'points', seconds: 30 });
-    expect(r.reward.kind === 'points' && r.reward.gain).toBeCloseTo(pps(s) * 30);
-    expect(r.state.points).toBeCloseTo(s.points + pps(s) * 30);
-    expect(r.state.earned).toBeCloseTo(s.earned + pps(s) * 30);
+    const gain = tapStable(s) * PARCEL_TAPS_PER_SEC * 30;
+    expect(PARCEL_TAPS_PER_SEC).toBe(2.5);
+    expect(r.reward.kind === 'points' && r.reward.gain).toBeCloseTo(gain);
+    expect(r.state.points).toBeCloseTo(s.points + gain);
+    expect(r.state.earned).toBeCloseTo(s.earned + gain);
     expect(r.state.parcel.remainSec).toBe(0);
   });
-  it('수익이 0이면 탭 수익 기준 최소 보장', () => {
+  it('초 수는 20~40, 살림·도감이 크면 보상도 커진다', () => {
     const s = appear(defaultState());
-    const r = catchParcel(s, seq(0.5, 0.5, 0.5))!;
-    expect(r.reward.kind === 'points' && r.reward.gain).toBe(tapValue(s) * PARCEL_MIN_TAPS);
+    const lo = catchParcel(s, seq(0.5, 0.5, 0))!.reward;
+    const hi = catchParcel(s, seq(0.5, 0.5, 0.9999))!.reward;
+    expect(lo).toMatchObject({ seconds: 20 });
+    expect(lo.kind === 'points' && lo.gain).toBeCloseTo(tapStable(s) * 2.5 * 20, 10);
+    expect(hi.kind === 'points' && hi.seconds).toBeCloseTo(40, 1);
+    const big = { ...s, homeLv: Array(8).fill(3) };
+    expect(catchParcel(big, seq(0.5, 0.5, 0))!.reward.kind === 'points' && (catchParcel(big, seq(0.5, 0.5, 0))!.reward as { gain: number }).gain).toBeCloseTo((lo.kind === 'points' ? lo.gain : 0) * 3.4, 8);
   });
   it('무료 상자: 도감만 늘고 가격·개봉 수는 그대로', () => {
     const s = appear(withPps());

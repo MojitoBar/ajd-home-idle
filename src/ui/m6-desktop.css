@@ -14,7 +14,6 @@
   /* 왼쪽 단의 줄은 모두 방 틀(.px-strip)과 같은 폭·같은 좌우선. 묶음은 위로 붙이고 키 안내만 맨 아래 */
   .col-play > .top, .col-play > .hero, .col-play > .move-block, .col-play > .key-hint { width: var(--strip-w); margin-left: auto; margin-right: auto; box-sizing: border-box; }
   .col-play .speed-num { position: relative; }
-  .col-play .speed-unit { position: absolute; left: 100%; bottom: 10px; margin-left: var(--s1); white-space: nowrap; }
   /* 속도 숫자 폭과 무관하게 같은 자리: 숫자 줄 오른쪽 고정 좌표 */
   .col-play .speed-wrap { position: static; }
   .col-play .speed-title { margin-top: 2px; }
@@ -37,21 +36,7 @@
   .dock-pts, .dock-phone, .tab-gap { display: none; }
   .dock .tab { min-height: 68px; margin: 0; }
   .dock .tab:not(.active) { color: var(--k2); }
-  .seg { width: 152px; margin-left: auto; }
-  .seg .chip { min-height: 36px; }
 
-  /* 서비스 탭 맨 위의 한 줄: 약정 칸 · 결합 · (오른쪽 끝) 수량 칩. 스크롤해도 탭 줄 아래에 고정, 결합 카드는 그 줄 아래 */
-  .strat-top:not([hidden]) { display: contents; }
-  .strat-line { position: sticky; top: 107px; z-index: 4; height: 36px; margin: 0 0 15px; padding: 0 2px; box-sizing: border-box; justify-content: flex-start; background: var(--bg); }
-  .strat-line::before { content: ''; position: absolute; left: 0; right: 0; top: -15px; height: 15px; background: var(--bg); }
-  .strat-line::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 6px; background: var(--bg); box-shadow: 0 2px 0 0 var(--k1); }
-  .strat-top .chip.bundle-toggle { margin-bottom: 0; }
-  .strat-line .chip.bundle-toggle { height: 36px; min-height: 36px; box-sizing: border-box; }
-  .strat-line .slots-pill { height: 44px; min-height: 44px; }
-  .bundle-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px var(--s2); overflow: visible; margin: 0; padding: 4px 2px 8px; scroll-snap-type: none; }
-  .bchip { width: auto; max-width: none; min-width: 0; padding: var(--s2); }
-  .bc-name-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bc-ico-img { display: none; }
   .col-play > .key-hint { margin-top: auto; }
   .panel { padding-bottom: var(--s5); }
   .panel.surface { margin-bottom: var(--s5); }
@@ -78,7 +63,7 @@
   .btn:hover:not(:disabled), .chip:hover { transform: translateY(-2px); }
   .btn:active:not(:disabled), .chip:active:not(:disabled) { transform: translateY(var(--press)); }
   .dock .tab:hover:not(.active) { color: var(--k1); }
-  .dock .tab:active, .seg .chip:active:not(:disabled) { transform: none; }
+  .dock .tab:active { transform: none; }
 }
 
 /* 큰 PC 화면(폭 1280 이상, 높이 820 이상): 방을 2배(도트 1칸 = 4px, 방 폭 720)로. 방·띠를 transform으로 키우고 늘어난 세로만큼 자리를 비워 둔다 */
