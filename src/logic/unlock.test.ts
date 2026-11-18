@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { defaultState, type GameState } from './state';
-import { houseInfo } from './house';
-import { isMet, isOpen, metIds, nextUnlock, pendingUnlocks, UNLOCK_IDS, UNLOCK_RULE } from './unlock';
+import { defaultState } from './testState';
+import type { GameState } from './state';
+import { isMet, isOpen, metIds, nextUnlock, pendingUnlocks, UNLOCK_IDS } from './unlock';
 import { parseSave, serialize } from './save';
 
 const base = (): GameState => defaultState(0);
 const with_ = (p: Partial<GameState>): GameState => ({ ...base(), ...p });
-const target = houseInfo(0).target;
 
 describe('단계적 공개 판정', () => {
   it('새 게임에서는 아무것도 충족하지 않는다', () => {
@@ -28,11 +27,6 @@ describe('단계적 공개 판정', () => {
   it('도감: 사은품을 처음 얻은 뒤', () => {
     expect(isMet(base(), 'dex')).toBe(false);
     expect(isMet(with_({ collection: { a: { base: 1, shiny: 0, gold: 0, rainbow: 0 } } }), 'dex')).toBe(true);
-  });
-
-  it('이사 줄: 이사 목표 대비 번 포인트', () => {
-    expect(isMet(with_({ earned: target * UNLOCK_RULE.moveRatio * 0.99 }), 'move')).toBe(false);
-    expect(isMet(with_({ earned: target * UNLOCK_RULE.moveRatio }), 'move')).toBe(true);
   });
 
   it('배율 내역: 도감·특전 중 하나라도 배율이 생긴 뒤(일시 배율 제외)', () => {
@@ -59,9 +53,9 @@ describe('unlocked 저장', () => {
     const r = parseSave(serialize(s, 1));
     expect(r.kind === 'ok' && r.state.unlocked).toEqual(['box', 'dex']);
     const raw = JSON.parse(serialize(s, 1));
-    raw.unlocked = ['move', 'zzz'];
+    raw.unlocked = ['dex', 'move', 'zzz'];
     const r2 = parseSave(JSON.stringify(raw));
-    expect(r2.kind === 'ok' && r2.state.unlocked).toEqual(['move']);
+    expect(r2.kind === 'ok' && r2.state.unlocked).toEqual(['dex']);
   });
 
   it('예전 저장(필드 없음)은 undefined로 남아 화면이 조건에서 유도한다', () => {

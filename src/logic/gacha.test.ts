@@ -3,7 +3,7 @@ import { COLLECTIBLES, RARITIES, SLOT_TOTAL, VARIANTS } from '../data/collectibl
 import { applyTap, collectionMult as econC } from './economy';
 import { boxPrice, collectionMult, collectionProgress, oddsTable, openBox, openBoxes, rollBox } from './gacha';
 import { move } from './prestige';
-import { defaultState } from './state';
+import { defaultState } from './testState';
 
 function mulberry(seed: number) {
   let a = seed;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PERKS, PERK_OFFER_SIZE } from '../data/perks';
 import { collectionMult } from './economy';
 import { dexBoostMult, homeBoostMult, rollPerkOffer, seededRng } from './perks';
-import { defaultState } from './state';
+import { defaultState } from './testState';
 
 describe('특전 풀', () => {
   it('8종이고 죽은 특전은 없다', () => {

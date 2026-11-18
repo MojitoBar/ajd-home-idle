@@ -15,6 +15,7 @@ import {
 import { collectionMultOf, setEffects } from './collection';
 import { advanceFever, advanceParcel, feverMultOf } from './fever';
 import { dexBoostMult, homeBoostMult, perkEffects } from './perks';
+import { featureOpen } from './guide';
 import type { GameState } from './state';
 import { tierOf } from './unpack';
 
@@ -123,6 +124,7 @@ export function buyTapUpgrade(state: GameState): GameState | null {
 }
 
 export function buyStrikeUpgrade(state: GameState): GameState | null {
+  if (!featureOpen(state, 'chain')) return null;
   const cost = strikeCost(state.strikeLevel);
   if (!Number.isFinite(cost) || cost > state.points) return null;
   return { ...state, points: state.points - cost, strikeLevel: state.strikeLevel + 1 };

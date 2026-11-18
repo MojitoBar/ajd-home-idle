@@ -16,7 +16,7 @@ import {
   streakMult,
   releaseCharge,
 } from './charge';
-import { defaultState } from './state';
+import { defaultState } from './testState';
 import { tapValue } from './economy';
 
 const never = () => 0.99;

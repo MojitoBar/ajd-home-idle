@@ -1,3 +1,6 @@
+import { featureOpen } from './guide';
+import type { GameState } from './state';
+
 /** 콤보: 연속 탭 수가 단계를 올려 탭 수익 배율을 주고, 끝날 때 번 포인트의 일부를 정산 보너스로 한 번 더 준다. 저장하지 않는 실행 중 상태. */
 
 export interface ComboState {
@@ -42,6 +45,11 @@ export function comboTier(n: number): number {
   let t = 0;
   for (let i = 0; i < COMBO_TIERS.length; i++) if (n >= COMBO_TIERS[i].at) t = i + 1;
   return t;
+}
+
+/** 가이드를 따르는 콤보 배율: 콤보가 아직 안 열렸으면 x1 */
+export function comboMultOf(state: GameState, n: number): number {
+  return featureOpen(state, 'combo') ? comboMult(n) : 1;
 }
 
 export function comboMult(n: number): number {

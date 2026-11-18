@@ -55,7 +55,7 @@ let shieldMaxSeen = 0;
 let tipEl: HTMLElement;
 let tipAnim: Animation | undefined;
 let tipTimer = 0;
-let tipKind: 'charge' | 'heat' = 'charge';
+let tipKind: 'charge' | 'heat' | 'perfect' = 'charge';
 let hold: Hold | null = null;
 let stopping = false;
 let markX = -1;
@@ -372,10 +372,11 @@ function heatStrikeFx(grade: ChargeGrade, power: number, app: HTMLElement, room:
   if (grade === 'perfect') window.setTimeout(() => fx.shake(app, 4, 250), 480);
 }
 
-export function showTip(kind: 'charge' | 'heat' = 'charge'): void {
+/** hold: 가이드 안내용. 시간이 지나도 안 사라지고, 호출하는 쪽이 숨긴다 */
+export function showTip(kind: 'charge' | 'heat' | 'perfect' = 'charge', hold = false): void {
   const a = boxAnchor();
   tipKind = kind;
-  tipEl.firstElementChild!.textContent = kind === 'heat' ? '파워가 찼을 때 강타를 치면 더 세요!' : '꾹 눌렀다 떼면 강타!';
+  tipEl.firstElementChild!.textContent = kind === 'heat' ? '파워가 찼을 때 강타를 치면 더 세요!' : kind === 'perfect' ? '게이지를 노란 칸에 맞춰 놓아요' : '꾹 눌렀다 떼면 강타!';
   const r = opts.room.getBoundingClientRect();
   tipEl.hidden = false;
   tipEl.style.left = `${Math.round((r.width / a.k - tipEl.offsetWidth) / 2)}px`;
@@ -383,7 +384,7 @@ export function showTip(kind: 'charge' | 'heat' = 'charge'): void {
   tipAnim?.cancel();
   tipAnim = fx.pxFrames(tipEl, [{ translate: '0 0' }, { translate: '0 -2px' }], 400, { iterations: Infinity });
   window.clearTimeout(tipTimer);
-  tipTimer = window.setTimeout(hideTip, 7000);
+  if (!hold) tipTimer = window.setTimeout(hideTip, 7000);
 }
 
 export function hideTip(): void {
@@ -395,7 +396,7 @@ export function hideTip(): void {
 }
 
 export const tipShown = (): boolean => !tipEl.hidden;
-export const shownTipKind = (): 'charge' | 'heat' => tipKind;
+export const shownTipKind = (): 'charge' | 'heat' | 'perfect' => tipKind;
 
 // ---------- 안전모(실드) ----------
 

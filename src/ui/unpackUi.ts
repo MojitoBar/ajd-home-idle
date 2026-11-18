@@ -1,5 +1,6 @@
 // 이삿짐 상자 풀기 화면: 방 한가운데 상자·대기 상자·살림 칸·내구도 막대·도구 연출. 로직은 모르고 state와 터짐 결과만 받는다.
 import { ROOMS, roomFor, SHELF_ICON_DROP, SHELF_TOOL_DROP, shelfSlots } from '../data/rooms';
+import { featureOpen } from '../logic/guide';
 import { houseInfo } from '../logic/house';
 import { CHAIN_PRIZES, GOLD_GAIN_MULT, ROOM_BOXES, ROOM_ITEMS, TOOLS, type BoxKind, type SpecialBox, type ToolDef } from '../data/unpack';
 import { formatNumber } from '../logic/format';
@@ -336,7 +337,8 @@ function shelfIcons(state: GameState): ([string, number] | null)[] {
   const gear = (id: GearId, art: string, drop: number): [string, number] | null => (gearLevel(state, id) > 0 ? [art, drop] : null);
   return [
     [tool.icon, SHELF_TOOL_DROP[tool.id] ?? 0],
-    ['tool/sledge', SHELF_ICON_DROP[1]],
+    // 오함마 카드는 가이드 연쇄 단계에서 열린다. 그 전에는 자리만 비워 둔다
+    featureOpen(state, 'chain') ? ['tool/sledge', SHELF_ICON_DROP[1]] : null,
     gear('level', 'tool/level', SHELF_ICON_DROP[2]),
     gear('helmet', 'tool/hardhat', SHELF_ICON_DROP[3]),
     gear('crowbar', 'tool/crowbar', SHELF_ICON_DROP[4]),

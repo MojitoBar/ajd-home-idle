@@ -2,7 +2,7 @@ import { BOX_KINDS, UNPACK_HP_BASE } from '../data/unpack';
 import type { GearId } from '../data/gear';
 import { initialFever, initialParcel } from './fever';
 
-export const CURRENT_VERSION = 9;
+export const CURRENT_VERSION = 10;
 
 export interface CollectionSlot {
   base: number;
@@ -44,6 +44,13 @@ export interface UnpackState {
 
 export const initialUnpack = (salt = 0): UnpackState => ({ box: 0, damage: 0, roomDone: false, hp: Math.ceil(UNPACK_HP_BASE * BOX_KINDS.small.hpMult - 1e-9), salt, rushSec: 0 });
 
+/** 첫 가이드 진행(저장됨). step = 지금 단계 번호(0부터, 단계 수가 되면 전부 끝), n = 그 단계의 진행 수, done = 가이드 끝(이사했거나 끝까지 마침, 옛 저장) */
+export interface GuideState {
+  step: number;
+  n: number;
+  done: boolean;
+}
+
 export const HOME_SLOTS = 8;
 
 export interface GameState {
@@ -74,6 +81,8 @@ export interface GameState {
   bestCombo: number;
   /** 한 번의 강타·급소로 터뜨린 상자 최고 수. 이사해도 유지 */
   bestChain: number;
+  /** 첫 가이드: 손맛 요소가 하나씩 열리는 순서(logic/guide.ts). 이사하면 끝난다 */
+  guide: GuideState;
   /** 열린 화면 요소 id(단계적 공개). 없으면 예전 저장이라 조건에서 유도해 조용히 채운다. 한번 열리면 이사해도 유지 */
   unlocked?: string[];
   /** 저장 개편 안내(한 번 띄운 뒤 지운다). boxes = 서비스 보상으로 받은 무료 상자 수 */
@@ -102,5 +111,6 @@ export function defaultState(savedAt = 0, salt = 0): GameState {
     settings: { reduceMotion: false },
     bestCombo: 0,
     bestChain: 0,
+    guide: { step: 0, n: 0, done: false },
   };
 }

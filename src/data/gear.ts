@@ -34,11 +34,11 @@ export const GEAR_SPECIAL_RATE_BASE = 0.05;
 export const GEAR_SPECIAL_RATE_STEP = 0.01;
 
 export const GEARS: readonly GearDef[] = [
-  { id: 'level', name: '수평계', maxLevel: 5, frac: 0.02, unlockBox: 15, desc: '퍼펙트 칸이 넓어져요' },
-  { id: 'helmet', name: '안전모', maxLevel: 3, frac: 0.03, unlockBox: 45, desc: '틀려도 연속 퍼펙트를 지켜 줘요' },
-  { id: 'crowbar', name: '빠루', maxLevel: 5, frac: 0.02, unlockBox: 35, desc: '연쇄 보너스가 더 오래 올라가요' },
-  { id: 'awl', name: '송곳', maxLevel: 5, frac: 0.015, unlockBox: 55, desc: '급소가 더 세고 더 자주 떠요' },
-  { id: 'loupe', name: '돋보기', maxLevel: 5, frac: 0.02, unlockBox: 25, desc: '특별 상자가 더 자주 나와요' },
+  { id: 'level', name: '수평계', maxLevel: 5, frac: 0.01, unlockBox: 15, desc: '퍼펙트 칸이 넓어져요' },
+  { id: 'helmet', name: '안전모', maxLevel: 3, frac: 0.015, unlockBox: 45, desc: '틀려도 연속 퍼펙트를 지켜 줘요' },
+  { id: 'crowbar', name: '빠루', maxLevel: 5, frac: 0.01, unlockBox: 35, desc: '연쇄 보너스가 더 오래 올라가요' },
+  { id: 'awl', name: '송곳', maxLevel: 5, frac: 0.0075, unlockBox: 55, desc: '급소가 더 세고 더 자주 떠요' },
+  { id: 'loupe', name: '돋보기', maxLevel: 5, frac: 0.01, unlockBox: 25, desc: '특별 상자가 더 자주 나와요' },
 ];
 
 export const GEAR_IDS: readonly GearId[] = GEARS.map((g) => g.id);

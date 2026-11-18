@@ -6,7 +6,8 @@ import { buyGear, canBuyGear, gearCost, gearEffects, gearUnlocked, initialShield
 import { houseInfo } from './house';
 import { move } from './prestige';
 import { parseSave, sanitize, serialize } from './save';
-import { defaultState, type GameState } from './state';
+import { defaultState } from './testState';
+import type { GameState } from './state';
 import { chainBonus, specialAt } from './unpack';
 import { advanceWeak, hitWeak, type WeakState } from './weak';
 
@@ -15,16 +16,16 @@ const rich = (extra: Partial<GameState> = {}): GameState => ({ ...defaultState()
 
 describe('공구 비용·해금·구매', () => {
   it('비용 = 집 목표 × frac × 2.2^레벨', () => {
-    const s = defaultState();
-    const t = houseInfo(0).target;
-    expect(gearCost(s, 'level')).toBeCloseTo(t * 0.02);
-    expect(gearCost({ ...s, gear: { level: 2 } }, 'level')).toBeCloseTo(t * 0.02 * 2.2 ** 2);
-    expect(gearCost(s, 'helmet')).toBeCloseTo(t * 0.03);
-    expect(gearCost(s, 'awl')).toBeCloseTo(t * 0.015);
+    const s = { ...defaultState(), moves: 1 };
+    const t = houseInfo(1).target;
+    expect(gearCost(s, 'level')).toBeCloseTo(t * 0.01);
+    expect(gearCost({ ...s, gear: { level: 2 } }, 'level')).toBeCloseTo(t * 0.01 * 2.2 ** 2);
+    expect(gearCost(s, 'helmet')).toBeCloseTo(t * 0.015);
+    expect(gearCost(s, 'awl')).toBeCloseTo(t * 0.0075);
   });
   it('집이 바뀌면 비용도 그 집 목표를 따른다', () => {
     const s = { ...defaultState(), moves: 2 };
-    expect(gearCost(s, 'crowbar')).toBeCloseTo(houseInfo(2).target * 0.02);
+    expect(gearCost(s, 'crowbar')).toBeCloseTo(houseInfo(2).target * 0.01);
   });
   it('상한이면 Infinity', () => {
     expect(gearCost({ ...defaultState(), gear: { helmet: 3 } }, 'helmet')).toBe(Infinity);

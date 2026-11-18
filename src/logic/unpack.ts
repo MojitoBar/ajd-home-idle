@@ -30,6 +30,7 @@ import {
 import type { BoxResult } from './gacha';
 import { tapBase, tapValue } from './economy';
 import { gearEffects } from './gear';
+import { featureOpen } from './guide';
 import { chargeFever, feverMultOf } from './fever';
 import { perkEffects, seededRng, tapPowerMult } from './perks';
 import { HOME_SLOTS, type GameState } from './state';
@@ -83,7 +84,7 @@ export function specialAt(salt: number, k: number, rate = SPECIAL_RATE): Special
 
 /** 지금 상자(offset 0)와 다음 상자들(offset 1, 2…)의 특별 종류. 화면의 대기 상자 표시용 */
 export function boxSpecial(state: GameState, offset = 0): SpecialBox | null {
-  return specialAt(state.unpack.salt, state.unpack.box + offset, gearEffects(state).specialRate);
+  return featureOpen(state, 'special') ? specialAt(state.unpack.salt, state.unpack.box + offset, gearEffects(state).specialRate) : null;
 }
 
 /** 새 게임·이사 때 뽑는 salt(0 이상 2^31 미만 정수) */
@@ -209,7 +210,7 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
   }
 
   const kind = boxKind(k);
-  const special = specialAt(state.unpack.salt, k, gearEffects(state).specialRate);
+  const special = boxSpecial(state);
   const gain =
     (tapValue(state) / feverMultOf(state.fever)) * BOX_KINDS[kind].k * (k < ROOM_BOXES ? 1 : ENDLESS_K_MULT) * (o.gainMult ?? 1) * (special === 'gold' ? GOLD_GAIN_MULT : 1);
   const inRoom = k < ROOM_BOXES;
@@ -274,7 +275,7 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
  * 폭탄이 터지면 뒤따르는 BOMB_BLAST개가 내구도와 상관없이 함께 터지고, 휩쓸린 폭탄은 거기서 다시 BOMB_BLAST개를 터뜨린다.
  */
 function hitChained(state: GameState, base: HitOptions, bursts: BoxBurst[]): GameState {
-  const opts = (extra: Partial<HitOptions>): HitOptions => ({ ...base, gainMult: chainBonus(bursts.length, gearEffects(state).chainCap), chain: bursts.length + 1, ...extra });
+  const opts = (extra: Partial<HitOptions>): HitOptions => ({ ...base, gainMult: featureOpen(state, 'chain') ? chainBonus(bursts.length, gearEffects(state).chainCap) : 1, chain: bursts.length + 1, ...extra });
   const h = hitBox(state, opts({}));
   if (!h.burst) return h.state;
   bursts.push(h.burst);
@@ -293,6 +294,7 @@ function hitChained(state: GameState, base: HitOptions, bursts: BoxBurst[]): Gam
 
 /** 연쇄 상금(5·10·20개 이상). 없으면 null. 상금은 시작 상태 기준 탭 1회 수익(피버 제외) x taps */
 function chainPrize(start: GameState, state: GameState, chain: number): { state: GameState; prize: HeavyResult['prize'] } {
+  if (!featureOpen(start, 'chain')) return { state, prize: null };
   for (let t = CHAIN_PRIZES.length - 1; t >= 0; t--) {
     if (chain < CHAIN_PRIZES[t].n) continue;
     const gain = (tapValue(start) / feverMultOf(start.fever)) * CHAIN_PRIZES[t].taps;
@@ -358,12 +360,12 @@ export function heavyHit(state: GameState, rng: () => number, taps: number, comb
   const fx = perkEffects(state);
   let next: GameState = {
     ...r.state,
-    fever: chargeFever(state.fever, fx.feverSec, feverCharge),
+    fever: featureOpen(state, 'fever') ? chargeFever(state.fever, fx.feverSec, feverCharge) : state.fever,
     stats: { ...r.state.stats, totalTaps: state.stats.totalTaps + taps },
   };
   const bursts: BoxBurst[] = [];
   for (let i = 0; i < taps; i++) {
-    next = hitChained(next, { crit: r.crit, damped: false, feverMult, rng, critMult, pierce: true }, bursts);
+    next = hitChained(next, { crit: r.crit, damped: false, feverMult, rng, critMult, pierce: featureOpen(state, 'chain') }, bursts);
   }
   const chain = bursts.length;
   const p = chainPrize(state, next, chain);

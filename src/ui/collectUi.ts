@@ -2,6 +2,7 @@
 import { RARITIES, VARIANTS, type CollectibleDef, type Rarity, type Variant } from '../data/collectibles';
 import type { GameState } from '../logic/state';
 import type { BoxResult } from '../logic/gacha';
+import type { GuideEvent } from '../logic/guide';
 import { SLOT_LEVEL_NEED, SLOT_MAX_LEVEL, slotLevel, slotNextNeed } from '../logic/collection';
 import { el, openModal } from './dom';
 import { collectibleUrl } from './icons';
@@ -82,6 +83,8 @@ export interface UiCtx {
   goto(tab: 'tap' | 'home' | 'box' | 'dex'): void;
   showModal(title: string, body: Node[], actions: Parameters<typeof openModal>[2], opts?: Parameters<typeof openModal>[3]): void;
   dismissModal(): void;
+  /** 가이드에 사건을 알린다 */
+  guide(ev: GuideEvent): void;
 }
 
 /** 새로 등록된 칸(도감 탭에 들어왔을 때 한 번 반짝임). 저장하지 않는다. */

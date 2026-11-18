@@ -39,6 +39,8 @@ function gift(open: boolean, size: number): HTMLImageElement {
   return im;
 }
 export const panel = el('div', { cls: 'panel-inner box-panel' });
+/** 상자 1개 열기 버튼(가이드 화살표가 가리킨다) */
+export const openBtn = refs.one;
 
 const pct = (v: number): string => `${+(v * 100).toFixed(2)}%`;
 
@@ -156,6 +158,7 @@ function openOne(): void {
   const out = openBox(ctx.get(), rng);
   if (!out) return;
   ctx.set(out.state);
+  ctx.guide({ type: 'boxBuy' });
   ctx.save();
   markFresh(out.result);
   ctx.update();
@@ -174,11 +177,23 @@ export function playFree(result: BoxResult, o: { title?: string; onClose?: () =>
   return true;
 }
 
+/** 가이드 선물 상자 결과. 1개면 열기 장면, 여러 개면 묶음 결과 장면. 자동으로 닫히고(탭으로도 닫힘) 이미 상자 장면이 떠 있으면 false */
+export function playGifts(results: BoxResult[], o: { title: string; onClose?: () => void }): boolean {
+  if (busy || !results.length) return false;
+  busy = true;
+  results.forEach(markFresh);
+  ctx.update();
+  if (results.length === 1) playSingle(results[0], { ...o, auto: true });
+  else playTen(results, { ...o, auto: true });
+  return true;
+}
+
 function openTen(): void {
   if (busy) return;
   const out = openBoxes(ctx.get(), rng, 10);
   if (!out.results.length) return;
   ctx.set(out.state);
+  ctx.guide({ type: 'boxBuy' });
   ctx.save();
   out.results.forEach(markFresh);
   ctx.update();
@@ -326,16 +341,20 @@ function twinkles(rainbow: boolean, color: string, gold: boolean): HTMLElement {
   return host;
 }
 
-function playSingle(res: BoxResult, from: { title?: string; onClose?: () => void } = {}): void {
+/** 장면이 처음 닫힐 때 onClose를 한 번 부른다 */
+function onSceneClose(sc: Scene, onClose?: () => void): void {
+  if (!onClose) return;
+  const close = sc.close;
+  sc.close = function (this: Scene) {
+    const was = this.closed;
+    close.call(this);
+    if (!was) onClose();
+  };
+}
+
+function playSingle(res: BoxResult, from: { title?: string; onClose?: () => void; auto?: boolean } = {}): void {
   const sc = makeScene();
-  if (from.onClose) {
-    const close = sc.close;
-    sc.close = function (this: Scene) {
-      const was = this.closed;
-      close.call(this);
-      if (!was) from.onClose?.();
-    };
-  }
+  onSceneClose(sc, from.onClose);
   const quick = fx.isReduced();
   const rarity = res.item.rarity;
   const tier = rarityTier(rarity);
@@ -472,6 +491,7 @@ function playSingle(res: BoxResult, from: { title?: string; onClose?: () => void
       if (!armed || (e.target as Element).closest('.bs-actions')) return;
       sc.close();
     });
+    if (from.auto) sc.after(2600, () => sc.close());
 
     sc.after(250, () => {
       if (tier >= 2) {
@@ -504,9 +524,10 @@ function variantFx(v: string, at: { x: number; y: number }, tier: number): void 
   }
 }
 
-function playTen(results: BoxResult[]): void {
+function playTen(results: BoxResult[], from: { title?: string; onClose?: () => void; auto?: boolean } = {}): void {
   results.forEach((r) => preloadCollectible(r.item, r.variant));
   const sc = makeScene();
+  onSceneClose(sc, from.onClose);
   sc.root.classList.add('ten');
   const quick = fx.isReduced();
   const best = results.reduce((a, b) => (rarityScore(b) > rarityScore(a) ? b : a), results[0]);
@@ -570,8 +591,8 @@ function playTen(results: BoxResult[]): void {
     sc.close();
     openTen();
   });
-  const actions = el('div', { cls: 'bs-actions lock' }, moreTen, close);
-  sc.root.append(el('div', { cls: 'sum-wrap' }, el('div', { cls: 'sum-body' }, el('div', { cls: 'sum-title', text: `${results.length}개 열기 결과` }), hero, grid, gain), el('div', { cls: 'sum-foot' }, actions)), skip, white);
+  const actions = el('div', { cls: 'bs-actions lock' }, ...(from.title ? [] : [moreTen]), close);
+  sc.root.append(el('div', { cls: 'sum-wrap' }, el('div', { cls: 'sum-body' }, el('div', { cls: 'sum-title', text: from.title ?? `${results.length}개 열기 결과` }), hero, grid, gain), el('div', { cls: 'sum-foot' }, actions)), skip, white);
 
   let done = false;
   const flip = (i: number, instant = false): void => {
@@ -607,8 +628,9 @@ function playTen(results: BoxResult[]): void {
     at += quick ? 40 : 80;
   });
   sc.after(at + 380, () => finish());
-  sc.root.addEventListener('pointerdown', () => {
+  sc.root.addEventListener('pointerdown', (e) => {
     if (!done) finish(true);
+    else if (from.auto && !(e.target as Element).closest('.bs-actions')) sc.close();
   });
 
   function finish(instant = false): void {
@@ -639,6 +661,7 @@ function playTen(results: BoxResult[]): void {
     moreTen.disabled = boxPrice(ctx.get()) > ctx.get().points;
     skip.remove();
     sc.after(400, () => actions.classList.remove('lock'));
+    if (from.auto) sc.after(3200, () => sc.close());
   }
 }
 

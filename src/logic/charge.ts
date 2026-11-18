@@ -3,6 +3,7 @@ import { heavyHit, type HeavyResult } from './unpack';
 import type { GameState } from './state';
 import { strikeMult } from './economy';
 import { gearEffects } from './gear';
+import { featureOpen } from './guide';
 import { GEAR_PERFECT_HALF_BASE, GEAR_PERFECT_HALF_MAX } from '../data/gear';
 
 /** 이보다 길게 누르면 모으기 시작, 짧으면 일반 탭 */
@@ -124,7 +125,7 @@ export function releaseCharge(
   const grade = chargeGrade(pos, zone);
   const reward = CHARGE_REWARD[grade];
   const mult = typeof tapsMult === 'function' ? tapsMult(grade) : tapsMult;
-  const taps = Math.round(chargeTaps(grade, streak) * mult * strikeMult(state.strikeLevel));
+  const taps = Math.round(chargeTaps(grade, featureOpen(state, 'streak') ? streak : 0) * mult * strikeMult(state.strikeLevel));
   const h = heavyHit(state, rng, taps, comboMult, reward.fever);
   return { ...h, grade, streak: grade === 'perfect' ? streak + 1 : 0, comboAdd: reward.combo, taps };
 }

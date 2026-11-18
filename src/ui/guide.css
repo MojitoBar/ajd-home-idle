@@ -1,0 +1,73 @@
+/* ---------- 가이드 줄(guideUi.ts) + 가이드가 잠근 요소 숨김 ----------
+   줄: 종이 면 + k1 2px 선. 위 줄 = 주황 `가이드 n/17` 칩 + 진행 숫자 + 노랑 보상 칩, 아래 줄 = 지금 할 일(15px), 맨 아래 8px 진행 막대. */
+.guide-row { position: relative; box-sizing: border-box; width: var(--edge-w); height: 56px; margin: 0 var(--edge-m) var(--s2); padding: 6px var(--s2) 0; background: var(--p1); box-shadow: 0 0 0 2px var(--k1); color: var(--k1); overflow: hidden; z-index: 1; }
+.guide-row .gd-head { display: flex; align-items: center; gap: var(--s1); height: 16px; min-width: 0; overflow: hidden; white-space: nowrap; font: 700 var(--fs-s)/16px var(--f-bold); font-synthesis: none; }
+.guide-row .gd-chip { flex: none; height: 16px; padding: 0 4px; background: var(--or); color: var(--k0); }
+.guide-row .gd-n { flex: 1; min-width: 0; color: var(--k2); }
+.guide-row .gd-reward { flex: none; box-sizing: border-box; height: 16px; padding: 0 6px; background: var(--g3); color: var(--k0); box-shadow: inset 0 0 0 2px var(--g1); }
+.guide-row .gd-text { height: 21px; margin-top: 3px; white-space: nowrap; overflow: hidden; font: var(--fs-m)/21px var(--f-body); font-synthesis: none; }
+.guide-row .gd-text[data-size='12'] { font: 700 var(--fs-s)/21px var(--f-bold); }
+.guide-row .gd-bar { position: absolute; inset: auto 0 0 0; height: 8px; background: var(--k4); box-shadow: inset 0 2px 0 0 var(--k1); }
+.guide-row .gd-fill { position: absolute; inset: 2px auto 0 0; width: 0; background: var(--b2); transition: width 0.15s steps(8); }
+.guide-row.waiting .gd-fill { background: var(--or); }
+@media (min-width: 900px) {
+  .col-play > .guide-row { width: var(--strip-w); margin-left: auto; margin-right: auto; }
+}
+@media (max-width: 899px) and (max-height: 760px) {
+  .guide-row { height: 52px; margin-bottom: var(--s1); }
+}
+/* 낮은 폰(높이 759 이하)에서 가이드 중: 가이드 줄을 한 줄(30)로, 이사 줄·큰 숫자 줄을 낮춰 강화 버튼이 독 위로 올라오게 한다 */
+@media (max-width: 899px) and (max-height: 759px) {
+  .guide-row { height: 30px; padding: 0 var(--s2); display: flex; align-items: center; gap: var(--s1); }
+  .guide-row .gd-head { display: contents; }
+  .guide-row .gd-chip { order: 0; }
+  .guide-row .gd-text { order: 1; flex: 1; min-width: 0; margin-top: 0; height: 22px; line-height: 22px; }
+  .guide-row .gd-text[data-size='12'] { line-height: 22px; }
+  .guide-row .gd-n { order: 2; flex: none; }
+  .guide-row .gd-reward { display: none; }
+  .guide-row[data-tight='1'] .gd-n { display: none; }
+  .guide-row .gd-bar { height: 4px; }
+  .guide-row .gd-fill { inset: 2px auto 0 0; }
+  body.guiding .top { min-height: 52px; }
+  body.guiding .hero .speed-num { font-size: 30px; line-height: 32px; }
+  body.guiding .move-row .bar { height: 40px; }
+  body.guiding .move-row .bar-text { height: 32px; line-height: 32px; }
+  body.guiding .move-row .btn { min-height: 36px; }
+  body.guiding .card.tap-card > .buy { align-self: start; }
+  body.guiding .card.tap-card { padding-top: var(--s2); }
+  html:root body.guiding .room { margin-top: var(--s1); }
+  body.guiding .fever-gauge { margin: var(--s1) var(--edge-m) 0; }
+  body.guiding .guide-row { margin-bottom: 2px; }
+}
+
+/* 가이드가 아직 열지 않은 요소(app.ts가 body에 g-no-<요소>를 붙인다). 자리도 남기지 않는다 */
+body.g-no-combo .combo, body.g-no-combo .combo-heat { display: none !important; }
+body.g-no-fever .fever-gauge, body.g-no-fever .fever-tag, body.g-no-fever .x3-badge { display: none !important; }
+body.g-no-streak .guard-row, body.g-no-streak .streak-chip, body.g-no-streak .charge-streak { display: none !important; }
+body.g-no-charge .charge, body.g-no-charge .charge-tip { display: none !important; }
+/* 방 2배 화면에서 이사 줄이 2배가 되는 높이(1040 이상)에서는 가이드 줄도 같이 2배 */
+@media (min-width: 1280px) and (min-height: 1040px) {
+  html:root body.un-mode .col-play > .guide-row { zoom: 2; width: calc(var(--strip-w) / 2); }
+}
+
+/* 단계 완료: 막대가 가득 차고 주황으로 바뀐 채 "완료!"를 보여 준다(guideUi.celebrateHold) */
+.guide-row.done .gd-fill { background: var(--or); }
+.guide-row.done .gd-n { color: var(--or); }
+/* 새로 열린 요소 강조(guideFx.ts): 주황 테두리가 몇 번 깜빡이며 등장한다 */
+.g-open-target { position: relative; }
+
+/* 가리키는 화살표(guidePoint.ts): 주황 면 + 남색 외곽선 도트 그림. 위아래·좌우로 2도트(4px)씩 steps로 까딱인다. 눌림을 가로채지 않는다 */
+.gd-point { position: fixed; z-index: 20; pointer-events: none; image-rendering: pixelated; }
+.gd-point[hidden] { display: none; }
+.gd-point i { display: block; line-height: 0; animation: gd-bob 0.8s steps(1, end) infinite; }
+.gd-point svg { display: block; }
+.gd-point svg .l { fill: var(--k0); }
+.gd-point svg .f { fill: var(--or); }
+@keyframes gd-bob { 0% { translate: 0 0; } 50% { translate: 0 4px; } }
+.gd-point[data-dir='up'] i { animation-name: gd-bob-up; }
+.gd-point[data-dir='left'] i { animation-name: gd-bob-left; }
+.gd-point[data-dir='right'] i { animation-name: gd-bob-right; }
+@keyframes gd-bob-up { 0% { translate: 0 0; } 50% { translate: 0 -4px; } }
+@keyframes gd-bob-left { 0% { translate: 0 0; } 50% { translate: -4px 0; } }
+@keyframes gd-bob-right { 0% { translate: 0 0; } 50% { translate: 4px 0; } }
+@media (prefers-reduced-motion: reduce) { .gd-point i { animation: none; } }

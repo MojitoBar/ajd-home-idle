@@ -6,7 +6,8 @@ import { boxPrice } from './gacha';
 import { perkEffects } from './perks';
 import { move } from './prestige';
 import { parseSave, serialize } from './save';
-import { defaultState, type GameState } from './state';
+import { defaultState } from './testState';
+import type { GameState } from './state';
 import { catchParcel, tapWithRng } from './variety';
 
 const fill = (s: GameState): GameState => {

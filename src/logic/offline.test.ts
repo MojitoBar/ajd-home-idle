@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RETURN_RUSH_AWAY_SEC, RUSH_MAX_SEC } from '../data/unpack';
 import { applyOffline } from './offline';
-import { defaultState } from './state';
+import { defaultState } from './testState';
 
 const T = 1_700_000_000_000;
 

@@ -5,7 +5,8 @@ import { FEVER_SEC, CRIT_MULT } from './fever';
 import { boxPrice, openBox, openBoxes, rollBox } from './gacha';
 import { perkEffects } from './perks';
 import { parseSave, serialize } from './save';
-import { defaultState, type GameState } from './state';
+import { defaultState } from './testState';
+import type { GameState } from './state';
 import { collectionMult, multBreakdown, tapStable } from './economy';
 
 const rich = () => ({ ...defaultState(), points: 1e15 });
@@ -139,7 +140,7 @@ describe('가격·보장·저장', () => {
     const r = parseSave(serialize(s, 1));
     expect(r.kind).toBe('ok');
     const loaded = r.state;
-    expect(JSON.parse(serialize(s, 1)).version).toBe(9);
+    expect(JSON.parse(serialize(s, 1)).version).toBe(10);
     expect(loaded.collection.fan.base).toBe(7);
     expect(slotLevel(loaded.collection.fan.base)).toBe(3);
   });

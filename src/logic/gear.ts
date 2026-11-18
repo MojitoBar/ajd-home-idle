@@ -16,6 +16,7 @@ import {
   type GearId,
 } from '../data/gear';
 import type { ChargeGrade } from './charge';
+import { GUIDE_SPECIAL_RATE, featureOpen, guideAt, guideEnded, type GuideFeature } from './guide';
 import { houseInfo } from './house';
 import type { GameState } from './state';
 
@@ -31,8 +32,12 @@ export function gearCost(state: GameState, id: GearId): number {
   return houseInfo(state.moves).target * def.frac * GEAR_COST_GROWTH ** lv;
 }
 
-/** 카드가 보이는가: 이사를 했거나 이 집 상자를 해금 수만큼 열었다 */
+/** 가이드 중에는 공구가 돕는 요소(수평계 = 강타, 안전모 = 연속 퍼펙트…)가 열려야 카드가 열린다 */
+const GEAR_FEATURE: Record<GearId, GuideFeature> = { level: 'charge', helmet: 'streak', crowbar: 'chain', awl: 'weak', loupe: 'special' };
+
+/** 카드가 보이는가: 이사를 했거나 이 집 상자를 해금 수만큼 열었다. 가이드 중에는 영구 공구 단계에 닿고 그 공구의 요소가 열려 있어야 한다 */
 export function gearUnlocked(state: GameState, id: GearId): boolean {
+  if (!guideEnded(state) && !(featureOpen(state, 'gear') && featureOpen(state, GEAR_FEATURE[id]))) return false;
   return state.moves > 0 || state.unpack.box >= gearDef(id).unlockBox;
 }
 
@@ -68,7 +73,7 @@ export function gearEffects(state: GameState): GearEffects {
     chainCap: GEAR_CHAIN_CAP_BASE + GEAR_CHAIN_CAP_STEP * lv('crowbar'),
     weakTaps: GEAR_WEAK_TAPS_BASE + GEAR_WEAK_TAPS_STEP * lv('awl'),
     weakDelayMult: 1 - GEAR_WEAK_DELAY_STEP * lv('awl'),
-    specialRate: GEAR_SPECIAL_RATE_BASE + GEAR_SPECIAL_RATE_STEP * lv('loupe'),
+    specialRate: Math.max(GEAR_SPECIAL_RATE_BASE + GEAR_SPECIAL_RATE_STEP * lv('loupe'), guideAt(state, 'special') ? GUIDE_SPECIAL_RATE : 0),
   };
 }
 

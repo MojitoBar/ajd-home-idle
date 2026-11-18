@@ -1,8 +1,13 @@
 // 상자깡 루프 진행 속도 시뮬: 실제 로직(src/logic)을 vite ssr로 불러 초 단위로 한 판을 돈다. 실행: node tools/box-sim.mjs
-// 정책 3개(기본: 초당 4행동·강타 30%·퍼펙트 60% / 고수: 퍼펙트 90% / 가볍게: 초당 3행동·강타 20%·퍼펙트 40%) x 시드 5개.
+// 정책 3개 x 시드 5개. 전부 강타 1회에 sSec초가 걸려 그동안 다른 행동을 못 한다.
+// 현실(판정 기준, 사용자 실측 초당 약 100탭어치에 맞춤): 초당 3행동·강타 10%·퍼펙트 25% / 가볍게: 초당 2.5행동·강타 5%·퍼펙트 15% / 고수: 초당 4행동·강타 20%·퍼펙트 50%. 가볍게·고수는 참고만(첫 이사까지).
 // 급소가 떠 있으면 70% 맞힘, 나머지는 일반 탭. 콤보 배율은 반영하되 콤보 정산 보너스·택배·시계 러시는 뺀다.
 // 업그레이드는 싼 것부터, 상자는 가격이 P의 10% 이하일 때, 공구 5종은 해금됐고 비용이 P의 25% 이하일 때, 이사는 조건이 되면 바로, 특전은 첫 번째.
 // 연속 퍼펙트는 resolveStreak(안전모 실드)로 갱신하고, 퍼펙트 확률은 수평계 반폭에 비례해 올린다(0.97 상한).
+// 첫 가이드(src/logic/guide.ts): 새 게임은 가이드 1단계라 잠긴 요소(콤보·강타·급소·피버·연쇄·연속 배수·특별 상자·영구 공구)는 못 쓰고,
+// 지금 단계의 목표를 우선 수행한다(강타 단계는 강타만, 급소가 떠 있으면 맞힘). 상자·영구 공구 단계는 첫 구매가 가능해지면 바로 산다.
+// 출력: 가이드 단계별 완료 시각, 첫 집에서 누적 P가 1e3·1e6·1e9·1e12·1e15를 넘는 시각, J 커브(초반 1/3 vs 마지막 1/3 자릿수 증가 속도), 1분 최대 배수(누적 P 1e3 이후 시작하는 1분 창).
+// 환경변수: POLICY=현실,고수,가볍게 · SEED_N=시드 수 · MAX_MOVES · MAX_SEC · TARGETS
 import { createServer } from 'vite';
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
@@ -18,19 +23,28 @@ const gear = await ld('/src/logic/gear.ts');
 const { GEAR_IDS } = await ld('/src/data/gear.ts');
 const { openBox, boxPrice } = await ld('/src/logic/gacha.ts');
 const { move, canMove } = await ld('/src/logic/prestige.ts');
+const { tierOf } = await ld('/src/logic/unpack.ts');
+const guide = await ld('/src/logic/guide.ts');
 const { HOUSES, MOON_STAGE } = await ld('/src/data/houses.ts');
+
+// 가이드 단계 누적 P 문턱 시험용: GATES=0,0,1e3,... (13개) node tools/box-sim.mjs
+if (process.env.GATES) process.env.GATES.split(',').forEach((v, i) => { guide.GUIDE_STEPS[i].gate = Number(v); });
+
+if (process.env.NOBOX) guide.GUIDE_STEPS.forEach((s) => { s.rewardBoxes = 0; }); // 선물 상자 없이 시험용
 
 // 목표 값 시험용: TARGETS=1e10,1e11,... node tools/box-sim.mjs (houses.ts 값을 메모리에서만 덮어쓴다)
 if (process.env.TARGETS) process.env.TARGETS.split(',').forEach((v, i) => { HOUSES[i].target = Number(v); });
 
 const WEAK_HIT = 0.7, BOX_SHARE = 0.1, GEAR_SHARE = 0.25;
+/** 상자·영구 공구 가이드 단계: 목표 가격이 보유 P의 이 배수 안이면 강화를 멈추고 모은다 */
+const SAVE_RATIO = Number(process.env.SAVE_RATIO ?? 4);
 const MAX_MOVES = Number(process.env.MAX_MOVES ?? 6), MAX_SEC = Number(process.env.MAX_SEC ?? 5 * 3600);
-const SEEDS = [12345, 777, 4242, 90210, 31337];
+const SEEDS = [12345, 777, 4242, 90210, 31337, 555, 8080, 2024, 6061, 1357].slice(0, Number(process.env.SEED_N ?? 5));
 const POLICIES = [
-  { name: '기본', tps: 4, strike: 0.3, perfect: 0.6, good: 0.3 },
-  { name: '고수', tps: 4, strike: 0.3, perfect: 0.9, good: 0.07 },
-  { name: '가볍게', tps: 3, strike: 0.2, perfect: 0.4, good: 0.35, maxMoves: 4 } // 느려서 6회까지 돌리면 시간이 너무 걸림,
-];
+  { name: '가볍게', tps: 2.5, strike: 0.05, perfect: 0.15, good: 0.35, sSec: 0.9, maxMoves: Number(process.env.REF_MOVES ?? 1) },
+  { name: '현실', tps: 3, strike: 0.1, perfect: 0.25, good: 0.4, sSec: 0.9 },
+  { name: '고수', tps: 4, strike: 0.2, perfect: 0.5, good: 0.35, sSec: 0.9, maxMoves: Number(process.env.REF_MOVES ?? 1) },
+].filter((p) => (process.env.POLICY ? process.env.POLICY.split(',').includes(p.name) : true));
 
 function run(pol, seed) {
   const DT = 1 / pol.tps;
@@ -39,96 +53,286 @@ function run(pol, seed) {
   let w = initialWeak(rng), c = combo.initialCombo(), streak = 0, shield = gear.initialShield(0);
   let t = 0, last = 0;
   const rows = [];
+  const stepAt = []; // 첫 집에서 가이드 단계를 끝낸 시각(초)
+  const crossAt = {}; // 첫 집에서 누적 P가 10^k를 넘은 시각(초)
+  const logT = [], logV = []; // 첫 집 행동마다 (시각, log10(누적 P))
+  const ev = (e) => {
+    const r = guide.guideEvent(s, e);
+    s = r.state;
+    if (r.completed && rows.length === 0 && stepAt.length < guide.GUIDE_STEPS.length) { stepAt.push(t); if (process.env.DBG) console.log(`dbg ${stepAt.length} t=${t.toFixed(1)} lv=${s.tapLevel} sl=${s.strikeLevel} tier=${Math.max(...s.homeLv.map((x) => tierOf(x)))} lvs=${s.homeLv.join(',')} dex=${Object.keys(s.collection).length} boxes=${s.boxesThisRun} M=${(eco.multBreakdown(s, 'tap').total / eco.multBreakdown(s, 'tap').fever).toFixed(1)} e=${s.earned.toExponential(1)}`); }
+  };
+  const open = (f) => guide.featureOpen(s, f);
+  const stepId = () => { const v = guide.guideView(s); return v && v.n < v.goal ? v.event : null; }; // 목표를 아직 못 채운 단계의 사건
   while (rows.length < Math.min(MAX_MOVES, pol.maxMoves ?? MAX_MOVES) && t < MAX_SEC) {
     t += DT;
     const ms = t * 1000;
     const g = gear.gearEffects(s);
+    const feverBefore = s.fever.activeSec > 0;
     s = eco.tick(s, DT, rng);
-    const wa = advanceWeak(w, DT * 1000, true, rng, g.weakDelayMult);
-    w = wa.weak;
+    if (open('weak')) {
+      const wa = advanceWeak(w, DT * 1000, true, rng, g.weakDelayMult);
+      w = wa.weak;
+    }
     const win = combo.comboWindowMs(s.fever.activeSec > 0);
     if (combo.comboExpired(c, ms, win)) c = combo.initialCombo();
-    let r;
-    if (weakVisible(w) && rng() < WEAK_HIT) {
-      r = hitWeak(s, rng, w, combo.comboMult(c.n));
+    const want = stepId();
+    const strikeFirst = want === 'strike' || want === 'chain' || want === 'perfect';
+    let r, acted;
+    if (open('weak') && weakVisible(w) && rng() < WEAK_HIT) {
+      r = hitWeak(s, rng, w, combo.comboMultOf(s, c.n));
       w = r.weak;
       c = combo.comboAdd(c, ms, r.comboAdd).combo;
-    } else if (rng() < pol.strike) {
+      acted = 'weak';
+    } else if (open('charge') && (strikeFirst || rng() < pol.strike)) {
       const pp = Math.min(0.97, pol.perfect * (g.perfectHalf / 0.05));
       const gp = Math.min(pol.good, 1 - pp);
       const q = rng();
       const pos = q < pp ? (CHARGE_PERFECT[0] + CHARGE_PERFECT[1]) / 2 : q < pp + gp ? CHARGE_GOOD[0] + 0.01 : 0.1;
-      r = releaseCharge(s, rng, pos, streak, combo.comboMult(c.n));
+      r = releaseCharge(s, rng, pos, streak, combo.comboMultOf(s, c.n));
       const st = gear.resolveStreak(streak, r.grade, shield, g.shieldMax);
       streak = st.streak;
       shield = st.shield;
       c = combo.comboAdd(c, ms, r.comboAdd).combo;
+      acted = 'strike';
     } else {
       const h = combo.comboHit(c, ms, win, false);
       c = h.combo;
-      r = tapAndHit(s, rng, false, combo.comboMult(c.n));
+      r = tapAndHit(s, rng, false, combo.comboMultOf(s, c.n));
+      acted = 'tap';
     }
     s = r.state;
-    // 상자(뽑기): 가격이 보유 P의 10% 이하일 때
-    for (let i = 0; i < 50 && boxPrice(s) <= s.points * BOX_SHARE; i++) { const o = openBox(s, rng); if (!o) break; s = o.state; }
+    if (acted === 'strike' && pol.sSec) { t += pol.sSec; s = eco.tick(s, pol.sSec, rng); }
+    // 가이드 사건(화면이 알리는 것과 같은 것)
+    ev({ type: 'tick' });
+    if (acted === 'tap') ev({ type: 'tap' });
+    if (acted === 'weak') ev({ type: 'weak' });
+    if (acted === 'strike') { ev({ type: 'strike' }); ev({ type: 'perfect', value: streak }); }
+    if (open('combo')) ev({ type: 'combo', value: c.n });
+    if (r.bursts.some((b) => b.item)) ev({ type: 'unbox' });
+    if (r.chain > 0) ev({ type: 'chain', value: r.chain });
+    if (r.bursts.some((b) => b.special)) ev({ type: 'special' });
+    if (!feverBefore && s.fever.activeSec > 0) ev({ type: 'fever' });
+    // 공구 강화(상자 앞): 가이드의 상자·영구 공구 단계는 첫 구매를 위해 모은다
+    const buyGuideBox = want === 'boxBuy';
+    const gearGoal = want === 'gearBuy' ? GEAR_IDS.filter((id) => gear.gearUnlocked(s, id)).map((id) => gear.gearCost(s, id)).sort((a, b) => a - b)[0] : undefined;
+    const saving = (buyGuideBox && boxPrice(s) <= s.points * SAVE_RATIO) || (gearGoal !== undefined && gearGoal <= s.points * SAVE_RATIO);
+    // 상자(뽑기): 가이드 중엔 상자 단계부터, 가격이 보유 P의 10% 이하일 때(상자 단계는 살 수 있으면 바로)
+    if (!guide.guideEnded(s) ? guide.guideReached(s, 'boxBuy') : true) {
+      for (let i = 0; i < 50 && (boxPrice(s) <= s.points * BOX_SHARE || (buyGuideBox && boxPrice(s) <= s.points)); i++) { const o = openBox(s, rng); if (!o) break; s = o.state; ev({ type: 'boxBuy' }); }
+    }
     // 업그레이드: 싼 것부터
-    for (;;) {
-      const tc = eco.tapCost(s.tapLevel), sc = eco.strikeCost(s.strikeLevel);
+    for (; !saving;) {
+      const tc = eco.tapCost(s.tapLevel), sc = open('chain') ? eco.strikeCost(s.strikeLevel) : Infinity;
       const b = tc <= sc ? eco.buyTapUpgrade(s) : eco.buyStrikeUpgrade(s);
       if (!b) break;
       s = b;
+      ev({ type: 'upgrade' });
     }
-    // 공구 5종: 해금됐고 비용이 보유 P의 25% 이하면 산다(안전모는 사는 순간 한 칸 채움)
+    // 공구 5종: 해금됐고 비용이 보유 P의 25% 이하면 산다(영구 공구 단계는 살 수 있으면 바로, 안전모는 사는 순간 한 칸 채움)
     for (const id of GEAR_IDS) {
-      if (!gear.gearUnlocked(s, id) || gear.gearCost(s, id) > s.points * GEAR_SHARE) continue;
+      if (!gear.gearUnlocked(s, id)) continue;
+      if (gear.gearCost(s, id) > s.points * GEAR_SHARE && !(want === 'gearBuy' && gear.gearCost(s, id) <= s.points)) continue;
       const b = gear.buyGear(s, id);
       if (!b) continue;
       s = b;
+      ev({ type: 'gearBuy' });
       if (id === 'helmet') shield = { ...shield, n: shield.n + 1 };
+    }
+    if (process.env.TRACE && rows.length === 0 && Math.floor(t / Number(process.env.TRACE)) !== Math.floor((t - DT) / Number(process.env.TRACE))) console.log(`trace t=${t.toFixed(0)} e=${s.earned.toExponential(1)} lv=${s.tapLevel} sl=${s.strikeLevel} home=${s.homeLv.reduce((x, y) => x + y, 0)} M=${(eco.multBreakdown(s, 'tap').total / eco.multBreakdown(s, 'tap').fever).toFixed(0)} step=${s.guide.step + 1}`);
+    if (rows.length === 0) {
+      logT.push(t); logV.push(Math.log10(Math.max(1, s.earned)));
+      for (const k of [3, 6, 9, 12, 15]) if (crossAt[k] === undefined && s.earned >= 10 ** k) crossAt[k] = t;
     }
     if (canMove(s)) {
       const bd = eco.multBreakdown(s, 'tap');
       const row = { to: HOUSES[s.moves]?.name ?? `${s.moves + 1}번째`, sec: t - last, total: t, H: eco.homeMult(s), C: eco.collectionMult(s), M: bd.total / bd.fever, tapLv: s.tapLevel, gear: GEAR_IDS.map((id) => s.gear[id] ?? 0).join('') };
+      if (rows.length === 0) {
+        row.crossAt = crossAt;
+        row.guideDone = s.guide.step;
+        const T = t;
+        const lg = (x) => { let lo = 0, hi = logT.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (logT[m] <= x) lo = m; else hi = m - 1; } return logV[lo]; };
+        let mx = 0, mxAt = 0;
+        for (let x = 0; x + 60 <= T; x += 5) { if (lg(x) < 3) continue; const d = lg(x + 60) - lg(x); if (d > mx) { mx = d; mxAt = x; } }
+        row.maxMin = mx; row.maxMinAt = mxAt;
+        row.jEarly = lg(T / 3) / (T / 3 / 60); // 자릿수/분
+        row.jMid = (lg((2 * T) / 3) - lg(T / 3)) / (T / 3 / 60);
+        row.jLate = (Math.log10(s.earned) - lg((2 * T) / 3)) / (T / 3 / 60);
+      }
       last = t;
       s = move(s, rng);
+      ev({ type: 'move' });
+      if (rows.length === 0) row.stepAt = stepAt.slice();
       shield = gear.initialShield(gear.gearEffects(s).shieldMax);
       while (s.perkOffers.length > 0) { const n = choosePerk(s, 0, s.perkOffers[0][0]); if (!n) break; s = { ...n }; }
       rows.push(row);
     }
   }
+  if (rows.length === 0) rows.stuck = { step: s.guide.step, t, earned: s.earned, lv: s.tapLevel, crossAt };
   return rows;
+}
+
+
+// 진단 모드: PROBE=1 node tools/box-sim.mjs. 사용자 실측 상태(공구 Lv100·오함마 Lv50·영구 공구 0·총 배율 약 11.5만·손질 단계)에서
+// 강화 구매 없이 120초를 돌려 수익원별 초당 P와 "탭 몇 번어치"(= 피버 제외 탭 1회 값 tapStable 기준)를 표로 낸다.
+// 정책 추가: PROBE_SPEC="이름:초당행동:강타확률:퍼펙트:굿:강타소요초,..." / PROBE_SEC=120 / PROBE_MULT=115000
+if (process.env.PROBE) {
+  const { COLLECTIBLES, VARIANTS } = await ld('/src/data/collectibles.ts');
+  const mk = (seed, targetMult) => {
+    const rng = seededRng(seed);
+    let s = defaultState(0, 1);
+    const coll = {};
+    for (const c of COLLECTIBLES.slice(0, Number(process.env.PROBE_DEX ?? 4))) coll[c.id] = Object.fromEntries(VARIANTS.map((v) => [v.id, 3]));
+    s = { ...s, tapLevel: 100, strikeLevel: 50, guide: guide.finishedGuide(), collection: coll, unpack: { ...s.unpack, box: 200, roomDone: true, hp: 0 } };
+    const withL = (L) => ({ ...s, homeLv: s.homeLv.map((_, i) => (i === 0 ? 920 : L)) });
+    let lo = 0, hi = 5000;
+    for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; const b = eco.multBreakdown(withL(Math.round(m)), 'tap'); if (b.total / b.fever < targetMult) lo = m; else hi = m; }
+    s = withL(Math.round(hi));
+    s = { ...s, unpack: { ...s.unpack, hp: 0 } };
+    return { s, rng };
+  };
+  const specs = (process.env.PROBE_SPEC ?? '시뮬기본:4:0.3:0.6:0.3:0,시간반영:4:0.3:0.6:0.3:0.9').split(',').map((x) => { const [name, tps, strike, perfect, good, sSec] = x.split(':'); return { name, tps: +tps, strike: +strike, perfect: +perfect, good: +good, sSec: +sSec }; });
+  const SEC = Number(process.env.PROBE_SEC ?? 120), TM = Number(process.env.PROBE_MULT ?? 115000);
+  for (const pol of specs) {
+    const { s: s0, rng } = mk(12345, TM);
+    let s = s0;
+    const b0 = eco.multBreakdown(s, 'tap');
+    const unit = eco.tapStable(s);
+    console.log(`\n[PROBE ${pol.name}] 초당행동 ${pol.tps}, 강타 ${pol.strike}, 퍼펙트 ${pol.perfect}, 굿 ${pol.good}, 강타 1회 소요 ${pol.sSec}초 | 총배율(피버 제외) x${(b0.total / b0.fever).toFixed(0)} (H ${b0.home.toFixed(0)} C ${b0.collection.toFixed(1)} 세트 ${b0.set.toFixed(2)}) | 탭 1회(피버 제외) ${unit.toExponential(2)} | ${SEC}초`);
+    let w = initialWeak(rng), c = combo.initialCombo(), streak = 0, shield = gear.initialShield(0);
+    const src = {}; // 이름 -> {n, base, box, prize}
+    const add = (k, base, box, prize) => { const a = (src[k] ??= { n: 0, base: 0, box: 0, prize: 0 }); a.n++; a.base += base; a.box += box; a.prize += prize; };
+    let t = 0, feverSec = 0, comboSum = 0, comboN = 0, chainSum = 0, chainN = 0, maxChain = 0, streakMax = 0, streakSum = 0, strikeN = 0, tapsSum = 0;
+    const startEarned = s.earned;
+    while (t < SEC) {
+      const dt = 1 / pol.tps;
+      const ms = t * 1000;
+      const g = gear.gearEffects(s);
+      if (s.fever.activeSec > 0) feverSec += dt;
+      s = eco.tick(s, dt, rng);
+      const wa = advanceWeak(w, dt * 1000, true, rng, g.weakDelayMult); w = wa.weak;
+      const win = combo.comboWindowMs(s.fever.activeSec > 0);
+      if (combo.comboExpired(c, ms, win)) c = combo.initialCombo();
+      const cm = combo.comboMultOf(s, c.n);
+      comboSum += cm; comboN++;
+      const e0 = s.earned;
+      let r, kind;
+      if (weakVisible(w) && rng() < WEAK_HIT) {
+        r = hitWeak(s, rng, w, cm); w = r.weak; c = combo.comboAdd(c, ms, r.comboAdd).combo; kind = '급소';
+      } else if (rng() < pol.strike) {
+        const pp = Math.min(0.97, pol.perfect * (g.perfectHalf / 0.05));
+        const gp = Math.min(pol.good, 1 - pp);
+        const q = rng();
+        const pos = q < pp ? (CHARGE_PERFECT[0] + CHARGE_PERFECT[1]) / 2 : q < pp + gp ? CHARGE_GOOD[0] + 0.01 : 0.1;
+        r = releaseCharge(s, rng, pos, streak, cm);
+        const st = gear.resolveStreak(streak, r.grade, shield, g.shieldMax);
+        streak = st.streak; shield = st.shield;
+        streakMax = Math.max(streakMax, streak); streakSum += streak; strikeN++; tapsSum += r.taps;
+        c = combo.comboAdd(c, ms, r.comboAdd).combo; kind = `강타-${r.grade}`;
+      } else {
+        const h = combo.comboHit(c, ms, win, false); c = h.combo;
+        r = tapAndHit(s, rng, false, cm); kind = '일반탭';
+      }
+      s = r.state;
+      const box = r.bursts.reduce((a, b) => a + b.gain, 0), prize = r.prize ? r.prize.gain : 0;
+      add(kind, s.earned - e0 - box - prize, box, prize);
+      if (r.chain > 0) { chainSum += r.chain; chainN++; maxChain = Math.max(maxChain, r.chain); }
+      t += dt + (kind.startsWith('강타') ? pol.sSec : 0); // 강타하는 동안은 다른 행동을 못 한다(시간만 흐름)
+      if (kind.startsWith('강타') && pol.sSec > 0) s = eco.tick(s, pol.sSec, rng);
+    }
+    const tot = s.earned - startEarned;
+    const f = (x) => x.toExponential(2);
+    console.log('수익원 | 횟수 | 직접(탭값x배수) /초 | 상자 보상 /초 | 연쇄 상금 /초 | 합계 /초 | 탭어치/초 | 비중');
+    for (const [k, a] of Object.entries(src).sort((x, y) => y[1].base + y[1].box + y[1].prize - x[1].base - x[1].box - x[1].prize)) {
+      const sum = a.base + a.box + a.prize;
+      console.log(`${k} | ${a.n} | ${f(a.base / SEC)} | ${f(a.box / SEC)} | ${f(a.prize / SEC)} | ${f(sum / SEC)} | ${(sum / SEC / unit).toFixed(0)} | ${((sum / tot) * 100).toFixed(1)}%`);
+    }
+    const sumOf = (key) => Object.values(src).reduce((a, x) => a + x[key], 0);
+    console.log(`합계 | | ${f(sumOf('base') / SEC)} | ${f(sumOf('box') / SEC)} | ${f(sumOf('prize') / SEC)} | ${f(tot / SEC)} | ${(tot / SEC / unit).toFixed(0)}탭어치/초 (사용자 실측 약 100)`);
+    console.log(`부가: 피버 켜진 시간 ${((feverSec / SEC) * 100).toFixed(0)}% · 평균 콤보 배수 x${(comboSum / comboN).toFixed(2)} · 강타 ${strikeN}회(초당 ${(strikeN / SEC).toFixed(2)}), 평균 연속 퍼펙트 ${(streakSum / Math.max(1, strikeN)).toFixed(1)}(최대 ${streakMax}) · 강타 1회 평균 ${(tapsSum / Math.max(1, strikeN)).toFixed(0)}탭어치 · 상자 터진 행동당 평균 연쇄 ${(chainSum / Math.max(1, chainN)).toFixed(1)}(최대 ${maxChain}) · 최종 P ${s.points.toExponential(2)}`);
+  }
+  await vite.close();
+  process.exit(0);
 }
 
 const fx = (x) => (x >= 1e4 ? x.toExponential(1) : x.toFixed(1));
 const min = (sec) => (sec / 60).toFixed(1);
 const med = (a) => { const b = [...a].sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
 const results = POLICIES.map((pol) => ({ pol, runs: SEEDS.map((sd) => run(pol, sd)) }));
+const polMax = (pol) => Math.min(MAX_MOVES, pol.maxMoves ?? MAX_MOVES);
 for (const { pol, runs } of results) {
   console.log(`\n[${pol.name}] 이사 | 걸린 분 중앙(최소~최대) | 누적 분 중앙 | 도달 시드 | 탭Lv | H | C | 총 배율(피버 제외) | 공구Lv(수평계·안전모·빠루·송곳·돋보기)`);
-  for (let i = 0; i < MAX_MOVES; i++) {
+  for (let i = 0; i < polMax(pol); i++) {
     const rs = runs.map((r) => r[i]).filter(Boolean);
     if (rs.length === 0) { console.log(`${i + 1}회 도달 시드 없음`); continue; }
     const secs = rs.map((r) => r.sec), tot = rs.map((r) => r.total), m = rs[rs.length >> 1];
     console.log(`${i + 1}회 ${rs[0].to} | ${min(med(secs))} (${min(Math.min(...secs))}~${min(Math.max(...secs))}) | ${min(med(tot))} | ${rs.length}/${SEEDS.length} | ${med(rs.map((r) => r.tapLv)).toFixed(0)} | x${fx(med(rs.map((r) => r.H)))} | x${fx(med(rs.map((r) => r.C)))} | x${fx(med(rs.map((r) => r.M)))} | ${m.gear}`);
   }
 }
-console.log('\n[기본] 시드별 걸린 분');
-results[0].runs.forEach((r, k) => console.log(`시드 ${SEEDS[k]}: ${r.map((x) => min(x.sec)).join(' / ')}`));
-const stat = (pol, i) => { const rs = results.find((x) => x.pol.name === pol).runs.map((r) => r[i]).filter(Boolean); return rs.length ? { sec: med(rs.map((r) => r.sec)), total: med(rs.map((r) => r.total)) } : null; };
+
+// 첫 가이드·J 커브 출력(첫 집 구간)
+const first = (pol) => results.find((x) => x.pol.name === pol)?.runs.map((r) => r[0]).filter(Boolean) ?? [];
+const secs = (v) => (v === undefined ? '-' : v < 100 ? `${v.toFixed(0)}초` : `${(v / 60).toFixed(1)}분`);
+const stuckRuns = (pol) => results.find((x) => x.pol.name === pol)?.runs.filter((r) => r.length === 0) ?? [];
+const nSteps = guide.GUIDE_STEPS.length;
+/** 한 단계 최대 걸린 초(이사 단계 제외)와 그 단계 */
+const worstGap = (rr) => {
+  let worst = 0, wi = 0;
+  for (const r of rr) for (let i = 0; i < nSteps - 1; i++) { if (r.stepAt?.[i] === undefined) continue; const d = r.stepAt[i] - (i ? r.stepAt[i - 1] : 0); if (d > worst) { worst = d; wi = i; } }
+  return { worst, wi };
+};
+for (const { pol } of results) {
+  const rs = first(pol.name);
+  console.log(`\n[${pol.name}] 가이드 단계별 완료 시각(첫 집, 시드 중앙값 / 최대) · 한 단계 최대 걸린 초`);
+  const line = [];
+  for (let i = 0; i < nSteps; i++) {
+    const at = rs.map((r) => r.stepAt?.[i]).filter((v) => v !== undefined);
+    line.push(`${i + 1}.${guide.GUIDE_STEPS[i].id} ${at.length ? secs(med(at)) : '-'}/${at.length ? secs(Math.max(...at)) : '-'}`);
+  }
+  console.log(line.join(' | '));
+  const done = rs.filter((r) => r.stepAt?.length === nSteps).length;
+  const wg = worstGap(rs);
+  console.log(`전 단계 완료 ${done}/${SEEDS.length}, 한 단계 최대 ${wg.worst.toFixed(0)}초(${wg.wi + 1}.${guide.GUIDE_STEPS[wg.wi].id}, 이사 단계 제외), 교착(이사 못 한 시드) ${stuckRuns(pol.name).length}`);
+  for (const r of stuckRuns(pol.name)) if (r.stuck) console.log(`  교착: 단계 ${r.stuck.step + 1}에서 ${secs(r.stuck.t)} 경과(누적 ${r.stuck.earned.toExponential(1)}, 탭Lv ${r.stuck.lv}; 1e3·1e6·1e9·1e12 ${[3, 6, 9, 12].map((k) => secs(r.stuck.crossAt[k])).join('·')})`);
+  console.log(`누적 P 1e3·1e6·1e9·1e12·1e15 도달(중앙): ${[3, 6, 9, 12, 15].map((k) => secs(med(rs.map((r) => r.crossAt[k]).filter((v) => v !== undefined)))).join(' · ')}, 이사 ${secs(med(rs.map((r) => r.sec)))}`);
+  console.log(`자릿수 증가 속도(자릿수/분): 초반 1/3 ${med(rs.map((r) => r.jEarly)).toFixed(2)} -> 가운데 1/3 ${med(rs.map((r) => r.jMid)).toFixed(2)} -> 마지막 1/3 ${med(rs.map((r) => r.jLate)).toFixed(2)}`);
+  console.log(`1분 최대 배수(누적 1e3 이후 시작): 중앙 x${(10 ** med(rs.map((r) => r.maxMin))).toExponential(1)} (최대 x${(10 ** Math.max(...rs.map((r) => r.maxMin))).toExponential(1)}), 그 구간 시작 ${secs(med(rs.map((r) => r.maxMinAt)))}`);
+}
+console.log('\n[현실] 시드별 걸린 분');
+const realRes = results.find((x) => x.pol.name === '현실');
+realRes?.runs.forEach((r, k) => console.log(`시드 ${SEEDS[k]}: ${r.map((x) => min(x.sec)).join(' / ')}${process.env.STEPS && r[0] ? ' | ' + r[0].stepAt.map((v) => v.toFixed(0)).join(',') : ''}`));
+const stat = (pol, i) => { const rr = results.find((x) => x.pol.name === pol)?.runs.map((r) => r[i]).filter(Boolean) ?? []; return rr.length ? { sec: med(rr.map((r) => r.sec)), total: med(rr.map((r) => r.total)) } : null; };
 const ok = (b) => (b ? 'OK' : 'NG');
 const j = [];
-const b1 = stat('기본', 0), b2 = stat('기본', 1), b3 = stat('기본', 2), bm = stat('기본', MOON_STAGE);
-if (b1 && b2 && b3 && bm) {
-  const [a, b, c3] = [b1.sec / 60, b2.sec / 60, b3.sec / 60];
-  const moon = bm.total / 3600;
-  j.push(`첫 이사 ${a.toFixed(1)}분 (8~12): ${ok(a >= 8 && a <= 12)}`);
-  j.push(`2회 ${b.toFixed(1)}분 < 1회 ${a.toFixed(1)}분: ${ok(b < a)}`);
-  j.push(`3회 ${c3.toFixed(1)}분 (12~22): ${ok(c3 >= 12 && c3 <= 22)}`);
-  j.push(`달 기지(${MOON_STAGE + 1}번째 이사) 도착 누적 ${moon.toFixed(2)}시간 (1.5~2.9): ${ok(moon >= 1.5 && moon <= 2.9)}`);
-  const pm = stat('고수', MOON_STAGE);
-  if (pm) j.push(`참고: 고수 달 기지 누적 ${(pm.total / 3600).toFixed(2)}시간 (기본 대비 x${(bm.total / pm.total).toFixed(2)} 빠름)`);
-  const lm = stat('가볍게', MOON_STAGE);
-  if (lm) j.push(`참고: 가볍게 달 기지 누적 ${(lm.total / 3600).toFixed(2)}시간 (기본 대비 x${(lm.total / bm.total).toFixed(2)} 느림)`);
-} else j.push('NG: 기본 정책이 시간 안에 이사를 충분히 끝내지 못함');
-console.log('\n판정(기본 정책 중앙값)\n' + j.join('\n'));
+const b1 = stat('현실', 0), b2 = stat('현실', 1), b3 = stat('현실', 2), bm = stat('현실', MOON_STAGE);
+if (b1) {
+  const a = b1.sec / 60;
+  j.push(`1. 첫 이사 ${a.toFixed(1)}분 (10~12): ${ok(a >= 10 && a <= 12)}`);
+  const rs = first('현실');
+  const early = rs.map((r) => r.stepAt?.[2]).filter((v) => v !== undefined);
+  j.push(`2a. 3단계까지 ${secs(med(early))} (<= 60초): ${ok(early.length > 0 && med(early) <= 60)}`);
+  const all = rs.length === SEEDS.length; // 이사를 못 한 시드(교착)가 없다. 운 좋은 시드가 이사를 앞당겨 뒤 단계를 못 거치는 것은 허용
+  const wg = worstGap(rs);
+  const seedWorst = rs.map((r) => worstGap([r]).worst);
+  const wmed = med(seedWorst);
+  j.push(`2b. 교착 0 ${ok(all)}(전 단계 완료 ${rs.filter((r) => r.stepAt?.length === nSteps).length}/${SEEDS.length}), 시드별 한 단계 최대의 중앙 ${wmed.toFixed(0)}초 (<= 100, 판정) / 가장 느린 시드 ${wg.worst.toFixed(0)}초(${wg.wi + 1}.${guide.GUIDE_STEPS[wg.wi].id}): ${ok(all && wmed <= 100)}`);
+  const tail = rs.map((r) => r.sec - (r.stepAt?.[10] ?? NaN)).filter((v) => !Number.isNaN(v));
+  j.push(`2c. 영구 공구 열림(11단계 완료) -> 이사 ${med(tail).toFixed(0)}초 (120~180): ${ok(tail.length === rs.length && med(tail) >= 120 && med(tail) <= 180)}`);
+  const opens = guide.GUIDE_STEPS.map((st, i) => (st.opens ? `${st.opens} ${secs(med(rs.map((r) => r.stepAt?.[i - 1] ?? 0)))}` : null)).filter(Boolean);
+  j.push(`   요소 열림 시각(중앙, 이사 ${secs(b1.sec)}): ${opens.join(' · ')}`);
+  const g12 = med(rs.map((r) => (r.stepAt?.[11] ?? NaN) - (r.stepAt?.[10] ?? NaN)));
+  j.push(`5. 12단계(영구 공구 구매) 걸린 ${g12.toFixed(0)}초 (<= 30): ${ok(g12 <= 30)}`);
+  const jm = med(rs.map((r) => r.jMid)), jl = med(rs.map((r) => r.jLate)), je = med(rs.map((r) => r.jEarly));
+  j.push(`3a. 자릿수/분 초반 ${je.toFixed(2)} <= 가운데 ${jm.toFixed(2)} <= 마지막 ${jl.toFixed(2)} (이상형): ${ok(je <= jm && jm <= jl)}`);
+  j.push(`3b. 마지막 1/3 ${jl.toFixed(2)} >= 가운데 1/3 x 0.7 (${(0.7 * jm).toFixed(2)}): ${ok(jl >= 0.7 * jm)}`);
+  const mm = 10 ** Math.max(...rs.map((r) => r.maxMin));
+  j.push(`3c. 1분 최대 배수(시드 최대) x${mm.toExponential(1)} (<= 1e3): ${ok(mm <= 1e3)}`);
+  if (b2) j.push(`4a. 2회 ${(b2.sec / 60).toFixed(1)}분 (3~7): ${ok(b2.sec / 60 >= 3 && b2.sec / 60 <= 7)}`);
+  if (b3) j.push(`4b. 3회 ${(b3.sec / 60).toFixed(1)}분 (12~22): ${ok(b3.sec / 60 >= 12 && b3.sec / 60 <= 22)}`);
+  if (bm) j.push(`4c. 달 기지(${MOON_STAGE + 1}번째 집 도착) 누적 ${(bm.total / 3600).toFixed(2)}시간 (1.5~2.9): ${ok(bm.total / 3600 >= 1.5 && bm.total / 3600 <= 2.9)}`);
+  const p = first('고수');
+  if (p.length) j.push(`참고: 고수 첫 이사 ${secs(med(p.map((r) => r.sec)))} (현실 대비 x${(b1.sec / med(p.map((r) => r.sec))).toFixed(2)} 빠름), 한 단계 최대 ${worstGap(p).worst.toFixed(0)}초`);
+  const l = first('가볍게');
+  if (l.length) j.push(`참고: 가볍게 첫 이사 ${secs(med(l.map((r) => r.sec)))} (현실 대비 x${(med(l.map((r) => r.sec)) / b1.sec).toFixed(2)} 느림), 한 단계 최대 ${worstGap(l).worst.toFixed(0)}초`);
+} else j.push('NG: 현실 정책이 시간 안에 첫 이사를 못 함');
+console.log('\n판정(현실 정책 중앙값)\n' + j.join('\n'));
 await vite.close();

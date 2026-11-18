@@ -18,7 +18,7 @@ import {
   applyTap,
   tick,
 } from './economy';
-import { defaultState } from './state';
+import { defaultState } from './testState';
 import { DAMPED_RATIO, TAPS_PER_SEC_FULL, TAP_BOX_SCALE, TAP_COST_RATE, TAP_MILESTONES } from '../data/tap';
 import { perkEffects } from './perks';
 

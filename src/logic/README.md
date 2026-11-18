@@ -13,9 +13,10 @@
 | `fever.ts` · `variety.ts` | 피버·택배·치명타, 탭 상한(`tapGate`)·`tapWithRng`·`catchParcel` |
 | `perks.ts` | 이사 특전 3택 |
 | `prestige.ts` · `house.ts` | 이사 조건·실행, 집 이름·목표 |
+| `guide.ts` | 첫 가이드(손맛 요소가 하나씩 열리는 순서, `state.guide`) |
 | `unlock.ts` | 단계적 공개(`UNLOCK_IDS`) |
 | `offline.ts` | 복귀 러시 판정 |
-| `save.ts` · `state.ts` | 저장·불러오기·`MIGRATIONS`, 상태 정의(`CURRENT_VERSION = 9`) |
+| `save.ts` · `state.ts` | 저장·불러오기·`MIGRATIONS`, 상태 정의(`CURRENT_VERSION = 10`) |
 | `format.ts` | 한국식 큰 수 표기 |
 
 ## 상자·도감 (`gacha.ts`, 데이터 `data/collectibles.ts`)
@@ -50,7 +51,9 @@
 - 급소: `WeakState`(`initialWeak`, `advanceWeak(w, dt, active, rng)` -> `{weak, appeared, vanished}`, `weakHitTest(w,u,v,radius)`, `hitWeak(state, rng, w, comboMult)` -> `{...heavyHit, weak, comboAdd}`). 저장 안 함.
 
 # 저장·복귀·이사
-저장 버전 9(`CURRENT_VERSION`). `MIGRATIONS[8]`(8 -> 9)이 옛 서비스·결합·약정·이벤트를 걷어낸다: 서비스 레벨 합 25마다 선물 상자 1개(최대 30개)를 도감에 넣고, 죽은 특전 6종(`svc_power`·`bundle_boost`·`contract_slot`·`penalty_cut`·`offline_rate`·`offline_cap`)은 레벨 1마다 3택 묶음 1개로 바꿔 주며, 보유 P는 이사 목표의 30%, 누적은 목표까지로 자르고 `gear: {}`, `notice: {kind:'v9', boxes}`를 넣는다. 이 뒤로 `services`·`contracts`·`event`는 읽지 않는다.
+저장 버전 10(`CURRENT_VERSION`). `MIGRATIONS[9]`(9 -> 10)는 `guide`를 넣는다: 이미 하던 저장은 전부 가이드 완료(`finishedGuide()`), 탭을 한 번도 안 했고 이사도 안 한 저장만 1단계부터. `sanitize`는 `guide`가 없거나 범위 밖이거나 이사했으면 완료로 읽는다.
+
+저장 버전 9. `MIGRATIONS[8]`(8 -> 9)이 옛 서비스·결합·약정·이벤트를 걷어낸다: 서비스 레벨 합 25마다 선물 상자 1개(최대 30개)를 도감에 넣고, 죽은 특전 6종(`svc_power`·`bundle_boost`·`contract_slot`·`penalty_cut`·`offline_rate`·`offline_cap`)은 레벨 1마다 3택 묶음 1개로 바꿔 주며, 보유 P는 이사 목표의 30%, 누적은 목표까지로 자르고 `gear: {}`, `notice: {kind:'v9', boxes}`를 넣는다. 이 뒤로 `services`·`contracts`·`event`는 읽지 않는다.
 
 ## state 필드 (모두 저장됨)
 - `perks: Record<perkId, 레벨>` 영구 특전 레벨. 이사해도 유지.
@@ -64,10 +67,20 @@
 
 ## 이사 (`prestige.ts`, 집 목표 `data/houses.ts`)
 - 조건은 `earned >= 현재 집 목표` 하나다. 초기화: P·누적·`tapLevel`·`strikeLevel`·`boxesThisRun`·피버·상자 풀기(`unpack`). 유지: `moves`(+1)·도감·살림·공구·특전·통계·설정.
-- 집 목표(P): 원룸 3.7e15, 투룸 9e16, 아파트 3e19, 펜트하우스 1.15e21, 달 기지 2e22, 화성 별관 1.6e23, 목성 위성 단지 1.28e24, 은하 분양단지 1.02e25, 우주 끝 신도시 8.2e25. 그 뒤 "우주 끝 신도시 N차"는 직전 x8(`MOVE_TARGET_GROWTH_AFTER`). `houseInfo(stage)`.
+- 집 목표(P): 원룸 2.4e10, 투룸 2.5e12, 아파트 1e15, 펜트하우스 1e17, 달 기지 1.2e19, 화성 별관 1.2e20, 목성 위성 단지 1.2e21, 은하 분양단지 1.2e22, 우주 끝 신도시 1.2e23. 그 뒤 "우주 끝 신도시 N차"는 직전 x8(`MOVE_TARGET_GROWTH_AFTER`). `houseInfo(stage)`.
+
+## 첫 가이드 (`guide.ts`, 설계 `DESIGN.md` "가이드와 J 커브")
+새 게임은 탭과 공구 강화만 열려 있고, 가이드 단계를 끝낼 때마다 손맛 요소가 하나씩 열린다. 첫 이사(`moves > 0`)를 하면 가이드가 끝나고 전부 열린다. 열린 뒤의 동작·수치는 가이드가 없던 때와 같다(`streakMult` 식 그대로).
+- 상태 `state.guide = {step, n, done}`(저장됨): `step`은 지금 단계 번호(0부터, 단계 수가 되면 끝), `n`은 그 단계 진행 수, `done`은 끝남. `defaultState()`는 `{step:0, n:0, done:false}`. 시험용 `testState.ts`의 `defaultState`는 가이드를 마친 상태.
+- 단계표 `GUIDE_STEPS`(17개): `{id, text, event, goal, opens?, gate, rewardTaps, rewardBoxes?, progress?}`. `gate` = 이 단계를 끝내려면 필요한 이번 집 누적 포인트(0이면 없음, 행동 목표를 채워도 모자라면 기다린다). `rewardTaps` = 끝낼 때 받는 보상(그때 `tapStable` x 탭 수, 포인트·누적에 더함, 1~8단계만). `rewardBoxes` = 선물 상자 수(9단계부터 2·2·2·3·4·6·6·8): 무료 `rollBox` 뽑기를 도감에 넣는다(`boxesThisRun`·`boxesOpened`는 안 오름, 씨앗은 탭·상자 수·단계). `progress(state)` = 사건 대신 state로 판정하는 후반 단계(13 탭 강화 Lv 68, 14 살림 Lv 합 250, 15 강타 강화 Lv 62, 16 총 배율 1500): `event`는 `'tick'`이고 어떤 사건이 와도 다시 본다. 단계 번호는 `DESIGN.md` 5-1절 표.
+- `guideEvent(state, ev)` -> `{state, completed, step, reward, rewardBoxes, boxResults, opened}`(`boxResults` = 선물 상자 뽑기 결과 `BoxResult[]`, 화면이 보여 준다). 사건 `ev`: `{type:'tap'}`·`'upgrade'`·`'unbox'`(큰 상자가 터져 살림이 나옴)·`'combo'`·`'chain'`·`'perfect'`(이 셋은 `value` = 지금 콤보·한 번에 터진 수·연속 퍼펙트 수, 가장 큰 값을 기억)·`'strike'`·`'weak'`·`'fever'`(피버 시작)·`'boxBuy'`·`'special'`(특별 상자가 터짐)·`'gearBuy'`·`'move'`(이사 뒤에 알려도 됨)·`'tick'`(아무 일 없음). 지금 단계가 기다리는 사건만 센다. 누적 포인트만 기다리던 단계는 아무 사건(보통 탭)이 올 때 끝나므로 화면은 탭마다 `'tap'`을 알린다. 한 번에 한 단계만 끝낸다.
+- `featureOpen(state, feature)`: `combo`(콤보 배율)·`charge`(꾹 눌러 강타·열기 게이지)·`weak`(급소)·`fever`·`chain`(연쇄 보너스·상금·강타 뚫기·오함마 카드)·`streak`(연속 퍼펙트 배수·안전모)·`special`(특별 상자)·`gear`(영구 공구 카드). 가이드가 끝났거나 `moves > 0`이면 전부 true. 요소는 그 요소의 `opens` 단계에 들어설 때(앞 단계를 끝낼 때) 열린다.
+- `guideView(state)` -> `{no, total, text, n, goal, gate, gateMet, rewardTaps, rewardPoints, rewardBoxes, opens, event}` 또는 끝났으면 `null`. `guideEnded`·`guideReached(state, stepId)`(가이드 중이고 그 단계에 닿음)·`guideAt`(바로 그 단계).
+- 로직이 `featureOpen`을 읽는 곳(화면이 따로 막지 않아도 되는 것): 피버 충전(`variety.tapWithRng`·`unpack.heavyHit`), 연쇄(`unpack.hitChained` 보너스·`chainPrize`·`heavyHit`의 뚫기), 특별 상자(`unpack.boxSpecial`·`hitBox`), 연속 퍼펙트 배수(`charge.releaseCharge`), 오함마(`economy.buyStrikeUpgrade`가 연쇄 전엔 null), 영구 공구 카드(`gear.gearUnlocked`: 가이드 중엔 공구 단계에 닿고 그 공구의 요소가 열려야), 상자 탭(`unlock.ts` `box`: 가이드 중엔 상자 단계에서만). 화면이 막아야 하는 것: 콤보 배율(`combo.comboMultOf(state, n)`), 강타 입력·열기 게이지, 급소 표시, 피버 표시(게이지는 안 차지만 UI), 오함마 카드.
+- 특별 상자 단계(`guideAt(state,'special')`)에서는 `gearEffects.specialRate`가 `GUIDE_SPECIAL_RATE`(20%) 이상이라 처음 20개 뒤에 곧 만난다.
 
 ## 열림 규칙 (`unlock.ts`)
-`UNLOCK_IDS = box·home·dex·move·mult·badge·perk`. 한번 열리면 `state.unlocked`에 남고, 이사한 저장은 전부 열린 채 시작한다. 조건(`isMet`): 상자 = P가 가격 절반 이상이거나 누적 >= 5000 x 3(`UNLOCK_RULE.boxEarnedMult`)이거나 방을 끝냈거나 도감·개봉 기록이 있음, 살림 = 살림 칸 하나라도 Lv 1 이상, 도감 = 도감 칸이 하나라도 있음, 이사 줄 = 누적 >= 목표의 1%(`moveRatio`), 배율 내역·총 배율 = 도감·살림 배율이 1이 아니거나 특전 보유, 특전 = 선택 대기·보유. 공구 탭은 항상 열려 있다. `nextUnlock`은 아직 안 열린 상자·이사 중 진행률이 높은 것의 조건 문구.
+`UNLOCK_IDS = box·home·dex·mult·badge·perk`. 한번 열리면 `state.unlocked`에 남고, 이사한 저장은 전부 열린 채 시작한다. 조건(`isMet`): 상자 = P가 가격 절반 이상이거나 누적 >= 5000 x 3(`UNLOCK_RULE.boxEarnedMult`)이거나 방을 끝냈거나 도감·개봉 기록이 있음, 살림 = 살림 칸 하나라도 Lv 1 이상, 도감 = 도감 칸이 하나라도 있음, 배율 내역·총 배율 = 도감·살림 배율이 1이 아니거나 특전 보유, 특전 = 선택 대기·보유. 공구 탭은 항상 열려 있다. `nextUnlock`은 아직 안 열린 상자 등 중 진행률이 높은 것의 조건 문구.
 
 ## 이사 특전 3택 (`perks.ts`, 데이터 `data/perks.ts`)
 - `perkOfferViews(state)` -> `PerkOptionView[][]` 대기 묶음별 옵션 `{id,name,emoji,category('tap'|'idle'|'luck'|'strategy'),desc(레벨당 효과),level,maxLevel,maxed}`. `pendingPerkCount(state)`는 대기 묶음 수(배지용).
@@ -117,4 +130,4 @@
 - 안전모 실드는 저장하지 않는 런타임 값이다: `initialShield(max)` -> `{n, toNext}`(불러오기·이사 때 가득), `resolveStreak(prev, grade, shield, max)` -> `{streak, shield, saved}`. 퍼펙트 `SHIELD_CHARGE_PERFECTS`(8)번마다 한 칸 차고, 굿·미스는 연속이 있고 칸이 있으면 칸 하나를 쓰고 연속을 지킨다(보상은 실제 판정대로). `releaseCharge`의 streak 계산은 그대로라 화면이 이 결과로 연속 수를 덮어쓴다.
 
 ## 시뮬 도구
-`node tools/box-sim.mjs`: 실제 로직을 vite ssr로 불러 한 판을 초 단위로 돈다. 정책 3개(기본·고수·가볍게) x 시드 5개. 환경변수 `TARGETS=1e10,1e11,...`는 집 목표를 메모리에서만 덮어쓰고 `MAX_MOVES`(기본 6)·`MAX_SEC`(기본 5시간)로 범위를 줄인다. 집 목표를 바꿀 땐 이 도구로 이사 시각을 다시 본다.
+`node tools/box-sim.mjs`: 실제 로직을 vite ssr로 불러 한 판을 초 단위로 돈다. 정책 3개(기본·고수·가볍게) x 시드 5개(`SEED_N`으로 최대 10개). 환경변수 `POLICY=기본,고수,가볍게`·`SEED_N`(시드 수)·`GATES=0,0,4e3,...`(가이드 문턱 17개 덮어쓰기)·`NOBOX=1`(선물 상자 없이)·`DBG=1`(단계 완료 때 상태 출력)·`TARGETS=1e10,1e11,...`는 집 목표를 메모리에서만 덮어쓰고 `MAX_MOVES`(기본 6)·`MAX_SEC`(기본 5시간)로 범위를 줄인다. 집 목표를 바꿀 땐 이 도구로 이사 시각을 다시 본다. 정책은 가이드를 따른다(잠긴 요소는 못 쓰고 지금 단계 목표를 우선 수행). 출력에 가이드 단계별 완료 시각, 첫 집의 누적 P 1e3·1e6·1e9·1e12·1e15 도달 시각, J 커브(자릿수/분)가 더해졌다.

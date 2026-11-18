@@ -5,6 +5,7 @@ import { BOX_PATTERN, ROOM_BOXES, RUSH_MAX_SEC } from '../data/unpack';
 import { boxHp, endlessHp } from './unpack';
 import { addToCollection, rollBox } from './gacha';
 import { houseInfo } from './house';
+import { GUIDE_STEPS, finishedGuide, initialGuide } from './guide';
 import { UNLOCK_IDS } from './unlock';
 import { CURRENT_VERSION, HOME_SLOTS, defaultState, type CollectionSlot, type GameState } from './state';
 
@@ -100,6 +101,12 @@ export const MIGRATIONS: Migrations = {
       earned: Math.min(num(s.earned, 0), target),
       notice: { kind: 'v9', boxes },
     };
+  },
+  // 9 -> 10: 첫 가이드(손맛 요소가 하나씩 열림). 이미 하던 사람의 요소가 잠기면 안 되므로 전부 가이드 완료로 바꾼다. 탭을 한 번도 안 한 저장만 처음부터
+  9: (s) => {
+    const stats = isObj(s.stats) ? s.stats : {};
+    const fresh = num(s.moves, 0, true) === 0 && num(stats.totalTaps, 0, true) === 0;
+    return { ...s, version: 10, guide: fresh ? initialGuide() : finishedGuide() };
   },
 };
 
@@ -208,9 +215,13 @@ export function sanitize(raw: Raw): GameState {
     settings: { reduceMotion: settings.reduceMotion === true },
     bestCombo: num(raw.bestCombo, 0, true),
     bestChain: num(raw.bestChain, 0, true),
+    guide: finishedGuide(),
     ...(isObj(raw.notice) && raw.notice.kind === 'v9' ? { notice: { kind: 'v9' as const, boxes: num(raw.notice.boxes, 0, true) } } : {}),
     ...(Array.isArray(raw.unlocked) ? { unlocked: UNLOCK_IDS.filter((id) => (raw.unlocked as unknown[]).includes(id)) } : {}),
   };
+  const rawGuide = isObj(raw.guide) ? raw.guide : null;
+  const guideStep = rawGuide ? Math.min(GUIDE_STEPS.length, num(rawGuide.step, 0, true)) : GUIDE_STEPS.length;
+  out.guide = rawGuide && guideStep < GUIDE_STEPS.length && rawGuide.done !== true && moves === 0 ? { step: guideStep, n: num(rawGuide.n, 0, true), done: false } : finishedGuide();
   const k = out.unpack.box;
   const hp = out.unpack.hp >= 1 ? out.unpack.hp : k < ROOM_BOXES ? boxHp(k) : endlessHp(out, k);
   out.unpack = { ...out.unpack, hp, damage: Math.min(out.unpack.damage, hp - 1) };

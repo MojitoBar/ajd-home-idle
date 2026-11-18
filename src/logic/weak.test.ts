@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultState } from './state';
+import { defaultState } from './testState';
 import { tapValue } from './economy';
 import {
   WEAK_REWARD,

@@ -3,7 +3,8 @@ import { BOMB_BLAST, BOX_KINDS, GOLD_GAIN_MULT, RUSH_MAX_SEC, RUSH_SEC, SPECIAL_
 import { tick, tapValue } from './economy';
 import { applyOffline } from './offline';
 import { move } from './prestige';
-import { defaultState, type GameState } from './state';
+import { defaultState } from './testState';
+import type { GameState } from './state';
 import { boxHp, boxKind, boxSpecial, chainBonus, heavyHit, hitBox, rollSalt, rushTap, specialAt, tapAndHit, unpackPower } from './unpack';
 
 const never = () => 0.99; // 치명타 아님

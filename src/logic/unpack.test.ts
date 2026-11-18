@@ -3,7 +3,8 @@ import { BOX_KINDS, ENDLESS_K_MULT } from '../data/unpack';
 import { CHAIN_PRIZES } from '../data/unpack';
 import { buyStrikeUpgrade, strikeCost, strikeMult, tapValue } from './economy';
 import { move } from './prestige';
-import { defaultState, type GameState } from './state';
+import { defaultState } from './testState';
+import type { GameState } from './state';
 import { boxCondition, boxHp, boxKind, endlessHp, chainBonus, heavyHit, hitBox, nextCareSlot, roomProgress, tapAndHit, tierOf, toolOf, unpackPower } from './unpack';
 
 const never = () => 0.99; // 치명타 아님

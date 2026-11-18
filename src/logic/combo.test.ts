@@ -3,7 +3,8 @@ import { COMBO_TIERS, addEarned, comboAdd, comboBonus, comboExpired, comboHit, c
 import { tapValue } from './economy';
 import { parseSave, serialize } from './save';
 import { move } from './prestige';
-import { defaultState, type GameState } from './state';
+import { defaultState } from './testState';
+import type { GameState } from './state';
 import { tapAndHit } from './unpack';
 
 const never = () => 0.99;
