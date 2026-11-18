@@ -55,7 +55,8 @@ export function sync(state: GameState): void {
 
 export function afterMove(): void {
   if (pendingPerkCount(H.ctx.get()) === 0) return;
-  fx.banner('특전을 골라요', { sub: '이사 특전 3개 중 하나예요', tone: 'gold', ms: 1300 });
+  const n = pendingPerkCount(H.ctx.get());
+  fx.banner('특전 상자를 열어요', { sub: `특전 상자 ${n}개, 하나씩 3개 중 골라요`, tone: 'gold', ms: 1300 });
   window.setTimeout(openPerkPick, 900);
 }
 
@@ -92,7 +93,7 @@ function perkCard(opt: PerkOptionView, k: number): HTMLButtonElement {
   return b;
 }
 
-function openPerkPick(): void {
+export function openPerkPick(): void {
   const state = H.ctx.get();
   const offers = perkOfferViews(state);
   if (offers.length === 0) return;
@@ -108,10 +109,10 @@ function openPerkPick(): void {
   if (allMaxed) actions.unshift({ label: '이 묶음 넘기기', primary: true, onClick: () => discardOffer() });
   const pend = offers.length;
   H.ctx.showModal(
-    `이사 특전 고르기${pend > 1 ? ` (대기 ${pend})` : ''}`,
-    [el('p', { cls: 'dim', text: allMaxed ? '전부 최대 레벨이에요' : '하나를 고르면 이사해도 계속 유지돼요.' }), el('div', { cls: 'pcards' }, ...cards)],
+    `특전 상자${pend > 1 ? ` (남은 상자 ${pend})` : ''}`,
+    [el('p', { cls: 'dim', text: allMaxed ? '전부 최대 레벨이에요' : '3개 중 하나를 고르면 이사해도 계속 유지돼요.' }), el('div', { cls: 'pcards' }, ...cards)],
     actions,
-    { chip: '특전', cls: 'perk-pick', icon: iconImg('perk', { size: 32, cls: 'title-ico' }) },
+    { chip: '고르기', cls: 'perk-pick', icon: iconImg('perk', { size: 32, cls: 'title-ico' }) },
   );
   if (!fx.isReduced()) cards.forEach((_, k) => window.setTimeout(() => sfx.perkFlip(k), 250 + k * 180));
 }
@@ -124,6 +125,23 @@ function discardOffer(): void {
   H.ctx.dismissModal();
   H.ctx.update();
   if (pendingPerkCount(next) > 0) window.setTimeout(openPerkPick, 300);
+}
+
+/** 고른 직후 확인: 고른 카드 위에 특전 이름과 새 레벨이 크게 뜨고, 카드 안 레벨 줄이 'Lv N 달성'으로 바뀐다 */
+function showGot(card: HTMLElement, name: string, lv: number): void {
+  const lvEl = card.querySelector<HTMLElement>('.pc-lv');
+  if (lvEl) {
+    lvEl.textContent = `Lv ${lv}`;
+    lvEl.classList.add('got');
+  }
+  card.querySelector('.pick-btn')?.replaceChildren('고름!');
+  const host = card.closest<HTMLElement>('.pcards');
+  if (!host) return;
+  const tag = el('p', { cls: 'pk-got' }, el('b', { cls: 'pk-got-name', text: name }), el('span', { cls: 'pk-got-lv', text: `Lv ${lv}` }));
+  const prev = host.previousElementSibling;
+  if (prev?.tagName === 'P') prev.replaceWith(tag);
+  else host.before(tag);
+  if (!fx.isReduced()) fx.pxFrames(tag, [{ scale: '1.5' }, { scale: '1.25' }, { scale: '1.1' }, { scale: '1' }], 60);
 }
 
 function pickPerk(opt: PerkOptionView, card: HTMLElement, all: HTMLElement[]): void {
@@ -142,7 +160,8 @@ function pickPerk(opt: PerkOptionView, card: HTMLElement, all: HTMLElement[]): v
   vibrate([20, 30, 40]);
   fx.burst(cx, cy, { n: 22, kind: 'star', colors: ['#ffc83d', '#ffffff', '#5b92ff', '#e9304b'], speed: 280, size: 6 });
   fx.confetti(cx, cy, 40);
-  fx.floatText(cx, r.top, `Lv ${Math.min(opt.maxLevel, opt.level + 1)}`, { scale: 1.1, ms: 1100 });
+  const lvNow = Math.min(opt.maxLevel, opt.level + 1);
+  showGot(card, opt.name, lvNow);
   const wait = fx.isReduced() ? 350 : 1100;
   window.setTimeout(() => {
     H.ctx.dismissModal();
@@ -165,19 +184,21 @@ function openPerkList(): void {
     body.push(b);
   }
   const owned = PERKS.filter((p) => perkLevel(state, p.id) > 0).length;
-  body.push(el('p', { cls: 'dim', text: `보유 ${owned}/${PERKS.length}종이에요.` }), el('p', { cls: 'dim', text: '이사할 때마다 3개 중 하나를 골라요.' }));
+  body.push(el('p', { cls: 'dim', text: `보유 ${owned}/${PERKS.length}종이에요.` }), el('p', { cls: 'dim', text: '특전 상자를 열어 3개 중 하나를 골라요. 이사하면 상자를 여러 개 받아요.' }));
   const list = el('div', { cls: 'perk-list' });
   for (const p of PERKS) {
     const lv = perkLevel(state, p.id);
     const pips = el('span', { cls: 'pips' });
-    for (let k = 0; k < p.maxLevel; k++) pips.append(el('i', { cls: k < lv ? 'on' : '' }));
+    const unlimited = !Number.isFinite(p.maxLevel);
+    if (unlimited) pips.append(el('span', { cls: 'pr-inf', text: '상한 없음' }));
+    else for (let k = 0; k < p.maxLevel; k++) pips.append(el('i', { cls: k < lv ? 'on' : '' }));
     list.append(
       el(
         'div',
         { cls: `perk-row cat-${p.category}${lv === 0 ? ' none' : ''}` },
         perkEmoji(p.id, lv === 0),
         el('div', { cls: 'pr-main' }, el('div', { cls: 'pr-name' }, el('b', { cls: 'fb', text: p.name }), el('em', { cls: 'tag', text: CAT_NAME[p.category] })), el('div', { cls: 'pr-desc', text: `레벨당 ${p.desc}` })),
-        el('div', { cls: 'pr-lv' }, el('b', { text: `${lv}/${p.maxLevel}` }), pips),
+        el('div', { cls: 'pr-lv' }, el('b', { text: unlimited ? `Lv ${lv}` : `Lv ${lv}/${p.maxLevel}` }), pips),
       ),
     );
   }

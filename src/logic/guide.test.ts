@@ -11,7 +11,7 @@ import { isMet } from './unlock';
 import { BOX_MIN_PRICE } from './gacha';
 import { SPECIAL_RATE } from '../data/unpack';
 
-const FEATURES: GuideFeature[] = ['combo', 'charge', 'weak', 'fever', 'chain', 'streak', 'special', 'gear'];
+const FEATURES: GuideFeature[] = ['combo', 'charge', 'weak', 'fever', 'chain', 'streak', 'special', 'gear', 'perkBox'];
 const at = (step: number, extra: object = {}) => ({ ...defaultState(0, 1), guide: { step, n: 0, done: false }, ...extra });
 const idx = (id: string) => GUIDE_STEPS.findIndex((s) => s.id === id);
 const rng = () => 0.5;
@@ -133,7 +133,9 @@ describe('후반 단계: 지금 state로 판정하고 선물 상자를 준다', 
       expect(d.rewardTaps).toBe(0);
       expect(d.rewardBoxes).toBeGreaterThan(0);
     }
-    expect(idx('tapLv')).toBe(idx('gear') + 1);
+    expect(idx('perkBox')).toBe(idx('gear') + 1);
+    expect(idx('tapLv')).toBe(idx('perkBox') + 1);
+    expect(GUIDE_STEPS).toHaveLength(18);
     expect(idx('move')).toBe(idx('mult') + 1);
   });
   it('선물 상자는 뒤로 갈수록 많아지고(줄어들지 않는다) 앞 단계는 P로 준다', () => {
@@ -244,5 +246,27 @@ describe('기존 열림 규칙·공구 해금과의 맞춤', () => {
     expect(gearUnlocked(at(idx('gear'), { unpack: { ...deep.unpack, box: 10 } }), 'level')).toBe(false);
     expect(gearUnlocked({ ...at(0, deep), guide: finishedGuide() }, 'level')).toBe(true);
     expect(gearUnlocked(at(3, { moves: 1 }), 'awl')).toBe(true);
+  });
+});
+
+describe('특전 상자 단계', () => {
+  it('영구 공구 바로 뒤, 특전 상자 구매 사건 1번이 목표이고 여는 요소는 perkBox', () => {
+    const d = GUIDE_STEPS[idx('perkBox')];
+    expect(d).toMatchObject({ event: 'perkBoxBuy', goal: 1, opens: 'perkBox', gate: 0, rewardTaps: 0 });
+    expect(d.rewardBoxes).toBeGreaterThan(0);
+  });
+  it('사건이 오면 끝나고 다음 단계로 간다. 다른 사건은 무시', () => {
+    const s = at(idx('perkBox'), { earned: 1e9 });
+    expect(guideEvent(s, { type: 'tap' }).completed).toBe(false);
+    const r = guideEvent(s, { type: 'perkBoxBuy' });
+    expect(r.completed).toBe(true);
+    expect(r.state.guide.step).toBe(idx('tapLv'));
+    expect(r.rewardBoxes).toBe(GUIDE_STEPS[idx('perkBox')].rewardBoxes);
+  });
+  it('단계에 닿기 전엔 닫혀 있고 가이드가 끝났거나 이사했으면 열려 있다', () => {
+    expect(featureOpen(at(idx('perkBox') - 1), 'perkBox')).toBe(false);
+    expect(featureOpen(at(idx('perkBox')), 'perkBox')).toBe(true);
+    expect(featureOpen({ ...defaultState(0, 1), guide: finishedGuide() }, 'perkBox')).toBe(true);
+    expect(featureOpen({ ...at(0), moves: 1 }, 'perkBox')).toBe(true);
   });
 });

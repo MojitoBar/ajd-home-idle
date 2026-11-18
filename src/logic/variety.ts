@@ -33,7 +33,7 @@ export function tapWithRng(state: GameState, rng: () => number, damped = false, 
       ...state,
       points: state.points + gain,
       earned: state.earned + gain,
-      fever: featureOpen(state, 'fever') ? chargeFever(state.fever, fx.feverSec, damped ? 0.5 : 1) : state.fever,
+      fever: featureOpen(state, 'fever') ? chargeFever(state.fever, fx.feverSec, (damped ? 0.5 : 1) * fx.feverCharge) : state.fever,
       stats: { ...state.stats, totalTaps: state.stats.totalTaps + 1, totalEarned: state.stats.totalEarned + gain },
     },
   };

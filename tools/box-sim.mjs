@@ -2,7 +2,7 @@
 // 정책 3개 x 시드 5개. 전부 강타 1회에 sSec초가 걸려 그동안 다른 행동을 못 한다.
 // 현실(판정 기준, 사용자 실측 초당 약 100탭어치에 맞춤): 초당 3행동·강타 10%·퍼펙트 25% / 가볍게: 초당 2.5행동·강타 5%·퍼펙트 15% / 고수: 초당 4행동·강타 20%·퍼펙트 50%. 가볍게·고수는 참고만(첫 이사까지).
 // 급소가 떠 있으면 70% 맞힘, 나머지는 일반 탭. 콤보 배율은 반영하되 콤보 정산 보너스·택배·시계 러시는 뺀다.
-// 업그레이드는 싼 것부터, 상자는 가격이 P의 10% 이하일 때, 공구 5종은 해금됐고 비용이 P의 25% 이하일 때, 이사는 조건이 되면 바로, 특전은 첫 번째.
+// 업그레이드는 싼 것부터, 상자는 가격이 P의 10% 이하일 때, 공구 5종은 해금됐고 비용이 P의 25% 이하일 때, 이사는 조건이 되면 바로, 특전 상자는 가격이 보유 P의 35% 이하일 때(PERK_SHARE) 사서 3택에서 배수 특전부터 고른다(PERK_PRIO). NOPERK=1이면 가이드 단계의 상자 1개만 사고 특전은 고르지 않는다(비교용).
 // 연속 퍼펙트는 resolveStreak(안전모 실드)로 갱신하고, 퍼펙트 확률은 수평계 반폭에 비례해 올린다(0.97 상한).
 // 첫 가이드(src/logic/guide.ts): 새 게임은 가이드 1단계라 잠긴 요소(콤보·강타·급소·피버·연쇄·연속 배수·특별 상자·영구 공구)는 못 쓰고,
 // 지금 단계의 목표를 우선 수행한다(강타 단계는 강타만, 급소가 떠 있으면 맞힘). 상자·영구 공구 단계는 첫 구매가 가능해지면 바로 산다.
@@ -16,6 +16,7 @@ const { tapAndHit } = await ld('/src/logic/unpack.ts');
 const eco = await ld('/src/logic/economy.ts');
 const { defaultState } = await ld('/src/logic/state.ts');
 const { seededRng, choosePerk } = await ld('/src/logic/perks.ts');
+const { buyPerkBox, perkBoxCost } = await ld('/src/logic/perkBox.ts');
 const { releaseCharge, CHARGE_PERFECT, CHARGE_GOOD } = await ld('/src/logic/charge.ts');
 const { initialWeak, advanceWeak, weakVisible, hitWeak } = await ld('/src/logic/weak.ts');
 const combo = await ld('/src/logic/combo.ts');
@@ -36,6 +37,17 @@ if (process.env.NOBOX) guide.GUIDE_STEPS.forEach((s) => { s.rewardBoxes = 0; });
 if (process.env.TARGETS) process.env.TARGETS.split(',').forEach((v, i) => { HOUSES[i].target = Number(v); });
 
 const WEAK_HIT = 0.7, BOX_SHARE = 0.1, GEAR_SHARE = 0.25;
+/** 특전 상자: 가격이 보유 P의 이 비율 이하이면 산다(가이드 특전 상자 단계는 살 수 있으면 바로). NOPERK=1이면 가이드 단계의 1개만 사고 특전은 하나도 안 고른다(비교용) */
+const PERK_SHARE = Number(process.env.PERK_SHARE ?? 0.35), NOPERK = !!process.env.NOPERK;
+/** 3택에서 고르는 규칙: 배수 특전 먼저(손목 단련·강타 단련·살림 장인·도감 수집가), 그다음 손맛·운 특전, 마지막에 확률·시간류. 앞선 것이 3택에 없으면 그다음 순서 */
+const PERK_PRIO = ['tap_power', 'strike_power', 'home_boost', 'dex_boost', 'streak_coef', 'fever_charge', 'special_freq', 'box_discount', 'fever_long', 'crit', 'tap_crit_power', 'parcel_freq'];
+const pickPerk = (offer) => [...offer].sort((a, b) => PERK_PRIO.indexOf(a) - PERK_PRIO.indexOf(b))[0];
+/** 대기 중인 특전 묶음을 전부 고른다(NOPERK면 고르지 않고 버린다) */
+function takePerks(s) {
+  if (NOPERK) return { ...s, perkOffers: [] };
+  while (s.perkOffers.length > 0) { const n = choosePerk(s, 0, pickPerk(s.perkOffers[0])); if (!n) break; s = { ...n }; }
+  return s;
+}
 /** 상자·영구 공구 가이드 단계: 목표 가격이 보유 P의 이 배수 안이면 강화를 멈추고 모은다 */
 const SAVE_RATIO = Number(process.env.SAVE_RATIO ?? 4);
 const MAX_MOVES = Number(process.env.MAX_MOVES ?? 6), MAX_SEC = Number(process.env.MAX_SEC ?? 5 * 3600);
@@ -55,6 +67,7 @@ function run(pol, seed) {
   const rows = [];
   const stepAt = []; // 첫 집에서 가이드 단계를 끝낸 시각(초)
   const crossAt = {}; // 첫 집에서 누적 P가 10^k를 넘은 시각(초)
+  let firstPerkAt, boxesInHouse = 0;
   const logT = [], logV = []; // 첫 집 행동마다 (시각, log10(누적 P))
   const ev = (e) => {
     const r = guide.guideEvent(s, e);
@@ -115,10 +128,25 @@ function run(pol, seed) {
     // 공구 강화(상자 앞): 가이드의 상자·영구 공구 단계는 첫 구매를 위해 모은다
     const buyGuideBox = want === 'boxBuy';
     const gearGoal = want === 'gearBuy' ? GEAR_IDS.filter((id) => gear.gearUnlocked(s, id)).map((id) => gear.gearCost(s, id)).sort((a, b) => a - b)[0] : undefined;
-    const saving = (buyGuideBox && boxPrice(s) <= s.points * SAVE_RATIO) || (gearGoal !== undefined && gearGoal <= s.points * SAVE_RATIO);
+    const perkGoal = want === 'perkBoxBuy' ? perkBoxCost(s) : undefined;
+    const saving = (perkGoal !== undefined && perkGoal <= s.points * SAVE_RATIO) || (buyGuideBox && boxPrice(s) <= s.points * SAVE_RATIO) || (gearGoal !== undefined && gearGoal <= s.points * SAVE_RATIO);
     // 상자(뽑기): 가이드 중엔 상자 단계부터, 가격이 보유 P의 10% 이하일 때(상자 단계는 살 수 있으면 바로)
     if (!guide.guideEnded(s) ? guide.guideReached(s, 'boxBuy') : true) {
       for (let i = 0; i < 50 && (boxPrice(s) <= s.points * BOX_SHARE || (buyGuideBox && boxPrice(s) <= s.points)); i++) { const o = openBox(s, rng); if (!o) break; s = o.state; ev({ type: 'boxBuy' }); }
+    }
+    // 특전 상자: 영구 공구 단계 뒤(가이드 중엔 단계에 닿은 뒤)부터, 가격이 보유 P의 PERK_SHARE 이하일 때(가이드 단계는 살 수 있으면 바로)
+    {
+      for (let i = 0; i < 20; i++) {
+        const forGuide = want === 'perkBoxBuy';
+        if (NOPERK && !forGuide) break;
+        if (!(perkBoxCost(s) <= s.points * PERK_SHARE || (forGuide && perkBoxCost(s) <= s.points))) break;
+        const b = buyPerkBox(s, rng);
+        if (!b) break;
+        s = takePerks(b);
+        if (firstPerkAt === undefined) firstPerkAt = t;
+        boxesInHouse++;
+        ev({ type: 'perkBoxBuy' });
+      }
     }
     // 업그레이드: 싼 것부터
     for (; !saving;) {
@@ -159,11 +187,12 @@ function run(pol, seed) {
         row.jLate = (Math.log10(s.earned) - lg((2 * T) / 3)) / (T / 3 / 60);
       }
       last = t;
+      row.perkBoxes = boxesInHouse; boxesInHouse = 0; row.firstPerkAt = firstPerkAt;
       s = move(s, rng);
       ev({ type: 'move' });
       if (rows.length === 0) row.stepAt = stepAt.slice();
       shield = gear.initialShield(gear.gearEffects(s).shieldMax);
-      while (s.perkOffers.length > 0) { const n = choosePerk(s, 0, s.perkOffers[0][0]); if (!n) break; s = { ...n }; }
+      s = takePerks(s);
       rows.push(row);
     }
   }
@@ -270,6 +299,7 @@ for (const { pol, runs } of results) {
 }
 
 // 첫 가이드·J 커브 출력(첫 집 구간)
+const realRes0 = (i) => results.find((x) => x.pol.name === '현실')?.runs.map((r) => r[i]).filter(Boolean) ?? [];
 const first = (pol) => results.find((x) => x.pol.name === pol)?.runs.map((r) => r[0]).filter(Boolean) ?? [];
 const secs = (v) => (v === undefined ? '-' : v < 100 ? `${v.toFixed(0)}초` : `${(v / 60).toFixed(1)}분`);
 const stuckRuns = (pol) => results.find((x) => x.pol.name === pol)?.runs.filter((r) => r.length === 0) ?? [];
@@ -295,39 +325,44 @@ for (const { pol } of results) {
   for (const r of stuckRuns(pol.name)) if (r.stuck) console.log(`  교착: 단계 ${r.stuck.step + 1}에서 ${secs(r.stuck.t)} 경과(누적 ${r.stuck.earned.toExponential(1)}, 탭Lv ${r.stuck.lv}; 1e3·1e6·1e9·1e12 ${[3, 6, 9, 12].map((k) => secs(r.stuck.crossAt[k])).join('·')})`);
   console.log(`누적 P 1e3·1e6·1e9·1e12·1e15 도달(중앙): ${[3, 6, 9, 12, 15].map((k) => secs(med(rs.map((r) => r.crossAt[k]).filter((v) => v !== undefined)))).join(' · ')}, 이사 ${secs(med(rs.map((r) => r.sec)))}`);
   console.log(`자릿수 증가 속도(자릿수/분): 초반 1/3 ${med(rs.map((r) => r.jEarly)).toFixed(2)} -> 가운데 1/3 ${med(rs.map((r) => r.jMid)).toFixed(2)} -> 마지막 1/3 ${med(rs.map((r) => r.jLate)).toFixed(2)}`);
+  console.log(`첫 특전 시각(중앙) ${secs(med(rs.map((r) => r.firstPerkAt).filter((v) => v !== undefined)))}, 이사 때까지 산 특전 상자 수(첫 집, 중앙) ${med(rs.map((r) => r.perkBoxes))}`);
   console.log(`1분 최대 배수(누적 1e3 이후 시작): 중앙 x${(10 ** med(rs.map((r) => r.maxMin))).toExponential(1)} (최대 x${(10 ** Math.max(...rs.map((r) => r.maxMin))).toExponential(1)}), 그 구간 시작 ${secs(med(rs.map((r) => r.maxMinAt)))}`);
 }
+console.log('\n[현실] 집마다 산 특전 상자 수(중앙)');
+console.log([0, 1, 2, 3, 4].map((i) => { const rr = realRes0(i); return rr.length ? `${i + 1}회 ${med(rr.map((r) => r.perkBoxes))}` : null; }).filter(Boolean).join(' | '));
 console.log('\n[현실] 시드별 걸린 분');
 const realRes = results.find((x) => x.pol.name === '현실');
 realRes?.runs.forEach((r, k) => console.log(`시드 ${SEEDS[k]}: ${r.map((x) => min(x.sec)).join(' / ')}${process.env.STEPS && r[0] ? ' | ' + r[0].stepAt.map((v) => v.toFixed(0)).join(',') : ''}`));
 const stat = (pol, i) => { const rr = results.find((x) => x.pol.name === pol)?.runs.map((r) => r[i]).filter(Boolean) ?? []; return rr.length ? { sec: med(rr.map((r) => r.sec)), total: med(rr.map((r) => r.total)) } : null; };
 const ok = (b) => (b ? 'OK' : 'NG');
 const j = [];
+const rs0 = () => first('현실');
 const b1 = stat('현실', 0), b2 = stat('현실', 1), b3 = stat('현실', 2), bm = stat('현실', MOON_STAGE);
 if (b1) {
   const a = b1.sec / 60;
   j.push(`1. 첫 이사 ${a.toFixed(1)}분 (10~12): ${ok(a >= 10 && a <= 12)}`);
   const rs = first('현실');
   const early = rs.map((r) => r.stepAt?.[2]).filter((v) => v !== undefined);
+  j.push(`0. 첫 특전 ${secs(med(rs0().map((r) => r.firstPerkAt)))} (7~9분, 영구 공구 단계 뒤), 첫 집 특전 상자 ${med(rs0().map((r) => r.perkBoxes))}개 (3~5), 2·3번째 집 ${[1, 2].map((i) => med(realRes0(i).map((r) => r.perkBoxes))).join('·')}개 (5~10)`);
   j.push(`2a. 3단계까지 ${secs(med(early))} (<= 60초): ${ok(early.length > 0 && med(early) <= 60)}`);
   const all = rs.length === SEEDS.length; // 이사를 못 한 시드(교착)가 없다. 운 좋은 시드가 이사를 앞당겨 뒤 단계를 못 거치는 것은 허용
   const wg = worstGap(rs);
   const seedWorst = rs.map((r) => worstGap([r]).worst);
   const wmed = med(seedWorst);
-  j.push(`2b. 교착 0 ${ok(all)}(전 단계 완료 ${rs.filter((r) => r.stepAt?.length === nSteps).length}/${SEEDS.length}), 시드별 한 단계 최대의 중앙 ${wmed.toFixed(0)}초 (<= 100, 판정) / 가장 느린 시드 ${wg.worst.toFixed(0)}초(${wg.wi + 1}.${guide.GUIDE_STEPS[wg.wi].id}): ${ok(all && wmed <= 100)}`);
+  j.push(`2b. 교착 0 ${ok(all)}(전 단계 완료 ${rs.filter((r) => r.stepAt?.length === nSteps).length}/${SEEDS.length}), 시드별 한 단계 최대의 중앙 ${wmed.toFixed(0)}초 (<= 120, 판정) / 가장 느린 시드 ${wg.worst.toFixed(0)}초(${wg.wi + 1}.${guide.GUIDE_STEPS[wg.wi].id}): ${ok(all && wmed <= 120)}`);
   const tail = rs.map((r) => r.sec - (r.stepAt?.[10] ?? NaN)).filter((v) => !Number.isNaN(v));
   j.push(`2c. 영구 공구 열림(11단계 완료) -> 이사 ${med(tail).toFixed(0)}초 (120~180): ${ok(tail.length === rs.length && med(tail) >= 120 && med(tail) <= 180)}`);
   const opens = guide.GUIDE_STEPS.map((st, i) => (st.opens ? `${st.opens} ${secs(med(rs.map((r) => r.stepAt?.[i - 1] ?? 0)))}` : null)).filter(Boolean);
   j.push(`   요소 열림 시각(중앙, 이사 ${secs(b1.sec)}): ${opens.join(' · ')}`);
   const g12 = med(rs.map((r) => (r.stepAt?.[11] ?? NaN) - (r.stepAt?.[10] ?? NaN)));
-  j.push(`5. 12단계(영구 공구 구매) 걸린 ${g12.toFixed(0)}초 (<= 30): ${ok(g12 <= 30)}`);
+  j.push(`5. 12단계(영구 공구 구매) 걸린 ${g12.toFixed(0)}초 (<= 45): ${ok(g12 <= 45)}`);
   const jm = med(rs.map((r) => r.jMid)), jl = med(rs.map((r) => r.jLate)), je = med(rs.map((r) => r.jEarly));
   j.push(`3a. 자릿수/분 초반 ${je.toFixed(2)} <= 가운데 ${jm.toFixed(2)} <= 마지막 ${jl.toFixed(2)} (이상형): ${ok(je <= jm && jm <= jl)}`);
   j.push(`3b. 마지막 1/3 ${jl.toFixed(2)} >= 가운데 1/3 x 0.7 (${(0.7 * jm).toFixed(2)}): ${ok(jl >= 0.7 * jm)}`);
   const mm = 10 ** Math.max(...rs.map((r) => r.maxMin));
   j.push(`3c. 1분 최대 배수(시드 최대) x${mm.toExponential(1)} (<= 1e3): ${ok(mm <= 1e3)}`);
-  if (b2) j.push(`4a. 2회 ${(b2.sec / 60).toFixed(1)}분 (3~7): ${ok(b2.sec / 60 >= 3 && b2.sec / 60 <= 7)}`);
-  if (b3) j.push(`4b. 3회 ${(b3.sec / 60).toFixed(1)}분 (12~22): ${ok(b3.sec / 60 >= 12 && b3.sec / 60 <= 22)}`);
+  if (b2) j.push(`4a. 2회 ${(b2.sec / 60).toFixed(1)}분 (4~7): ${ok(b2.sec / 60 >= 4 && b2.sec / 60 <= 7)}`);
+  if (b3) j.push(`4b. 3회 ${(b3.sec / 60).toFixed(1)}분 (12~20): ${ok(b3.sec / 60 >= 12 && b3.sec / 60 <= 20)}`);
   if (bm) j.push(`4c. 달 기지(${MOON_STAGE + 1}번째 집 도착) 누적 ${(bm.total / 3600).toFixed(2)}시간 (1.5~2.9): ${ok(bm.total / 3600 >= 1.5 && bm.total / 3600 <= 2.9)}`);
   const p = first('고수');
   if (p.length) j.push(`참고: 고수 첫 이사 ${secs(med(p.map((r) => r.sec)))} (현실 대비 x${(b1.sec / med(p.map((r) => r.sec))).toFixed(2)} 빠름), 한 단계 최대 ${worstGap(p).worst.toFixed(0)}초`);

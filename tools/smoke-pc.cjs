@@ -105,18 +105,34 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
   check('Space를 짧게 누르고 있어도(키 반복) 한 번만', (await gs(page)).stats.totalTaps - t0 === 1, `${(await gs(page)).stats.totalTaps - t0}`);
   await page.waitForTimeout(600);
   const u0 = await gs(page);
+  const ys = () => page.evaluate(() => ['.move-block', '.px-strip'].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().y)).join(','));
+  const y0 = await ys();
   await page.keyboard.down('Space');
   await page.waitForTimeout(150);
   const u1 = await gs(page);
   const one = dmgOf(u1) - dmgOf(u0);
   for (let i = 0; i < 8; i++) { await page.keyboard.down('Space'); await page.waitForTimeout(60); }
-  check('Space 길게: 게이지가 뜨고 키 반복은 탭을 더하지 않는다', (await page.locator('.charge:not([hidden])').count()) === 1 && (await gs(page)).stats.totalTaps === u1.stats.totalTaps);
+  check('Space 길게: 게이지가 뜨고 키 반복은 탭을 더하지 않는다', (await page.locator('.charge.on:not(.res)').count()) === 1 && (await gs(page)).stats.totalTaps === u1.stats.totalTaps);
+  // 높이 900(방 2배·1020 미만): 게이지는 내구도 줄 사각형 안에 한 줄로 앉아, 피버 막대·이사 줄·방 사각형과 1px도 안 겹친다(막대·열기 줄의 바깥 테두리 4px*2 포함)
+  const geo = await page.evaluate(() => {
+    const R = (q) => document.querySelector(q).getBoundingClientRect();
+    const grow = (r, g) => ({ l: r.left - g, t: r.top - g, r: r.right + g, b: r.bottom + g });
+    const parts = [['막대', grow(R('.charge-bar'), 8)], ['열기 줄', grow(R('.heat-track'), 8)], ['이름표', grow(R('.heat-chip'), 4)], ['연속 칩', grow(R('.charge-streak'), 4)]];
+    const others = [['피버 막대', R('.fever-gauge')], ['이사 줄', R('.move-block')], ['방', R('.room')]];
+    const hit = [];
+    for (const [pn, a] of parts) for (const [on, o] of others) if (a.l < o.right && a.r > o.left && a.t < o.bottom && a.b > o.top) hit.push(`${pn}x${on}`);
+    const c = R('.charge'), s = R('.px-strip');
+    return { hit, sameRect: Math.abs(c.top - s.top) < 1 && Math.abs(c.height - s.height) < 1 && Math.abs(c.left - s.left) < 1 && Math.abs(c.width - s.width) < 1, stripHidden: getComputedStyle(document.querySelector('.px-strip')).visibility, streakShown: !document.querySelector('.charge-streak').hidden, barW: R('.charge-bar').width };
+  });
+  check('Space 길게: 게이지(막대·칩·이름표·열기 줄)가 피버 막대·이사 줄·방과 겹치지 않는다', geo.hit.length === 0, JSON.stringify(geo.hit));
+  check('Space 길게: 게이지가 내구도 줄과 같은 사각형을 쓰고 내구도 줄은 숨는다', geo.sameRect && geo.stripHidden === 'hidden' && geo.barW >= 250, JSON.stringify(geo));
+  check('Space 길게: 누르기 전후로 아래 줄의 y가 같다(밀림 없음)', (await ys()) === y0, `${y0} -> ${await ys()}`);
   const u2 = await gs(page);
   await page.keyboard.up('Space');
   await page.waitForTimeout(300);
   const u3 = await gs(page);
   const say = (await page.locator('.charge-say b, .un-chain-judge').count()) ? await page.locator('.charge-say b, .un-chain-judge').first().innerText() : '';
-  check('Space 떼면: 판정 글자와 함께 탭 1번보다 많이 깎인다', /퍼펙트|굿|아쉽/.test(say) && dmgOf(u3) - dmgOf(u2) > one * 1.5 && (await page.locator('.charge:not([hidden])').count()) === 0, `say=${say}`);
+  check('Space 떼면: 판정 글자와 함께 탭 1번보다 많이 깎인다', /퍼펙트|굿|아쉽/.test(say) && dmgOf(u3) - dmgOf(u2) > one * 1.5 && (await page.locator('.charge.on:not(.res)').count()) === 0, `say=${say}`);
   await page.waitForTimeout(300);
   await page.keyboard.press('Tab');
   const focusedTab = await page.evaluate(() => document.activeElement?.tagName);
@@ -160,6 +176,34 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
   }
   check('이사 가능 상태에서 이사 버튼 활성', await mv.isEnabled());
 
+  // ---- 1920x1080(방 2배·높이 1020 이상): 게이지 띠는 제 자리에 한 줄로 앉아, 누르는 중에도 내구도 줄·피버 막대·이사 줄·방과 1px도 안 겹치고 아래 줄이 안 밀린다 ----
+  {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.waitForTimeout(400);
+    const ys2 = () => page.evaluate(() => ['.move-block', '.px-strip', '.charge'].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().y)).join(','));
+    const yi = await ys2();
+    await page.keyboard.down('Space');
+    await page.waitForTimeout(150);
+    for (let i = 0; i < 6; i++) { await page.keyboard.down('Space'); await page.waitForTimeout(60); }
+    const g2 = await page.evaluate(() => {
+      const R = (q) => document.querySelector(q).getBoundingClientRect();
+      const grow = (r, g) => ({ left: r.left - g, top: r.top - g, right: r.right + g, bottom: r.bottom + g });
+      const shown = (q) => R(q).width > 0;
+      const parts = [['막대', grow(R('.charge-bar'), 8)], ['열기 줄', grow(R('.heat-track'), 8)], ['이름표', grow(R('.heat-chip'), 4)]].concat(shown('.charge-streak') ? [['연속 칩', grow(R('.charge-streak'), 4)]] : []);
+      const others = [['내구도 줄', R('.px-strip')], ['피버 막대', R('.fever-gauge')], ['이사 줄', R('.move-block')], ['방', R('.room')]];
+      const hit = [];
+      for (const [pn, a] of parts) for (const [on, o] of others) if (a.left < o.right && a.right > o.left && a.top < o.bottom && a.bottom > o.top) hit.push(`${pn}x${on}`);
+      const c = R('.charge');
+      const inside = parts.every(([, a]) => a.left >= c.left - 8 && a.right <= c.right + 8);
+      return { hit, inside, stripShown: getComputedStyle(document.querySelector('.px-strip')).visibility, barW: R('.charge-bar').width };
+    });
+    check('1920x1080 Space 길게: 게이지(막대·칩·이름표·열기 줄)가 내구도 줄·피버 막대·이사 줄·방과 겹치지 않는다', g2.hit.length === 0 && g2.inside && g2.stripShown === 'visible', JSON.stringify(g2));
+    check('1920x1080 Space 길게: 누르기 전후로 내구도 줄·이사 줄·띠의 y가 같다(밀림 없음)', (await ys2()) === yi, `${yi} -> ${await ys2()}`);
+    await page.keyboard.up('Space');
+    await page.waitForTimeout(500);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForTimeout(300);
+  }
   // ---- 공구 구매(PC) ----
   await page.keyboard.press('1');
   await setS(page, { points: 1e30, unpack: { box: 56 } });
@@ -169,6 +213,30 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
   await page.waitForTimeout(300);
   check('PC: 수평계 구매', (await gs(page)).gear.level === lv0 + 1);
   await page.keyboard.press('1');
+
+  // ---- 특전 상자(PC): 카드 표시·구매·3택·가격 2배 ----
+  {
+    await page.keyboard.press('3');
+    await page.waitForTimeout(300);
+    await setS(page, { points: 1e10, unlocked: ALL });
+    await page.waitForTimeout(300);
+    const costOf = () => page.evaluate(() => { const t = document.querySelector('.perkbox-buy .bx-cost').textContent; const u = { 만: 1e4, 억: 1e8, 조: 1e12, 경: 1e16 }; const m = t.replace(/,/g, '').match(/([0-9.]+)\s*([만억조경]?)/); return Number(m[1]) * (u[m[2]] || 1); });
+    check('PC: 특전 상자 카드가 보이고 글자가 넘치지 않는다', (await page.locator('.perkbox-card').isVisible()) && (await page.evaluate(() => [...document.querySelectorAll('.perkbox-card, .perkbox-card *')].every((e) => e.scrollWidth <= e.clientWidth + 1 || getComputedStyle(e).display === 'inline'))));
+    const c0 = await costOf();
+    const pb = (await gs(page)).points;
+    await page.locator('.perkbox-buy').click();
+    await page.waitForSelector('.modal .pcard', { timeout: 8000 });
+    const s1 = await gs(page);
+    check('PC: 특전 상자 구매 -> 포인트 차감·3택 창', s1.points < pb && s1.perkOffers.length === 1 && (await page.locator('.modal .pcard').count()) === 3);
+    const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+    await page.locator('.modal .pcard:not(:disabled)').first().click();
+    await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 });
+    const s2 = await gs(page);
+    await page.waitForTimeout(400);
+    const c1 = await costOf();
+    check('PC: 고르면 특전 레벨 +1·가격 2배', sum(s2.perks) === sum(s1.perks) + 1 && Math.abs(c1 / c0 - 2) < 0.05, `${c0}->${c1}`);
+    await page.keyboard.press('1');
+  }
 
   // ---- 창 크기 바꾸기 ----
   await page.setViewportSize({ width: 390, height: 844 });

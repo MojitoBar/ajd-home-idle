@@ -8,9 +8,9 @@ describe('이사', () => {
     expect([0, 1, 2, 3, 4, 5].map(permMult)).toEqual([1, 2.5, 4, 5.5, 7, 8.5]);
   });
   it('집 단계 목표는 표와 같고 9단계 이후는 x8', () => {
-    expect([0, 1, 2, 3, 4].map((i) => houseInfo(i).target)).toEqual([2.4e10, 2.5e12, 1e15, 1e17, 1.2e19]);
+    expect([0, 1, 2, 3, 4].map((i) => houseInfo(i).target)).toEqual([3.3e10, 1.5e14, 3e17, 4e19, 5e21]);
     expect(houseInfo(4).name).toBe('달 기지');
-    expect(houseInfo(8).target).toBeCloseTo(1.2e23, -10);
+    expect(houseInfo(8).target).toBeCloseTo(5e25, -10);
     expect(houseInfo(9).target / houseInfo(8).target).toBeCloseTo(8);
     expect(houseInfo(10).target / houseInfo(9).target).toBeCloseTo(8);
     expect(houseInfo(9).name).toBe('우주 끝 신도시 1차');
@@ -24,11 +24,11 @@ describe('이사', () => {
   it('이사 조건은 목표 달성 하나뿐이다', () => {
     const lo = { ...defaultState(), earned: 1 };
     expect(moveStatus(lo)).toEqual({ ok: false, reason: 'target', targetReached: false });
-    const hi = { ...defaultState(), earned: 2.4e10 };
+    const hi = { ...defaultState(), earned: 3.3e10 };
     expect(moveStatus(hi)).toEqual({ ok: true, reason: null, targetReached: true });
   });
   it('earned 기준으로 판정(소비해도 안 줄어듦)', () => {
-    const s = { ...defaultState(), earned: 2.4e10, points: 0 };
+    const s = { ...defaultState(), earned: 3.3e10, points: 0 };
     expect(canMove(s)).toBe(true);
   });
   it('초기화 범위와 유지 범위', () => {
@@ -57,5 +57,14 @@ describe('이사', () => {
     expect(m.stats).toEqual(s.stats);
     expect(m.settings).toEqual(s.settings);
     expect(permMultAfterMove(s)).toBe(2.5);
+  });
+  it('이사하면 특전 상자 묶음이 min(2+이사 전 횟수, 5)개 쌓이고 이번 집 구매 수는 0이 된다', () => {
+    for (const [moves, n] of [[0, 2], [1, 3], [2, 4], [3, 5], [6, 5]] as const) {
+      const s = { ...defaultState(), moves, earned: houseInfo(moves).target, perkBoxBought: 7 };
+      const m = move(s)!;
+      expect(m.perkOffers).toHaveLength(n);
+      expect(m.perkOffers.every((o) => o.length === 3)).toBe(true);
+      expect(m.perkBoxBought).toBe(0);
+    }
   });
 });

@@ -35,6 +35,8 @@ export function textBoxes(): TextBox[] {
   for (const s of SOURCES) {
     for (const e of Array.from(document.querySelectorAll<HTMLElement>(s.sel))) {
       if (!visible(e)) continue;
+      // 게이지 띠는 방 밖이라 방 안 글자와 안 겹친다. 전체 화면 장면·팝업이 덮는 동안은 재지 않는다
+      if (s.kind === 'gauge' && document.querySelector('.overlay, .box-scene, .move-scene')) continue;
       let r: DOMRect;
       let y = 0;
       let h = 0;

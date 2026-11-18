@@ -19,6 +19,8 @@ export interface PointHost {
   moveBtn: HTMLElement;
   boxBtn: HTMLElement;
   canBuyBox: () => boolean;
+  perkBtn: HTMLElement;
+  canBuyPerkBox: () => boolean;
   gears: () => { id: GearId; btn: HTMLElement }[];
   /** 방 안 상자 자리(화면 좌표). 못 찾으면 x·y가 0 */
   boxAt: () => { x: number; y: number; half: number };
@@ -141,6 +143,8 @@ function target(s: GameState): Spot | null {
     }
     case 'boxBuy':
       return viaTab('box', host.boxBtn, host.canBuyBox());
+    case 'perkBox':
+      return viaTab('box', host.perkBtn, host.canBuyPerkBox());
     case 'home':
       return host.activeTab() === 'home' ? null : viaTab('home', null, true);
     case 'mult': {

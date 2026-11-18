@@ -3,6 +3,7 @@ import { heavyHit, type HeavyResult } from './unpack';
 import type { GameState } from './state';
 import { strikeMult } from './economy';
 import { gearEffects } from './gear';
+import { perkEffects } from './perks';
 
 export interface WeakState {
   /** 다음 급소까지 남은 시간(ms). 탭을 치고 있을 때만 준다 */
@@ -79,6 +80,6 @@ export interface WeakHit extends HeavyResult {
 /** 급소를 맞혔다: 묵직한 한 방 + 급소는 사라지고 다음 간격을 뽑는다(자리는 직전 자리로 남는다) */
 export function hitWeak(state: GameState, rng: () => number, w: WeakState, comboMult = 1): WeakHit {
   const g = gearEffects(state);
-  const h = heavyHit(state, rng, Math.round(g.weakTaps * strikeMult(state.strikeLevel)), comboMult, WEAK_REWARD.fever);
+  const h = heavyHit(state, rng, Math.round(g.weakTaps * strikeMult(state.strikeLevel) * perkEffects(state).strikeMult), comboMult, WEAK_REWARD.fever);
   return { ...h, weak: { ...w, remainMs: 0, nextInMs: nextDelay(rng, g.weakDelayMult) }, comboAdd: WEAK_REWARD.combo };
 }

@@ -1,4 +1,4 @@
-// 꾹 눌러 강타: 모으기 입력 상태기계(누름 -> 220ms 넘으면 모으기 -> 뗌 = 판정), 방 안 도트 게이지, 판정 글자, 안내 말풍선. 점수·콤보는 모르고 app.ts가 onRelease에서 처리한다.
+// 꾹 눌러 강타: 모으기 입력 상태기계(누름 -> 220ms 넘으면 모으기 -> 뗌 = 판정), 방 밖(방 아래) 전용 도트 게이지 띠, 방 안 판정 글자, 안내 말풍선. 점수·콤보는 모르고 app.ts가 onRelease에서 처리한다.
 import { CHARGE_HOLD_MS, CHARGE_ZONE_DEFAULT, chargeGrade, chargePos, chargeSpeed, streakMult, type ChargeGrade, type ChargeZone } from '../logic/charge';
 import type { HeatState } from '../logic/heat';
 import { formatNumber } from '../logic/format';
@@ -8,10 +8,13 @@ import * as fx from './fx';
 import * as heatUi from './heatUi';
 import { vibrate } from './prefs';
 import { sfx } from './sound';
-import { boxAnchor, boxCenter, chargeCrouch, chargeFreeze, chainVisible, goldHead, setChainJudge } from './unpackUi';
+import { boxAnchor, boxCenter, chargeCrouch, chargeFreeze, goldHead, setChainJudge } from './unpackUi';
 
-const BAR_W = 200;
+/** 막대 폭(CSS px). 띠 폭에서 재서 2px 격자로 맞춘다(RO). 방 2배 화면은 transform이라 이 값은 그대로 */
+let barW = 200;
 const STEP_MS = 83;
+/** 뗀 뒤 눈금이 멈춰 보이는 시간(퍼펙트는 번쩍 8프레임 = 664ms) */
+const RESULT_MS = 500;
 const HITSTOP_MS = 110;
 /** 막대 위 구간 좌표는 2px(1도트) 격자 */
 const dotX = (v: number): number => Math.round(v / 2) * 2;
@@ -39,12 +42,18 @@ export interface ChargeOpts {
 
 let opts: ChargeOpts;
 let root: HTMLElement;
+let barEl: HTMLElement;
 let markEl: HTMLElement;
 let perfEl: HTMLElement;
 let goodEl: HTMLElement;
 let streakEl: HTMLElement;
 let chipEl: HTMLElement;
 let chipStreak = 0;
+/** 특전(손에 익은 리듬)이 연속 배수 계수에 더하는 값. 표시하는 배수가 실제 수익과 맞도록 app이 갱신한다 */
+let streakBonus = 0;
+export function setStreakBonus(b: number): void {
+  streakBonus = b;
+}
 let chipBreaking = false;
 let shieldEl: HTMLElement;
 let shieldBar: HTMLElement;
@@ -58,38 +67,94 @@ let tipTimer = 0;
 let tipKind: 'charge' | 'heat' | 'perfect' = 'charge';
 let hold: Hold | null = null;
 let stopping = false;
+/** 뗀 직후 결과 표시 중(눈금 고정 + 등급 색). 이 동안 새 칸 위치는 미뤄 둔다 */
+let resultOn = false;
+let resultTimer = 0;
+let pendingZone: ChargeZone | null = null;
 let markX = -1;
 let curZone: ChargeZone = CHARGE_ZONE_DEFAULT;
 
 function place(e: HTMLElement, [a, b]: readonly [number, number]): void {
-  const left = dotX(a * BAR_W);
+  const left = dotX(a * barW);
   e.style.left = `${left}px`;
-  e.style.width = `${dotX(b * BAR_W) - left}px`;
+  e.style.width = `${dotX(b * barW) - left}px`;
 }
 
-/** 이번 스윙의 정타 구간을 막대에 그리고 판정에도 쓴다 */
+/** 이번 스윙의 정타 구간을 막대에 그리고 판정에도 쓴다. 결과 표시 중이면 끝난 뒤(또는 다음 모으기 시작)에 옮긴다 */
 export function setZone(z: ChargeZone): void {
+  if (resultOn) {
+    pendingZone = z;
+    return;
+  }
   curZone = z;
   place(goodEl, z.good);
   place(perfEl, z.perfect);
 }
 
+/** 띠 폭이 바뀌면 막대 폭을 2px 격자로 다시 맞추고 칸을 다시 그린다. 막대 옆에 다른 칸이 한 줄로 앉는 화면은 그 폭(--bar-rsv)을 뺀다 */
+function fitBar(): void {
+  const rsv = parseFloat(getComputedStyle(root).getPropertyValue('--bar-rsv')) || 0;
+  const w = Math.floor((root.clientWidth - 8 - rsv) / 2) * 2;
+  if (w <= 0 || w === barW) return;
+  barW = w;
+  barEl.style.width = `${w}px`;
+  place(goodEl, curZone.good);
+  place(perfEl, curZone.perfect);
+}
+
+/** 떼는 순간: 눈금이 멈춘 자리에 등급 색(퍼펙트 노랑 번쩍·굿 파랑·빗나감 어둡게)을 잠깐 보여 준다 */
+function showResult(pos: number, grade: ChargeGrade): void {
+  clearResult();
+  resultOn = true;
+  const x = dotX(pos * barW);
+  markX = x;
+  markEl.style.translate = `${x - 2}px 0`;
+  root.classList.add('res', `res-${grade}`);
+  if (grade === 'perfect' && !fx.isReduced()) {
+    let i = 0;
+    const tick = (): void => {
+      root.classList.toggle('flash', i % 2 === 0);
+      i++;
+      if (i < 8) resultTimer = window.setTimeout(tick, STEP_MS);
+      else resultTimer = window.setTimeout(clearResult, 0);
+    };
+    tick();
+    return;
+  }
+  resultTimer = window.setTimeout(clearResult, RESULT_MS);
+}
+
+function clearResult(): void {
+  window.clearTimeout(resultTimer);
+  root.classList.remove('res', 'res-perfect', 'res-good', 'res-miss', 'flash');
+  if (!resultOn) return;
+  resultOn = false;
+  if (pendingZone) {
+    const z = pendingZone;
+    pendingZone = null;
+    setZone(z);
+  }
+}
+
 export function initCharge(o: ChargeOpts): void {
   opts = o;
-  root = el('div', { cls: 'charge', attrs: { hidden: '', 'aria-hidden': 'true' } });
+  root = el('div', { cls: 'charge', attrs: { 'aria-hidden': 'true' } });
   perfEl = el('i', { cls: 'charge-perfect' });
   goodEl = el('i', { cls: 'charge-good' });
   setZone(curZone);
   markEl = el('i', { cls: 'charge-mark' });
   streakEl = el('span', { cls: 'charge-streak', attrs: { hidden: '' } });
   chipEl = el('span', { cls: 'streak-chip', attrs: { hidden: '', 'aria-hidden': 'true' } });
-  root.append(streakEl, el('div', { cls: 'charge-bar' }, goodEl, perfEl, markEl));
-  heatUi.mount(root);
+  barEl = el('div', { cls: 'charge-bar' }, goodEl, perfEl, markEl);
+  const sub = el('div', { cls: 'charge-sub' }, el('span', { cls: 'charge-hint', text: '꾹 눌러 강타' }), streakEl);
+  root.append(barEl, sub);
+  heatUi.mount(sub);
+  new ResizeObserver(fitBar).observe(root);
   shieldFill = el('i', { cls: 'sh-fill' });
   shieldBar = el('div', { cls: 'sh-bar', attrs: { hidden: '' } }, shieldFill);
   shieldEl = el('div', { cls: 'shield', attrs: { hidden: '', 'aria-hidden': 'true' } });
   tipEl = el('div', { cls: 'first-tip charge-tip', attrs: { hidden: '', 'aria-hidden': 'true' } }, el('span', { text: '꾹 눌렀다 떼면 강타!' }), el('i', { cls: 'first-tip-tail' }));
-  o.room.append(root, el('div', { cls: 'guard-row' }, chipEl, shieldEl), tipEl);
+  o.room.append(el('div', { cls: 'guard-row' }, chipEl, shieldEl), tipEl);
   window.addEventListener('pointerup', (e) => end('pointer', e.pointerId));
   window.addEventListener('pointercancel', () => cancel());
   window.addEventListener('blur', cancel);
@@ -117,6 +182,7 @@ function begin(h: Hold): void {
     cancel();
     return;
   }
+  clearResult();
   h.charging = true;
   h.t0 = performance.now();
   hideTip();
@@ -125,16 +191,18 @@ function begin(h: Hold): void {
   sfx.chargeTick(0, false);
 }
 
-/** 프레임마다 열기 줄을 그리고, 위젯을 보일지 정한다: 열기가 있거나 누르는 중이면 계속, 판정 글자·배너가 뜨면 숨김 */
+/** 프레임마다 열기 줄을 그린다. 띠는 방 밖이라 연출에 안 가려지고, 열린 뒤에는 늘 자리를 차지한다(잠금은 body.g-no-charge). 눈금은 누르는 중·뗀 직후에만 */
 export function sync(heat: HeatState): void {
   heatUi.render(heat);
   const charging = isCharging();
-  const mark = charging || stopping;
-  markEl.hidden = !mark;
+  const on = charging || stopping || resultOn;
+  markEl.hidden = !on;
+  root.classList.toggle('on', on);
   syncChip(opts.streak(), charging);
-  root.classList.toggle('lower', !!opts.room.querySelector('.first-tip:not([hidden])'));
-  root.hidden = !(heat.v > 0 || mark) || fx.headBusy() || chainVisible();
 }
+
+/** 게이지 띠 요소(app이 방 아래에 끼운다) */
+export const stripEl = (): HTMLElement => root;
 
 /** 배수 글자: 정수면 x3, 아니면 소수 한 자리 x2.5 */
 export const multText = (m: number): string => `x${Number.isInteger(m) ? m : m.toFixed(1)}`;
@@ -148,7 +216,7 @@ function syncChip(s: number, charging: boolean): void {
     else if (s === 0 && prev >= 1) breakChip(prev);
   }
   if (chipBreaking) return;
-  const text = multText(streakMult(s));
+  const text = multText(streakMult(s, streakBonus));
   if (chipEl.textContent !== text) chipEl.textContent = text;
   if (streakEl.textContent !== text) streakEl.textContent = text;
   chipEl.hidden = s < 1 || charging;
@@ -162,7 +230,7 @@ function popChip(): void {
 
 /** 칩이 흰색으로 한 프레임 번쩍 -> 남색·주황 정사각형 조각으로 흩어짐 */
 function breakChip(prev: number): void {
-  chipEl.textContent = multText(streakMult(prev));
+  chipEl.textContent = multText(streakMult(prev, streakBonus));
   chipEl.hidden = false;
   chipEl.classList.add('flash');
   chipBreaking = true;
@@ -204,7 +272,7 @@ export function frame(now: number): void {
   if (!h || !h.charging || stopping) return;
   const pos = currentPos(h, now);
   const inPerfect = chargeGrade(pos, curZone) === 'perfect';
-  const x = dotX(pos * BAR_W);
+  const x = dotX(pos * barW);
   if (x !== markX) {
     markX = x;
     markEl.style.translate = `${x - 2}px 0`;
@@ -237,6 +305,7 @@ function end(kind: Hold['kind'], id: number): void {
   const go = (): void => {
     stopping = false;
     hideGauge();
+    showResult(pos, chargeGrade(pos, curZone));
     opts.onRelease(pos, h.x, h.y);
   };
   if (chargeGrade(pos, curZone) === 'perfect' && !fx.isReduced()) {
@@ -270,15 +339,15 @@ const SAY: Record<ChargeGrade, { text: string; ms: number }> = {
 
 /** 판정 글자(방 안 위쪽) + 수익 숫자. 2연쇄 이상이면 큰 글자 대신 연쇄 숫자 위의 24px 한 줄로 넘긴다 */
 export function say(grade: ChargeGrade, streak: number, gain: number, power = 1, chain = 0, savedMult = 0): void {
-  const applied = streakMult(streak - 1);
+  const applied = streakMult(streak - 1, streakBonus);
   const text = savedMult > 0 ? `연속 지킴! ${multText(savedMult)}` : grade === 'perfect' && applied > 1 ? `퍼펙트 ${multText(applied)}!` : SAY[grade].text;
   const kind = savedMult > 0 ? 'save' : grade;
   if (chain >= 2) {
-    setChainJudge(text, savedMult > 0 ? 'blast' : grade, power > 1 ? `파워 x${power.toFixed(1)}` : '');
+    setChainJudge(text, savedMult > 0 ? 'blast' : grade, power >= 1.05 ? `파워 x${power.toFixed(1)}` : '');
     return;
   }
   fx.headline('now', (end) => {
-    const e = el('div', { cls: `charge-say ${kind}${text.length >= 10 ? ' long' : ''}` }, el('b', { text }), el('i', { text: `+${formatNumber(gain)} P` }, ...(power > 1 ? [el('em', { text: ` 파워 x${power.toFixed(1)}` })] : [])));
+    const e = el('div', { cls: `charge-say ${kind}${text.length >= 10 ? ' long' : ''}` }, el('b', { text }), el('i', { text: `+${formatNumber(gain)} P` }, ...(power >= 1.05 ? [el('em', { text: ` 파워 x${power.toFixed(1)}` })] : [])));
     e.style.top = `${fx.headTop(opts.room, boxAnchor().k)}px`;
     opts.room.append(e);
     const rm = (): void => {
@@ -337,7 +406,7 @@ export function strikeFx(grade: ChargeGrade, streak: number, app: HTMLElement, r
     fx.burst(a.x, a.y, { n: Math.min(16, 4 + big), colors: ['g2', 'g3', 'k5', 'or'], speed: (260 + big * 30) * a.k, size: 4 * a.k, clip: true });
     if (big >= 6) fx.burst(a.x, a.y, { n: 12, ring: true, colors: ['g2', 'k5'], speed: 400 * a.k, gravity: 0, size: 6 * a.k, life: 0.5, clip: true });
     vibrate([40, 30, 90, 30, 140 + big * 20]);
-    const applied = streakMult(streak - 1);
+    const applied = streakMult(streak - 1, streakBonus);
     if (isStreakMilestone(applied)) milestoneFx(applied, room, chain >= 2);
   } else if (grade === 'good') {
     fx.flash('b3', 200);
@@ -377,10 +446,15 @@ export function showTip(kind: 'charge' | 'heat' | 'perfect' = 'charge', hold = f
   const a = boxAnchor();
   tipKind = kind;
   tipEl.firstElementChild!.textContent = kind === 'heat' ? '파워가 찼을 때 강타를 치면 더 세요!' : kind === 'perfect' ? '게이지를 노란 칸에 맞춰 놓아요' : '꾹 눌렀다 떼면 강타!';
-  const r = opts.room.getBoundingClientRect();
+  // 꾹 누르기 안내는 방 안 상자 위, 노란 칸·파워 안내는 방 밖 띠 바로 위(꼬리가 띠를 가리키고 띠는 안 가린다)
+  const inBand = kind !== 'charge';
+  const host = inBand ? root : opts.room;
+  if (tipEl.parentElement !== host) host.append(tipEl);
   tipEl.hidden = false;
-  tipEl.style.left = `${Math.round((r.width / a.k - tipEl.offsetWidth) / 2)}px`;
-  tipEl.style.top = '58px';
+  const w = inBand ? root.clientWidth : opts.room.getBoundingClientRect().width / a.k;
+  tipEl.style.left = `${Math.round((w - tipEl.offsetWidth) / 2)}px`;
+  tipEl.style.top = inBand ? 'auto' : '58px';
+  tipEl.style.bottom = inBand ? 'calc(100% + 14px)' : '';
   tipAnim?.cancel();
   tipAnim = fx.pxFrames(tipEl, [{ translate: '0 0' }, { translate: '0 -2px' }], 400, { iterations: Infinity });
   window.clearTimeout(tipTimer);

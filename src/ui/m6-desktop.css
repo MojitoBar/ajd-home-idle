@@ -79,12 +79,12 @@
   .toast .toast-ico { width: 48px; height: 48px; }
   html:root body.un-mode .col-play .fever-gauge { transform: scale(2); transform-origin: 50% 0; margin: 10px var(--edge-m) 18px; }
 }
-/* 방 2배 화면에서 방 아래 이사 줄도 2배(글자 24·30px). 높이 1040 이상은 특전 막대(2배 96px)가 떠도 들어가 항상 2배.
-   높이 944~1039는 막대가 없을 때만 2배(내용 944 필요)이고, 막대가 뜨면 1배(기본)로 둔다. 944 미만은 스크롤이 생겨 1배 */
-@media (min-width: 1280px) and (min-height: 1040px) {
+/* 방 2배 화면에서 방 아래 이사 줄도 2배(글자 24·30px). 높이 1084 이상은 한 줄 게이지 띠(2배 후 약 80)와 특전 막대(2배 96px)가 떠도 들어가(실측: 특전 막대가 뜬 내용 끝이 높이 1062) 항상 2배.
+   높이 944~1083은 막대가 없을 때만 2배(내용 944 필요: 높이 1020 미만에서는 게이지 띠가 자리를 안 차지하고 내구도 줄에 겹친다. 1020 이상은 띠 약 80이 더해져도 들어간다)이고, 막대가 뜨면 1배(기본)로 둔다. 944 미만은 스크롤이 생겨 1배 */
+@media (min-width: 1280px) and (min-height: 1084px) {
   html:root body.un-mode .col-play > .move-block { zoom: 2; width: calc(var(--strip-w) / 2); }
 }
-@media (min-width: 1280px) and (min-height: 944px) and (max-height: 1039px) {
+@media (min-width: 1280px) and (min-height: 944px) and (max-height: 1083px) {
   html:root body.un-mode .col-play:not(:has(.perk-alert:not([hidden]))) > .move-block { zoom: 2; width: calc(var(--strip-w) / 2); }
 }
 @media (min-width: 1700px) and (min-height: 820px) {

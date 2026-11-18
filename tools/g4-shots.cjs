@@ -19,13 +19,14 @@ const say = (page, ev, n = 1) => page.evaluate(([ev, n]) => { for (let i = 0; i 
 const SCENES = {
   'step1': { cfg: M390, prep: (p) => step(p, 0), start: (p) => say(p, { type: 'tap' }, 10), shots: [[350, 'g4-m-step1-done']] },
   'combo': { cfg: M390, prep: (p) => step(p, 2, { earned: 1e6, points: 1e6 }), start: (p) => say(p, { type: 'unbox' }), shots: [[750, 'g4-m-open-combo'], [1650, 'g4-m-open-combo-b']] },
-  'gift': { cfg: M390, prep: (p) => step(p, 12, { tapLevel: 100, earned: 1e14, points: 1e14, unlocked: ALL }), start: (p) => say(p, { type: 'tick' }), shots: [[3000, 'g4-m-gift'], [4200, 'g4-m-gift-b']] },
+  'gift': { cfg: M390, prep: (p) => step(p, 13, { tapLevel: 100, earned: 1e14, points: 1e14, unlocked: ALL }), start: (p) => say(p, { type: 'tick' }), shots: [[3000, 'g4-m-gift'], [4200, 'g4-m-gift-b']] },
+  'perkBox': { cfg: M390, prep: (p) => step(p, 12, { points: 1e14, earned: 1e14, unlocked: ALL }), start: (p) => say(p, { type: 'perkBoxBuy' }), shots: [[400, 'g4-m-perkbox'], [3000, 'g4-m-perkbox-gift']] },
   'gift1': { cfg: M390, prep: (p) => step(p, 8, { earned: 1e12, points: 1e12, unlocked: ALL }), start: (p) => say(p, { type: 'perfect', value: 3 }), shots: [[2400, 'g4-m-gift1']] },
   'm640': { cfg: M640, prep: (p) => step(p, 1, { points: 1e6 }), start: (p) => say(p, { type: 'upgrade' }), shots: [[400, 'g4-m640-done']] },
   'm320': { cfg: M320, prep: (p) => step(p, 6, { earned: 1e9, points: 1e9 }), start: (p) => say(p, { type: 'fever' }), shots: [[400, 'g4-m320-fever'], [1700, 'g4-m320-fever-b']] },
   'chain': { cfg: M390, prep: (p) => step(p, 7, { earned: 1e10, points: 1e10 }), start: (p) => say(p, { type: 'chain', value: 3 }), shots: [[400, 'g4-m-chain'], [1800, 'g4-m-chain-b']] },
   'pc': { cfg: PC, prep: (p) => step(p, 2, { earned: 1e6, points: 1e6 }), start: (p) => say(p, { type: 'unbox' }), shots: [[400, 'g4-pc-done'], [1700, 'g4-pc-open']] },
-  'end': { cfg: M390, prep: (p) => step(p, 16, { points: 5e9, earned: 1e30, tapLevel: 12, unlocked: ALL }), start: async (p) => { await p.locator('.move-btn').click(); await p.waitForSelector('.modal'); await p.locator('.modal .btn.primary').click(); }, wait: 12000, shots: [[0, 'g4-m-guide-end']], shotWhen: (p) => p.waitForSelector('.un-home-say', { timeout: 15000 }) },
+  'end': { cfg: M390, prep: async (p) => { await step(p, 17, { points: 5e9, earned: 1e30, tapLevel: 12, unlocked: ALL }); await p.evaluate(() => { const s = window.__ajd.get(); window.__ajd.set({ ...s, stats: { ...s.stats, totalTaps: 500 } }); }); }, start: async (p) => { await p.locator('.move-btn').click(); await p.waitForSelector('.modal'); await p.locator('.modal .btn.primary').click(); }, wait: 12000, shots: [[0, 'g4-m-guide-end']], shotWhen: (p) => p.waitForSelector('.un-home-say', { timeout: 15000 }) },
 };
 const inter = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 1 && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 1;
 // 글자 외곽선(2px)이 서로 닿는 것도 붙은 것으로 본다: 세로 간격이 외곽선 두 겹(4px)보다 작으면 겹침

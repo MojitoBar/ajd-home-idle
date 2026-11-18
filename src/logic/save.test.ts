@@ -40,7 +40,7 @@ describe('저장·불러오기', () => {
     const r = parseSave(JSON.stringify({ points: 9 }));
     expect(r.kind).toBe('ok');
     expect(r.state.points).toBe(9);
-    expect(r.state.version).toBe(10);
+    expect(r.state.version).toBe(11);
   });
   it('migrate 체인은 순서대로 적용되고 빈 단계는 null', () => {
     const chain = {
@@ -71,7 +71,7 @@ describe('저장·불러오기', () => {
   it('3->4: 약정이 있던 예전 저장도 약정 필드 없이 v9로 올라온다', () => {
     const old = { ...JSON.parse(serialize(defaultState(), 1)), version: 3, moves: 1, contracts: [{ service: 0, kind: 'long', remainSec: 1800 }] };
     const r = parseSave(JSON.stringify(old));
-    expect(r.state.version).toBe(10);
+    expect(r.state.version).toBe(11);
     expect(r.state).not.toHaveProperty('contracts');
   });
   it('4->5: unpack를 첫 상자 기본값으로 채운다, 나머지는 보존', () => {
@@ -79,7 +79,7 @@ describe('저장·불러오기', () => {
     void unpack;
     const r = parseSave(JSON.stringify({ ...rest, version: 4 }));
     expect(r.kind).toBe('ok');
-    expect(r.state.version).toBe(10);
+    expect(r.state.version).toBe(11);
     expect(r.state.unpack).toMatchObject({ box: 0, damage: 0, roomDone: false, hp: 7, rushSec: 0 });
     expect(r.state.points).toBe(77);
     expect(r.state.moves).toBe(2);
@@ -107,7 +107,7 @@ describe('저장·불러오기', () => {
     void strikeLevel;
     void bestChain;
     const r = parseSave(JSON.stringify({ ...rest, version: 6 }));
-    expect(r.state.version).toBe(10);
+    expect(r.state.version).toBe(11);
     expect([r.state.strikeLevel, r.state.bestChain]).toEqual([0, 0]);
   });
   it('7->8: unpack에 salt(비음수 정수)와 러시 0이 채워지고 나머지는 보존', () => {
@@ -116,7 +116,7 @@ describe('저장·불러오기', () => {
     void salt;
     void rushSec;
     const r = parseSave(JSON.stringify({ ...base, version: 7, unpack: old }));
-    expect(r.state.version).toBe(10);
+    expect(r.state.version).toBe(11);
     expect(r.state.unpack).toMatchObject({ box: 33, damage: 4, hp: 9, rushSec: 0, salt: (3 * 7919 + 33 * 31 + 17) & 0x7fffffff });
     expect(Number.isInteger(r.state.unpack.salt) && r.state.unpack.salt >= 0).toBe(true);
   });
@@ -131,7 +131,7 @@ describe('저장·불러오기', () => {
     void homeLv;
     const r = parseSave(JSON.stringify({ ...rest, version: 5, unpack: { box: 35, damage: 3, roomDone: false } }));
     expect(r.kind).toBe('ok');
-    expect(r.state.version).toBe(10);
+    expect(r.state.version).toBe(11);
     expect(r.state.homeLv).toEqual([1, 1, 1, 0, 0, 0, 0, 0]);
     expect(r.state.unpack).toMatchObject({ box: 35, damage: 3, roomDone: false, hp: boxHp(35) });
     const done = parseSave(JSON.stringify({ ...rest, version: 5, unpack: { box: 200, damage: 0, roomDone: true } }));
@@ -155,7 +155,7 @@ describe('8->9: 서비스·결합·약정 삭제', () => {
   };
   it('버전 9, services·contracts 없음, 안내 표시가 붙는다', () => {
     const s = load(v8());
-    expect(s.version).toBe(10);
+    expect(s.version).toBe(11);
     expect(s).not.toHaveProperty('services');
     expect(s).not.toHaveProperty('contracts');
     expect(s.notice).toEqual({ kind: 'v9', boxes: 8 }); // 레벨 합 215 / 25 = 8
@@ -223,7 +223,7 @@ describe('8->9: 죽은 특전·이벤트 정리', () => {
   });
   it('sanitize: 정의에 없는 특전 id는 버린다', () => {
     const s = sanitize({ ...v8(), version: 9, perks: { nope: 3, home_boost: 9 }, perkOffers: [['nope', 'dex_boost']] });
-    expect(s.perks).toEqual({ home_boost: 4 });
+    expect(s.perks).toEqual({ home_boost: 9 });
     expect(s.perkOffers).toEqual([['dex_boost']]);
   });
 
@@ -236,7 +236,7 @@ describe('8->9: 죽은 특전·이벤트 정리', () => {
     };
     it('이미 하던 저장은 전부 가이드 완료', () => {
       const played = load(v9({ stats: { totalTaps: 500, totalEarned: 1e6, playSec: 90, boxesOpened: 0 }, points: 1e6, earned: 1e6 }));
-      expect(played.version).toBe(10);
+      expect(played.version).toBe(11);
       expect(played.guide).toEqual({ step: GUIDE_STEPS.length, n: 0, done: true });
       expect(load(v9({ moves: 3, stats: { totalTaps: 9, totalEarned: 1, playSec: 1, boxesOpened: 0 } })).guide.done).toBe(true);
     });
@@ -249,6 +249,37 @@ describe('8->9: 죽은 특전·이벤트 정리', () => {
       expect(sanitize({ ...base, guide: { step: 2, n: -5, done: false } }).guide).toEqual({ step: 2, n: 0, done: false });
       expect(sanitize({ ...base, moves: 1, guide: { step: 2, n: 0, done: false } }).guide.done).toBe(true);
       expect(sanitize({ ...base, guide: undefined }).guide.done).toBe(true);
+    });
+  });
+
+  describe('10 -> 11: 특전 상자', () => {
+    const v10 = (over: Record<string, unknown> = {}) => ({ ...JSON.parse(serialize(defaultState(), 1)), version: 10, perkBoxBought: undefined, ...over });
+    const load = (raw: Record<string, unknown>) => {
+      const r = parseSave(JSON.stringify(raw));
+      expect(r.kind).toBe('ok');
+      return r.state;
+    };
+    it('버전 11, perkBoxBought 0, 나머지는 보존', () => {
+      const s = load(v10({ points: 77, perks: { tap_power: 3 } }));
+      expect(s.version).toBe(11);
+      expect(s.perkBoxBought).toBe(0);
+      expect(s.points).toBe(77);
+      expect(s.perks).toEqual({ tap_power: 3 });
+    });
+    it('perkBoxBought는 왕복하고 깨진 값은 0', () => {
+      expect(load(JSON.parse(serialize({ ...defaultState(), perkBoxBought: 4 }, 1))).perkBoxBought).toBe(4);
+      expect(sanitize({ ...JSON.parse(serialize(defaultState(), 1)), perkBoxBought: -3 }).perkBoxBought).toBe(0);
+    });
+    it('진행 중인 가이드는 영구 공구 단계(12번째, 번호 11)까지는 그대로, 그 뒤는 한 칸 밀려 같은 단계에 머문다', () => {
+      const g = (step: number) => ({ guide: { step, n: 2, done: false } });
+      expect(load(v10(g(0))).guide).toEqual({ step: 0, n: 2, done: false });
+      expect(load(v10(g(11))).guide).toEqual({ step: 11, n: 2, done: false });
+      expect(load(v10(g(12))).guide).toEqual({ step: 13, n: 2, done: false });
+      expect(load(v10(g(15))).guide).toEqual({ step: 16, n: 2, done: false });
+    });
+    it('끝난 가이드는 그대로 끝, 이사한 저장도 끝', () => {
+      expect(load(v10({ guide: { step: 17, n: 0, done: true } })).guide.done).toBe(true);
+      expect(load(v10({ moves: 2, guide: { step: 17, n: 0, done: false } })).guide.done).toBe(true);
     });
   });
 });

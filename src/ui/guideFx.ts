@@ -14,7 +14,7 @@ export interface GuideFxHost {
   pts(): Element;
   toast(msg: string, reward?: boolean): void;
   /** 탭 버튼에 알림 점 */
-  tabDot(id: 'tap'): void;
+  tabDot(id: 'tap' | 'box'): void;
   /** 선물 상자 결과 장면. 이미 상자 장면이 떠 있으면 false */
   gifts(results: BoxResult[], title: string, onClose: () => void): boolean;
 }
@@ -29,10 +29,11 @@ const OPEN_CHIP: Record<GuideFeature, string> = {
   streak: '연속 배수 열림',
   special: '특별 상자 열림',
   gear: '영구 공구 열림',
+  perkBox: '특전 상자 열림',
 };
 
 /** 열린 요소가 화면에 나타나는 자리. tab이 있으면 그 탭 안에 있어서, 안 보고 있으면 탭 버튼에 알림 점을 찍는다. 자리가 없으면(급소·특별 상자) 방 테두리 */
-const OPEN_TARGET: Record<GuideFeature, { sel: string; tab?: 'tap' }> = {
+const OPEN_TARGET: Record<GuideFeature, { sel: string; tab?: 'tap' | 'box' }> = {
   combo: { sel: '.combo' },
   charge: { sel: '.charge' },
   weak: { sel: '.room' },
@@ -41,6 +42,7 @@ const OPEN_TARGET: Record<GuideFeature, { sel: string; tab?: 'tap' }> = {
   streak: { sel: '.guard-row' },
   special: { sel: '.room' },
   gear: { sel: '.gear-card', tab: 'tap' },
+  perkBox: { sel: '.perkbox-card', tab: 'box' },
 };
 
 /** 약 2초 동안 세 번 깜빡이며 나타난다(12fps 프레임) */

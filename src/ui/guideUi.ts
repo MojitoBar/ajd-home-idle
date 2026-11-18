@@ -31,6 +31,7 @@ export const FEATURE_NAME: Record<GuideFeature, string> = {
   streak: '연속 퍼펙트 배수',
   special: '특별 상자',
   gear: '영구 공구',
+  perkBox: '특전 상자',
 };
 
 interface Fit {

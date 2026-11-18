@@ -360,7 +360,7 @@ export function heavyHit(state: GameState, rng: () => number, taps: number, comb
   const fx = perkEffects(state);
   let next: GameState = {
     ...r.state,
-    fever: featureOpen(state, 'fever') ? chargeFever(state.fever, fx.feverSec, feverCharge) : state.fever,
+    fever: featureOpen(state, 'fever') ? chargeFever(state.fever, fx.feverSec, feverCharge * fx.feverCharge) : state.fever,
     stats: { ...r.state.stats, totalTaps: state.stats.totalTaps + taps },
   };
   const bursts: BoxBurst[] = [];

@@ -1,7 +1,7 @@
 import { permMult } from './economy';
 import { houseInfo } from './house';
 import { initialFever } from './fever';
-import { rollPerkOffer, seededRng } from './perks';
+import { movePerkBoxes, rollPerkOffer, seededRng } from './perks';
 import { initialUnpack, type GameState } from './state';
 import { rollSalt } from './unpack';
 
@@ -31,11 +31,15 @@ export function moveProgress(state: GameState): number {
   return Math.min(1, state.earned / houseInfo(state.moves).target);
 }
 
-/** rng는 특전 3택 추첨용. 생략하면 이사 횟수 기반 결정적 시드. */
+/** 이사 보상으로 특전 상자 `movePerkBoxes(moves)`개(3택 묶음)를 준다. rng는 특전 3택 추첨용. 생략하면 이사 횟수 기반 결정적 시드. */
 export function move(state: GameState, rng?: () => number): GameState | null {
   if (!canMove(state)) return null;
   const r = rng ?? seededRng(state.moves * 7919 + 13);
-  const offer = rollPerkOffer(state.perks, r);
+  const offers: string[][] = [];
+  for (let i = movePerkBoxes(state.moves); i > 0; i--) {
+    const offer = rollPerkOffer(state.perks, r);
+    if (offer.length > 0) offers.push(offer);
+  }
   return {
     ...state,
     points: 0,
@@ -44,7 +48,8 @@ export function move(state: GameState, rng?: () => number): GameState | null {
     tapLevel: 0,
     strikeLevel: 0,
     boxesThisRun: 0,
-    perkOffers: offer.length > 0 ? [...state.perkOffers, offer] : state.perkOffers,
+    perkOffers: [...state.perkOffers, ...offers],
+    perkBoxBought: 0,
     fever: initialFever(),
     unpack: initialUnpack(rollSalt(r)),
   };

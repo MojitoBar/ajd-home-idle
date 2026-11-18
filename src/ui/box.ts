@@ -3,6 +3,10 @@ import { BOX_PRICE_GROWTH, boxPrice, collectionProgress, openBox, openBoxes, odd
 import { formatNumber } from '../logic/format';
 import { collectionMultOf, completedSetCount, setProgress } from '../logic/collection';
 import { SETS, VARIANTS, type Rarity } from '../data/collectibles';
+import { PERKS } from '../data/perks';
+import { buyPerkBox, canBuyPerkBox, perkBoxCost, perkBoxUnlocked } from '../logic/perkBox';
+import { perkLevel } from '../logic/perks';
+import { openPerkPick } from './strategyUi';
 import { artUrl } from './px/art';
 import { el, setDisabled, setText, toggleClass } from './dom';
 import { iconImg } from './icons';
@@ -25,7 +29,15 @@ const refs = {
   perk: el('div', { cls: 'box-perk' }),
   oddsToggle: el('button', { cls: 'btn sm odds-toggle', text: '확률 보기' }),
   summary: el('div', { cls: 'pf box-dexsum' }),
+  pbCost: el('span', { cls: 'bx-cost' }),
+  pbBuy: el('button', { cls: 'btn primary perkbox-buy', attrs: { type: 'button' } }),
+  pbHint: el('div', { cls: 'note dim box-hint pb-hint' }),
+  pbOdds: el('button', { cls: 'btn sm pb-odds-btn', text: '확률 보기', attrs: { type: 'button' } }),
 };
+/** 특전 상자 카드(잠겨 있으면 숨긴다) */
+export const perkCard = el('div', { cls: 'pf perkbox-card', attrs: { hidden: '' } });
+/** 특전 상자 뽑기 버튼(가이드 화살표가 가리킨다) */
+export const perkBuyBtn = refs.pbBuy;
 
 /** 40도트 사은품 상자 그림을 정수 배율로 */
 function gift(open: boolean, size: number): HTMLImageElement {
@@ -89,17 +101,30 @@ export function initBox(c: UiCtx): void {
       { icon: iconImg('box-closed', { size: 32, cls: 'title-ico' }) },
     );
   });
+  refs.pbBuy.append(el('span', { text: '특전 상자 열기' }), refs.pbCost);
+  refs.pbBuy.addEventListener('click', () => buyOnePerkBox());
+  refs.pbOdds.addEventListener('click', () => showPerkOdds());
+  perkCard.append(
+    el('div', { cls: 'pb-head' }, iconImg('perk', { size: 48, cls: 'pb-ico' }), el('div', { cls: 'box-title', text: '특전 상자' })),
+    el('div', { cls: 'box-kind' }, el('em', { cls: 'tag gold', text: '특전 레벨이 올라요' })),
+    el('p', { cls: 'pb-desc', text: '특전 3개 중 하나를 골라요' }),
+    el('div', { cls: 'row box-btns' }, refs.pbBuy),
+    refs.pbHint,
+    el('div', { cls: 'pb-odds' }, el('span', { text: '가진 후보 중 같은 확률로 3개가 나와요' }), refs.pbOdds),
+  );
   panel.append(
     el(
       'div',
       { cls: 'pf box-hero' },
       el('div', { cls: 'box-art' }, gift(false, 80)),
       el('div', { cls: 'box-title', text: '사은품 상자' }),
+      el('div', { cls: 'box-kind' }, el('em', { cls: 'tag', text: '도감 배율이 올라요' })),
       refs.price,
       refs.perk,
       el('div', { cls: 'row box-btns' }, refs.one, refs.ten),
       refs.hint,
     ),
+    perkCard,
     refs.summary,
     el('div', { cls: 'pf box-dexsum box-oddsum' }, el('div', { cls: 'dexsum-main' }, el('b', { text: '뽑기 확률' }), el('span', { cls: 'dexsum-mult', text: '등급·변종 확률 공개' })), refs.oddsToggle),
     el('p', { cls: 'note dim box-fine' }, el('span', { text: '사은품은 포인트로만 살 수 있어요.' }), el('span', { text: '모든 사은품과 확률은 게임 속 허구예요.' })),
@@ -124,6 +149,7 @@ export function updateBox(): void {
   setDisabled(refs.ten, !can10 || busy);
   toggleClass(refs.one, 'ready', can1 && !busy);
   setText(refs.hint, can1 ? '누르면 열기 연출을 건너뛸 수 있어요' : `포인트가 ${formatNumber(price - s.points)} P 모자라요`);
+  updatePerkBox();
   const done = completedSetCount(s.collection);
   const sp = setProgress(s.collection);
   const sk = sp.map((x) => x.have).join(',');
@@ -149,6 +175,117 @@ export function updateBox(): void {
       el('button', { cls: 'btn sm', text: '도감 보기', attrs: { type: 'button' } }),
     );
     refs.summary.querySelector('button')!.addEventListener('click', () => ctx.goto('dex'));
+  }
+}
+
+// ---------- 특전 상자 ----------
+export function canBuyPerkBoxUi(): boolean {
+  return canBuyPerkBox(ctx.get());
+}
+
+function updatePerkBox(): void {
+  const s = ctx.get();
+  const open = perkBoxUnlocked(s);
+  perkCard.hidden = !open;
+  if (!open) return;
+  const cost = perkBoxCost(s);
+  const can = canBuyPerkBox(s);
+  setText(refs.pbCost, `${formatNumber(cost)} P`);
+  setDisabled(refs.pbBuy, !can || busy);
+  toggleClass(refs.pbBuy, 'ready', can && !busy);
+  const bought = el('span', { text: `이번 집에서 ${s.perkBoxBought}번 뽑음` });
+  const rule = el('span', { text: can ? '살수록 비싸지고 이사하면 처음 값' : `포인트가 ${formatNumber(cost - s.points)} P 모자라요` });
+  const hk = `${bought.textContent}|${rule.textContent}`;
+  if (refs.pbHint.dataset.k !== hk) {
+    refs.pbHint.dataset.k = hk;
+    refs.pbHint.replaceChildren(bought, rule, ...(can ? [] : [el('span', { text: '살수록 비싸지고 이사하면 처음 값' })]));
+  }
+}
+
+function showPerkOdds(): void {
+  const s = ctx.get();
+  const pool = PERKS.filter((p) => perkLevel(s, p.id) < p.maxLevel);
+  const each = pool.length ? `${+(100 / pool.length).toFixed(2)}%` : '-';
+  ctx.showModal(
+    '특전 상자 확률',
+    [
+      el('div', { cls: 'odds-title', text: '지금 나올 수 있는 특전' }),
+      ...pool.map((p) => el('div', { cls: 'pf odds-row var' }, el('span', { cls: 'odds-name', text: p.name }), el('span', { cls: 'odds-pct', text: each }))),
+      el('p', { cls: 'odds-note', text: '최대 레벨이 아닌 특전만 후보예요.' }),
+      el('p', { cls: 'odds-note', text: '후보 중에서 같은 확률로, 서로 다른 3개가 나와요.' }),
+      el('p', { cls: 'odds-note', text: '3개 중 하나를 직접 골라요.' }),
+    ],
+    [{ label: '닫기', onClick: () => ctx.dismissModal() }],
+    { icon: iconImg('perk', { size: 32, cls: 'title-ico' }) },
+  );
+}
+
+function buyOnePerkBox(): void {
+  if (busy) return;
+  const next = buyPerkBox(ctx.get(), rng);
+  if (!next) return;
+  ctx.set(next);
+  ctx.guide({ type: 'perkBoxBuy' });
+  ctx.save();
+  ctx.update();
+  busy = true;
+  playPerkBox(() => openPerkPick());
+}
+
+/** 특전 상자가 열리는 짧은 장면: 흔들림 -> 섬광·금빛 입자 -> 특전 아이콘이 튀어나옴 -> 닫히면 3택 창. 누르면 건너뛴다 */
+function playPerkBox(onClose: () => void): void {
+  const sc = makeScene();
+  onSceneClose(sc, onClose);
+  const quick = fx.isReduced();
+  const gold = [PAL.g2, PAL.k5, PAL.g3, PAL.b3];
+  const white = el('div', { cls: 'bs-white' });
+  const seam = el('i', { cls: 'bs-seam' });
+  const box = el('div', { cls: 'bs-box' }, gift(false, 160), seam);
+  const stage = el('div', { cls: 'bs-stage' }, box);
+  stage.style.setProperty('--glow', PAL.g2);
+  const skip = el('div', { cls: 'bs-skip', text: '누르면 건너뛰어요' });
+  sc.root.append(stage, skip, white);
+  let phase: 'charge' | 'burst' = 'charge';
+  const total = quick ? 300 : 850;
+  const steps = quick ? 1 : 4;
+  for (let i = 0; i < steps; i++) {
+    sc.after((total * i) / steps + 80, () => {
+      const k = (i + 1) / steps;
+      box.style.setProperty('--amp', `${Math.round((2 + k * 6) / 2) * 2}px`);
+      box.style.setProperty('--dur', `${Math.max(0.12, 0.3 - k * 0.18).toFixed(2)}s`);
+      seam.style.setProperty('--sw', `${Math.round((12 + k * 52) / 2) * 2}px`);
+      if (i >= 1) seam.classList.add('on');
+      if (!quick) box.classList.add('shaking');
+      sfx.boxShake(Math.min(4, Math.floor(k * 4)));
+      vibrate(8 + i * 3);
+      if (i >= 1 && !quick) pixBurst(stage, [PAL.g2, PAL.k5], 3 + i, 90, 420, 4);
+    });
+  }
+  sc.after(total, () => doBurst());
+  sc.root.addEventListener('pointerdown', () => {
+    if (phase === 'charge') {
+      sc.timers.forEach(clearTimeout);
+      doBurst();
+    } else sc.close();
+  });
+
+  function doBurst(): void {
+    if (phase !== 'charge') return;
+    phase = 'burst';
+    skip.remove();
+    const at = center(box);
+    box.remove();
+    stage.classList.add('perk-out');
+    const out = el('div', { cls: 'bs-perk' }, iconImg('perk', { size: 128, cls: 'bs-perk-ico' }));
+    stage.append(out);
+    if (!quick) pixBurst(stage, gold, 18, 160, 560, 8);
+    whiteFlash(white, 140);
+    sfx.boxBurst(2);
+    vibrate([20, 30]);
+    fx.burst(at.x, at.y, { n: 18, kind: 'star', colors: gold, speed: 300, size: 6 });
+    fx.confetti(at.x, at.y, 22);
+    fx.shake(sc.root, 6, 300);
+    sc.after(quick ? 250 : 620, () => sc.close());
   }
 }
 

@@ -24,6 +24,9 @@ const V9_DEAD_PERKS = ['svc_power', 'bundle_boost', 'contract_slot', 'penalty_cu
 /** v9 수치 정리: 보유 P는 새 목표의 30%까지만 */
 const V9_POINTS_CAP_RATIO = 0.3;
 
+/** v11에서 특전 상자 단계가 끼어든 가이드 단계 번호(0부터, 영구 공구 단계 바로 뒤) */
+const V11_GUIDE_INSERT_AT = 12;
+
 // 키 N: 버전 N 저장을 N+1로 올린다.
 export const MIGRATIONS: Migrations = {
   0: (s) => ({ ...s, version: 1, stats: s.stats ?? {}, settings: s.settings ?? {} }),
@@ -107,6 +110,12 @@ export const MIGRATIONS: Migrations = {
     const stats = isObj(s.stats) ? s.stats : {};
     const fresh = num(s.moves, 0, true) === 0 && num(stats.totalTaps, 0, true) === 0;
     return { ...s, version: 10, guide: fresh ? initialGuide() : finishedGuide() };
+  },
+  // 10 -> 11: 특전 상자(perkBoxBought). 가이드 12단계(영구 공구) 뒤에 특전 상자 단계가 끼어들었으니 진행 중인 가이드는 같은 단계에 머물도록 step을 민다
+  10: (s) => {
+    const g = isObj(s.guide) ? s.guide : null;
+    const guide = g && g.done !== true && num(g.step, 0, true) >= V11_GUIDE_INSERT_AT ? { ...g, step: num(g.step, 0, true) + 1 } : s.guide;
+    return { ...s, version: 11, perkBoxBought: 0, guide };
   },
 };
 
@@ -206,6 +215,7 @@ export function sanitize(raw: Raw): GameState {
     gear,
     perks,
     perkOffers,
+    perkBoxBought: num(raw.perkBoxBought, 0, true),
     stats: {
       totalTaps: num(stats.totalTaps, 0, true),
       totalEarned: num(stats.totalEarned, 0),

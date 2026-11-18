@@ -68,6 +68,17 @@ describe('releaseCharge', () => {
     const s = { ...defaultState(), strikeLevel: 5 };
     expect(releaseCharge(s, never, 0.8, 0, 1).taps).toBe(Math.round(releaseCharge(defaultState(), never, 0.8, 0, 1).taps * 2));
   });
+  it('특전: 강타 단련은 탭 수에 곱하고 연속 퍼펙트 계수 특전은 0.5에 더한다, 피버 충전 특전은 게이지에 곱한다', () => {
+    const base = releaseCharge(defaultState(), never, 0.8, 0, 1);
+    const strike = releaseCharge({ ...defaultState(), perks: { strike_power: 10 } }, never, 0.8, 0, 1);
+    expect(strike.taps).toBe(base.taps * 4);
+    const st0 = releaseCharge(defaultState(), never, 0.8, 4, 1).taps;
+    const st5 = releaseCharge({ ...defaultState(), perks: { streak_coef: 5 } }, never, 0.8, 4, 1).taps;
+    expect(st0).toBe(20 * 3);
+    expect(st5).toBe(20 * (1 + 1.0 * 4));
+    const fe = releaseCharge({ ...defaultState(), perks: { fever_charge: 2 } }, never, 0.8, 0, 1);
+    expect(fe.state.fever.gauge).toBeCloseTo(6 * 1.3);
+  });
   it('퍼펙트: 연속 +1, 수익 = 탭 수익 x 탭 수 x 배율, 콤보·피버', () => {
     const s = defaultState();
     const r = releaseCharge(s, never, 0.8, 2, 1.5);

@@ -42,6 +42,7 @@ import { addEarned, comboAdd, comboBonus, comboExpired, comboHit, comboMultOf, c
 import * as comboUi from './comboUi';
 import * as chargeUi from './chargeUi';
 import * as weakUi from './weakUi';
+import { movePerkBoxes, perkEffects } from '../logic/perks';
 import { buyGear, gearEffects, gearLevel, initialShield, resolveStreak, type ShieldState } from '../logic/gear';
 import { streakMult } from '../logic/charge';
 import { createGearCards, GEAR_ICON, syncGearCards, type GearCard } from './gearUi';
@@ -69,7 +70,7 @@ import { textBoxes } from './clutter';
 import { fresh, markFresh, type UiCtx } from './collectUi';
 import { row as guideRow, syncGuide } from './guideUi';
 import { initGuidePoint, syncGuidePoint } from './guidePoint';
-import { canBuyBox, initBox, openBtn as boxOpenBtn, panel as boxPanel, playGifts, updateBox } from './box';
+import { canBuyBox, canBuyPerkBoxUi, initBox, openBtn as boxOpenBtn, perkBuyBtn, panel as boxPanel, playGifts, updateBox } from './box';
 import { initDex, panel as dexPanel, renderDex, updateDex } from './dex';
 import { badge as feverBadge, gauge as feverGauge, initFever, syncFever } from './feverUi';
 import { initRush, syncRush } from './rushUi';
@@ -392,6 +393,8 @@ function build(): void {
     moveBtn: refs.moveBtn,
     boxBtn: boxOpenBtn,
     canBuyBox,
+    perkBtn: perkBuyBtn,
+    canBuyPerkBox: canBuyPerkBoxUi,
     gears: () => gearCards.map((c) => ({ id: c.id, btn: c.btn })),
     boxAt: boxAnchor,
     holding: () => guideRow.classList.contains('done'),
@@ -403,13 +406,13 @@ function build(): void {
   refs.badge.append(refs.badgeVal);
   refs.badge.addEventListener('click', () => strat.toggleMult(refs.points));
   for (const n of [refs.speed, refs.ptsRate, multBtn]) n.addEventListener('click', () => strat.toggleMult(refs.points));
-  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { v9: showV9Notice, returnToast: () => { returnRush = true; announceReturn(); }, textBoxes, special: debugSpecial, rush: (sec: number) => { state = { ...state, unpack: { ...state.unpack, rushSec: sec } }; update(); }, say: (g: 'perfect' | 'good' | 'miss', streak = 0, gain = 1234, power = 1, chain = 0) => chargeUi.say(g, streak, gain, power, chain), fever: () => { state = { ...state, fever: { gauge: 0, activeSec: 10, cooldownSec: 0 } }; update(); }, particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = asDebug(s); }, guideEv: (ev: GuideEvent) => guideSay(ev), guide: (step: number | 'done') => { guideDebug = true; state = { ...state, guide: step === 'done' ? finishedGuide() : { step: step - 1, n: 0, done: false } }; update(); }, combo: (n: number) => { combo = { n, lastMs: performance.now(), earned: n * 100 }; comboBest0 = state.bestCombo; }, getCombo: () => combo, chain: (n: number) => { const r = refs.room.getBoundingClientRect(); applyCharge(0.5, r.left + r.width / 2, r.top + r.height / 2, n); }, getChain: chainInfo, holdAt: chargeUi.holdAt, release: chargeUi.releaseHeld, charge: (pos: number) => { chargeUi.holdAt(pos); chargeUi.releaseHeld(); }, streak: (n: number) => { chargeStreak = n; }, tip: chargeUi.showTip, keep: () => { if (combo.n) combo = { ...combo, lastMs: performance.now() }; }, weak: showWeakAt, weakHit: () => { const r = document.querySelector('.weak:not([hidden])')?.getBoundingClientRect(); if (r) applyWeak(r.left + r.width / 2, r.top + r.height / 2); }, weakAuto: (on: boolean) => { weakAuto = on; }, weakTip: () => weakUi.showTip(), getWeak: () => weak, heatAuto: (on: boolean) => { heatAuto = on; }, zoneAuto: (on: boolean) => { zoneAuto = on; }, heat: (v: number) => setHeat(v >= 100 ? heatAdd(initialHeat(), 100) : { heat: { v, overMs: 0 }, overheated: false }), getHeat: () => heat, zone: (center: number) => { chargeZone = chargeZoneAt(center, zoneHalf); chargeUi.setZone(chargeZone); }, home: (id: string | number, lv: number) => { const i = typeof id === 'number' ? id : ROOM_ITEMS.findIndex((x) => x.id === id); state = { ...state, homeLv: state.homeLv.map((x, j) => (j === i ? lv : x)) }; update(); }, gear: (id: GearId, lv: number) => { state = { ...state, gear: { ...state.gear, [id]: lv } }; update(); }, shield: (n: number, toNext = shield.toNext) => { shield = { n, toNext }; chargeUi.syncShield(shieldMax, shield); }, save: () => chargeUi.shieldSave(Math.max(0, shield.n - 1), streakMult(chargeStreak), refs.room, true), getZone: () => chargeZone };
+  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { v9: showV9Notice, returnToast: () => { returnRush = true; announceReturn(); }, textBoxes, special: debugSpecial, rush: (sec: number) => { state = { ...state, unpack: { ...state.unpack, rushSec: sec } }; update(); }, say: (g: 'perfect' | 'good' | 'miss', streak = 0, gain = 1234, power = 1, chain = 0) => chargeUi.say(g, streak, gain, power, chain), fever: () => { state = { ...state, fever: { gauge: 0, activeSec: 10, cooldownSec: 0 } }; update(); }, particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = asDebug(s); }, guideEv: (ev: GuideEvent) => guideSay(ev), guide: (step: number | 'done') => { guideDebug = true; state = { ...state, guide: step === 'done' ? finishedGuide() : { step: step - 1, n: 0, done: false } }; update(); }, combo: (n: number) => { combo = { n, lastMs: performance.now(), earned: n * 100 }; comboBest0 = state.bestCombo; }, getCombo: () => combo, chain: (n: number) => { const r = refs.room.getBoundingClientRect(); applyCharge(0.5, r.left + r.width / 2, r.top + r.height / 2, n); }, getChain: chainInfo, holdAt: chargeUi.holdAt, release: chargeUi.releaseHeld, charge: (pos: number) => { chargeUi.holdAt(pos); chargeUi.releaseHeld(); }, streak: (n: number) => { chargeStreak = n; }, tip: chargeUi.showTip, keep: () => { if (combo.n) combo = { ...combo, lastMs: performance.now() }; }, weak: showWeakAt, weakHit: () => { const r = document.querySelector('.weak:not([hidden])')?.getBoundingClientRect(); if (r) applyWeak(r.left + r.width / 2, r.top + r.height / 2); }, weakAuto: (on: boolean) => { weakAuto = on; }, weakTip: () => weakUi.showTip(), getWeak: () => weak, heatAuto: (on: boolean) => { heatAuto = on; }, zoneAuto: (on: boolean) => { zoneAuto = on; }, heat: (v: number) => setHeat(v >= 100 ? heatAdd(initialHeat(), 100) : { heat: { v, overMs: 0 }, overheated: false }), getHeat: () => heat, zone: (center: number) => { chargeZone = chargeZoneAt(center, zoneHalf); chargeUi.setZone(chargeZone); }, home: (id: string | number, lv: number) => { const i = typeof id === 'number' ? id : ROOM_ITEMS.findIndex((x) => x.id === id); state = { ...state, homeLv: state.homeLv.map((x, j) => (j === i ? lv : x)) }; update(); }, gear: (id: GearId, lv: number) => { state = { ...state, gear: { ...state.gear, [id]: lv } }; update(); }, shield: (n: number, toNext = shield.toNext) => { shield = { n, toNext }; chargeUi.syncShield(shieldMax, shield); }, save: () => chargeUi.shieldSave(Math.max(0, shield.n - 1), streakMult(chargeStreak, perkEffects(state).streakBonus), refs.room, true), getZone: () => chargeZone };
 
   const keyHint = el('p', { cls: 'key-hint' });
   for (const [keys, label] of [[['Space'], '상자 치기 · 꾹 강타'], [['1~4'], '탭 전환'], [['Esc'], '닫기']] as [string[], string][]) {
     keyHint.append(el('span', { cls: 'kh' }, el('span', {}, ...keys.map((k) => el('kbd', { text: k }))), label));
   }
-  const colPlay = el('div', { cls: 'col-play' }, header, el('section', { cls: 'hero' }, el('div', { cls: 'speed-wrap' }, refs.speed, multBtn), refs.points), refs.room, feverGauge, ...(roomStrip() ? [roomStrip()!] : []), guideRow, moveBlock, keyHint);
+  const colPlay = el('div', { cls: 'col-play' }, header, el('section', { cls: 'hero' }, el('div', { cls: 'speed-wrap' }, refs.speed, multBtn), refs.points), refs.room, feverGauge, ...(roomStrip() ? [roomStrip()!] : []), chargeUi.stripEl(), guideRow, moveBlock, keyHint);
   const colList = el('div', { cls: 'col-list' }, refs.panel);
   const page = el('div', { cls: 'page' }, colPlay, colList);
   app.append(
@@ -673,9 +676,9 @@ function applyCharge(pos: number, x: number, y: number, only?: number): void {
     chargeZone = rollChargeZone(Math.random, chargeZone, gearEffects(state).perfectHalf);
     chargeUi.setZone(chargeZone);
   }
-  chargeUi.say(r.grade, r.streak, r.gain, power, r.bursts.length, saved ? streakMult(chargeStreak) : 0);
+  chargeUi.say(r.grade, r.streak, r.gain, power, r.bursts.length, saved ? streakMult(chargeStreak, perkEffects(state).streakBonus) : 0);
   chargeUi.strikeFx(r.grade, r.streak, document.getElementById('app')!, refs.room, power, r.bursts.length);
-  if (saved) chargeUi.shieldSave(savedAt - 1, streakMult(chargeStreak), refs.room);
+  if (saved) chargeUi.shieldSave(savedAt - 1, streakMult(chargeStreak, perkEffects(state).streakBonus), refs.room);
   unpackHeavy({ x, y, grade: r.grade, streak: r.streak, gain: r.gain, bursts: r.bursts, prize: r.prize, pointsEl: ptsTarget(), fever: wasFever });
   const c = boxCenter();
   const r2 = ptsTarget().getBoundingClientRect();
@@ -706,7 +709,7 @@ function debugChain(n: number, mult: number, showPower: (g: 'perfect' | 'good' |
   while (taps < 20000 && heavyHit(state, rng, taps, mult).chain < n) taps = Math.ceil(taps * 1.1) + 1;
   let lo = Math.max(1, Math.floor(taps / 1.1) - 1);
   while (lo < taps && heavyHit(state, rng, lo, mult).chain < n) lo++;
-  const base = chargeTaps('perfect', chargeStreak) * strikeMult(state.strikeLevel);
+  const base = chargeTaps('perfect', chargeStreak, perkEffects(state).streakBonus) * strikeMult(state.strikeLevel);
   return releaseCharge(state, rng, 0.5, chargeStreak, mult, (g) => (showPower(g), lo / base), chargeZoneAt(0.5));
 }
 
@@ -1122,6 +1125,7 @@ function update(): void {
   }
   lastReady = ready;
   strat.sync(state);
+  chargeUi.setStreakBonus(perkEffects(state).streakBonus);
   snapNext = false;
 
   for (const [id, b] of tabBtns) toggleClass(b, 'active', id === activeTab);
@@ -1134,7 +1138,7 @@ function update(): void {
   const dots: [TabId, boolean][] = [
     ['tap', activeTab !== 'tap' && hasNewTabDot('tap')],
     ['home', activeTab !== 'home' && hasNewTabDot('home')],
-    ['box', activeTab !== 'box' && (canBuyBox() || hasNewTabDot('box'))],
+    ['box', activeTab !== 'box' && (canBuyBox() || canBuyPerkBoxUi() || hasNewTabDot('box'))],
     ['dex', activeTab !== 'dex' && (fresh.size > 0 || hasNewTabDot('dex'))],
   ];
   for (const [id, on] of dots) {
@@ -1266,6 +1270,7 @@ function openMoveConfirm(): void {
         iconImg(houseIcon(target.theme), { size: 48, alt: '' }),
         el('div', { cls: 'mv-main' }, el('b', { cls: 'fb', text: `다음 집: ${target.name}` }), el('span', {}, '영구 배율은 ', el('b', { cls: 'nowrap mv-num', text: `x${formatNumber(cur)} → x${formatNumber(next)}` }), '가 돼요.')),
       ),
+      p(`보상으로 특전 상자 ${movePerkBoxes(state.moves)}개를 받아요.`),
     ],
     [
       { label: '취소', onClick: dismissModal },

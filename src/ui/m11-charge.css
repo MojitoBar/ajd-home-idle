@@ -1,16 +1,30 @@
-/* 꾹 눌러 강타: 방 안 게이지·판정 글자·안내 말풍선. 좌표는 방 안(PC 2배 화면에서는 방과 함께 2배) */
+/* 꾹 눌러 강타: 방 밖 게이지 띠·방 안 판정 글자·안내 말풍선. 좌표는 방 안(PC 2배 화면에서는 방과 함께 2배) */
 .phone, .dock-phone { touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
-.charge { position: absolute; left: 50%; top: 92px; width: 200px; margin-left: -100px; z-index: 4; pointer-events: none; }
-.charge[hidden] { display: none; }
-.charge-bar { position: relative; width: 200px; height: 16px; background: var(--k1); box-shadow: 0 0 0 2px var(--k0), 0 0 0 4px var(--k5); }
-.charge-good, .charge-perfect { position: absolute; top: 0; height: 16px; }
+/* 게이지 띠: 방 밖(내구도 줄 아래)에 놓여 방 안 연출에 안 가려진다. 강타가 열린 뒤에는 늘 자리를 차지해 눌러도 아래가 안 밀린다. 높이 = 막대 24 + 8 + 아래 줄 16 */
+.charge { position: relative; z-index: 9; box-sizing: border-box; width: var(--edge-w); margin: 0 var(--edge-m) 4px; pointer-events: none; }
+.charge-bar { position: relative; height: 24px; margin-left: 4px; background: var(--k1); box-shadow: 0 0 0 2px var(--k0), 0 0 0 4px var(--k5); }
+.charge-good, .charge-perfect { position: absolute; top: 0; height: 24px; }
 .charge-good { background: var(--b3); box-shadow: inset 0 2px 0 var(--b4), inset 0 -2px 0 var(--b2); }
 .charge-perfect { background: var(--g2); box-shadow: inset 0 2px 0 var(--g3), inset 0 -2px 0 var(--g1), 0 0 0 2px var(--k0); }
 .charge-perfect.hot { background: var(--k5); box-shadow: inset 0 2px 0 var(--g3), inset 0 -2px 0 var(--g2), 0 0 0 2px var(--k0); }
-.charge-mark { position: absolute; left: 0; top: -8px; width: 4px; height: 32px; background: var(--k5); box-shadow: 0 0 0 2px var(--k0); }
+.charge-mark { position: absolute; left: 0; top: -4px; width: 4px; height: 32px; background: var(--k5); box-shadow: 0 0 0 2px var(--k0); }
 .charge-mark.in { background: var(--g3); }
+/* 뗀 직후(.res): 눈금이 멈춘 자리에 등급 색. 퍼펙트 노랑 번쩍(.flash는 83ms마다), 굿 파랑, 빗나감 어둡게 */
+.charge.res-perfect .charge-bar { box-shadow: 0 0 0 2px var(--k0), 0 0 0 4px var(--g2); }
+.charge.res-perfect .charge-mark { background: var(--g2); }
+.charge.res-perfect.flash .charge-bar { box-shadow: 0 0 0 2px var(--k0), 0 0 0 4px var(--k5); }
+.charge.res-perfect.flash .charge-perfect, .charge.res-perfect.flash .charge-mark { background: var(--k5); }
+.charge.res-good .charge-bar { box-shadow: 0 0 0 2px var(--k0), 0 0 0 4px var(--b3); }
+.charge.res-good .charge-mark { background: var(--b4); }
+.charge.res-miss .charge-bar { background: var(--k0); box-shadow: 0 0 0 2px var(--k0), 0 0 0 4px var(--k3); }
+.charge.res-miss .charge-good, .charge.res-miss .charge-perfect { background: var(--k2); box-shadow: none; }
+.charge.res-miss .charge-mark { background: var(--k3); }
+/* 아래 줄(16px): 왼쪽 쉬는 안내 / 누르는 중엔 연속 칩, 오른쪽 열기 줄 */
+.charge-sub { position: relative; display: flex; align-items: center; gap: var(--s2); height: 16px; margin-top: var(--s2); padding: 0 4px; }
+.charge-hint { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; font: 700 var(--fs-s)/16px var(--f-bold); color: var(--on-bg-dim); }
+.charge.on .charge-hint { visibility: hidden; }
 .charge-streak, .streak-chip { padding: 0 6px; background: var(--or); color: var(--k0); font: 700 15px/20px var(--f-bold); white-space: nowrap; transform-origin: 0 50%; box-shadow: 0 0 0 2px var(--k0); }
-.charge-streak { position: absolute; left: 0; bottom: 100%; margin-bottom: 14px; }
+.charge-streak { position: absolute; left: 4px; top: 0; font-size: var(--fs-s); line-height: 16px; }
 .guard-row { position: absolute; left: 10px; top: 56px; z-index: 5; display: flex; align-items: center; gap: 6px; pointer-events: none; }
 .charge-streak[hidden], .streak-chip[hidden] { display: none; }
 .streak-chip.flash { background: var(--k5); }
@@ -24,15 +38,17 @@
 .charge-say.miss b { font-size: 24px; line-height: 28px; color: var(--k3); }
 .charge-say.miss i { font-size: 12px; line-height: 16px; color: var(--k4); }
 .charge-tip { z-index: 5; }
+.charge > .charge-tip { z-index: 6; }
 .charge-tip[hidden] { display: none; }
-/* 열기 줄: 타이밍 막대 아래 같은 폭, 채움은 2px 단위 */
-.charge-heat { position: relative; width: 200px; height: 8px; margin-top: 14px; background: var(--k1); box-shadow: 0 0 0 2px var(--k0), 0 0 0 4px var(--k5); }
+/* 열기 줄: 아래 줄 오른쪽. 이름표 + 120px 줄(채움은 2px 단위) */
+.charge-heat { display: flex; align-items: center; gap: var(--s2); flex: none; margin-left: auto; }
+.heat-track { position: relative; width: 120px; height: 8px; background: var(--k1); box-shadow: 0 0 0 2px var(--k0), 0 0 0 4px var(--k5); }
 .heat-fill { position: absolute; left: 0; top: 0; height: 8px; width: 0; background: var(--b3); }
 .z-warm .heat-fill { background: var(--g2); }
 .z-hot .heat-fill { background: var(--or); }
 .z-over .heat-fill { background: var(--r2); }
 .heat-tick { position: absolute; top: 0; width: 2px; height: 8px; background: var(--k5); }
-.heat-chip { position: absolute; left: -4px; top: 100%; margin-top: 8px; padding: 0 4px; font: 700 12px/16px var(--f-bold); white-space: nowrap; background: var(--k1); color: var(--k5); box-shadow: 0 0 0 2px var(--k0); }
+.heat-chip { padding: 0 4px; font: 700 var(--fs-s)/16px var(--f-bold); white-space: nowrap; background: var(--k1); color: var(--k5); box-shadow: 0 0 0 2px var(--k0); }
 .z-hot .heat-chip { background: var(--or); color: var(--k0); }
 .z-over .heat-chip { background: var(--r2); color: var(--k5); }
 .heat-flash { position: absolute; left: 0; top: 0; width: 100%; height: 8px; background: var(--k5); }
@@ -42,7 +58,6 @@
 .z-rd .heat-fill { animation: none; }
 @keyframes heat-hot { 0% { background: var(--or); } 50% { background: var(--g2); } }
 @keyframes heat-warn { 0% { background: var(--or); } 50% { background: var(--r2); } }
-.charge.lower { top: 100px; }
 .charge-say.over b { font-size: 36px; line-height: 40px; color: var(--r2); }
 .charge-say i em { font-style: normal; color: var(--or); }
 .charge-mark[hidden] { display: none; }
@@ -61,3 +76,48 @@
 .sh-fill { position: absolute; left: 0; top: 0; height: 4px; width: 0; background: var(--g2); }
 .charge-say.save b { font-size: 36px; line-height: 40px; color: var(--or); }
 .charge-say.save i { font-size: 24px; line-height: 28px; color: var(--g3); }
+
+/* 얇은 띠(낮은 폰 높이 700 이하, 방 2배 PC 화면): 막대 16 + 열기 줄 8 = 32. 쉬는 안내 글자는 접고 연속 칩·열기 이름표는 누를 때만 띠 위(내구도 줄 자리)에 겹쳐 올린다 */
+@media (max-width: 899px) and (max-height: 700px), (min-width: 1280px) and (min-height: 900px) {
+  .charge-bar, .charge-good, .charge-perfect { height: 16px; }
+  .charge-mark { height: 24px; }
+  .charge-sub { height: 8px; margin-top: 8px; }
+  .charge-hint { display: none; }
+  .charge-streak { top: auto; bottom: calc(100% + 32px); }
+  .heat-chip { position: absolute; right: 4px; bottom: calc(100% + 32px); display: none; }
+  .charge.on .heat-chip, .z-hot .heat-chip, .z-over .heat-chip { display: block; }
+}
+/* PC: 왼쪽 단 줄과 같은 폭 */
+@media (min-width: 900px) {
+  .col-play > .charge { width: var(--strip-w); margin-left: auto; margin-right: auto; }
+}
+/* 방 2배 화면: 띠도 2배(얇은 띠, transform이라 늘어난 세로 32만큼 자리를 비운다) */
+@media (min-width: 1280px) and (min-height: 900px) {
+  html:root body.un-mode .col-play .charge { width: calc(var(--strip-w) / 2); transform: scale(2); transform-origin: 50% 0; margin-top: var(--s1); margin-bottom: calc(32px + var(--s2)); }
+}
+/* 방 2배 화면인데 높이 1020 미만: 자리가 없어 띠가 세로 자리를 따로 차지하지 않는다. 대신 내구도 줄(.px-strip)과 정확히 같은 사각형(728×64)에 겹쳐 앉아, 누르는 중·뗀 직후에만 내구도 줄을 숨기고(자리 유지) 그 자리에 게이지를 쓴다.
+   한 줄 배치(왼쪽부터): 연속 칩 · 타이밍 막대 · `파워` 이름표 · 짧은 열기 줄. 막대 폭은 chargeUi가 --bar-rsv(막대 밖 칸 폭)를 빼서 맞춘다. 쉬는 중엔 내구도 줄이 보이고 게이지는 숨는다 */
+@media (min-width: 1280px) and (min-height: 900px) and (max-height: 1019px) {
+  html:root body.un-mode .col-play .charge { --bar-rsv: 198; display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 4px; margin-top: calc(-64px - var(--s2)); margin-bottom: calc(32px + var(--s2)); }
+  html:root body.un-mode .col-play .charge:not(.on):not(.res) { visibility: hidden; }
+  html:root body.un-mode .col-play:has(.charge.on, .charge.res) .px-strip, html:root body.un-mode .col-play:has(.charge.on, .charge.res) .px-strip * { visibility: hidden; }
+  html:root body.un-mode .col-play .charge .charge-bar { flex: none; margin-left: 0; order: 1; }
+  html:root body.un-mode .col-play .charge .charge-sub { display: contents; }
+  html:root body.un-mode .col-play .charge .charge-streak { position: static; order: 0; flex: none; box-sizing: border-box; width: 48px; text-align: center; }
+  html:root body.un-mode .col-play .charge .charge-streak[hidden] { display: block; visibility: hidden; }
+  html:root body.un-mode .col-play .charge .charge-heat { order: 2; margin-left: 0; gap: 6px; }
+  html:root body.un-mode .col-play .charge .heat-track { width: 48px; }
+  html:root body.un-mode .col-play .charge .heat-chip { position: static; display: block; box-sizing: border-box; min-width: 76px; text-align: center; }
+}
+/* 방 2배 화면 + 높이 1020 이상: 띠가 늘 제 자리(내구도 줄 아래)를 차지한다. 막대 한 줄(16)에 한 줄 배치(왼쪽부터): 연속 칩 · 타이밍 막대 · `파워` 이름표 · 짧은 열기 줄. 칩 자리(::before)·이름표는 숨겨도 자리를 지켜 누르기 전후로 막대 폭·아래 요소가 안 변한다. 값은 띠 기준(scale 2 전)이다 */
+@media (min-width: 1280px) and (min-height: 1020px) {
+  html:root body.un-mode .col-play .charge { --bar-rsv: 202; display: flex; align-items: center; gap: 8px; height: 16px; padding: 0 4px; margin-top: calc(var(--s1) + 8px); margin-bottom: calc(24px + var(--s2)); }
+  html:root body.un-mode .col-play .charge::before { content: ''; order: 0; flex: none; width: 48px; }
+  html:root body.un-mode .col-play .charge .charge-bar { flex: none; margin-left: 0; order: 1; }
+  html:root body.un-mode .col-play .charge .charge-sub { display: contents; }
+  html:root body.un-mode .col-play .charge .charge-streak { position: absolute; left: 4px; top: 0; bottom: auto; box-sizing: border-box; width: 48px; text-align: center; }
+  html:root body.un-mode .col-play .charge .charge-heat { order: 2; margin-left: 0; gap: 6px; }
+  html:root body.un-mode .col-play .charge .heat-track { width: 48px; }
+  html:root body.un-mode .col-play .charge .heat-chip { position: static; display: block; box-sizing: border-box; min-width: 76px; text-align: center; visibility: hidden; }
+  html:root body.un-mode .col-play .charge.on .heat-chip, html:root body.un-mode .col-play .charge .z-hot .heat-chip, html:root body.un-mode .col-play .charge .z-over .heat-chip, html:root body.un-mode .col-play .charge.z-hot .heat-chip, html:root body.un-mode .col-play .charge.z-over .heat-chip { visibility: visible; }
+}

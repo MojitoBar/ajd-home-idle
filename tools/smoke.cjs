@@ -228,7 +228,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await page.locator('.modal .btn.primary').click();
       await page.waitForTimeout(400);
       const sv = await save(page);
-      check('안내를 닫으면 notice가 지워지고 version 10으로 저장', sv.version === 10 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
+      check('안내를 닫으면 notice가 지워지고 version 11로 저장', sv.version === 11 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
       await page.reload();
       await page.waitForSelector('.phone');
       await page.waitForTimeout(800);
@@ -257,19 +257,24 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await page.waitForTimeout(450);
       const s1 = await gs(page);
       const one = dmg(s1) - dmg(s0);
-      check('강타: 짧은 탭은 게이지도 판정 글자도 없는 일반 탭', (await page.locator('.charge:not([hidden])').count()) === 0 && (await page.locator('.charge-say').count()) === 0 && s1.stats.totalTaps - s0.stats.totalTaps === 1 && one > 0, `taps +${s1.stats.totalTaps - s0.stats.totalTaps}`);
+      check('강타: 짧은 탭은 게이지도 판정 글자도 없는 일반 탭', (await page.locator('.charge.on:not(.res)').count()) === 0 && (await page.locator('.charge-say').count()) === 0 && s1.stats.totalTaps - s0.stats.totalTaps === 1 && one > 0, `taps +${s1.stats.totalTaps - s0.stats.totalTaps}`);
       await page.waitForTimeout(600);
+      const ys = () => page.evaluate(() => ['.move-block', '.card', '.px-strip'].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().y)).join(','));
+      const y0 = await ys();
       await page.mouse.move(m.x, m.y);
       await page.mouse.down();
       await page.waitForTimeout(500);
-      check('강타: 길게 누르면 게이지가 뜬다', (await page.locator('.charge:not([hidden])').count()) === 1 && (await page.locator('.charge-mark').count()) === 1);
+      check('강타: 길게 누르면 게이지가 뜬다', (await page.locator('.charge.on:not(.res)').count()) === 1 && (await page.locator('.charge-mark').count()) === 1);
+      const geo = await page.evaluate(() => { const r = document.querySelector('.room').getBoundingClientRect(); const c = document.querySelector('.charge-bar').getBoundingClientRect(); return { dy: Math.round(c.top - r.bottom), barH: c.height, barW: c.width, roomW: r.width }; });
+      check('강타: 게이지 띠가 방 사각형 밖(아래)에 있고 방 폭에 가깝고 막대가 16px보다 두껍다', geo.dy >= 0 && geo.barW >= geo.roomW - 20 && geo.barH >= 16, JSON.stringify(geo));
+      check('강타: 누르기 전후로 아래 줄(이사 줄·카드·내구도 줄)의 y가 같다(밀림 없음)', (await ys()) === y0, `${y0} -> ${await ys()}`);
       await page.waitForTimeout(200);
       const s2 = await gs(page);
       await page.mouse.up();
       await page.waitForTimeout(300);
       const s3 = await gs(page);
       const say = (await page.locator('.charge-say b, .un-chain:not([hidden]) .un-chain-judge').count()) ? await page.locator('.charge-say b, .un-chain:not([hidden]) .un-chain-judge').first().innerText() : '';
-      check('강타: 떼면 판정 글자와 함께 탭 1번보다 많이 깎이고 게이지가 사라진다', /퍼펙트|굿|아쉽/.test(say) && dmg(s3) - dmg(s2) > one * 1.5 && (await page.locator('.charge:not([hidden])').count()) === 0, `say=${say} 탭1번=${one} 강타=${dmg(s3) - dmg(s2)}`);
+      check('강타: 떼면 판정 글자와 함께 탭 1번보다 많이 깎이고 게이지가 사라진다', /퍼펙트|굿|아쉽/.test(say) && dmg(s3) - dmg(s2) > one * 1.5 && (await page.locator('.charge.on:not(.res)').count()) === 0, `say=${say} 탭1번=${one} 강타=${dmg(s3) - dmg(s2)}`);
       // 급소
       await page.waitForTimeout(500);
       await page.evaluate(() => window.__ajd.weak(0.8, 0.2));
@@ -433,7 +438,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       check('이사 뒤: 집 이름', (await text(page, '.house-name')) !== '원룸', await text(page, '.house-name'));
       check('가로 스크롤 없음(이사 뒤)', await noHScroll(page));
       if ((await page.locator('.modal').count()) > 0) await page.keyboard.press('Escape');
-      check('이사 뒤: 특전 3택 대기', s.perkOffers.length === 1 && s.perkOffers[0].length === 3);
+      check('이사 뒤: 특전 상자 2개(3택 묶음 2개) 대기', s.perkOffers.length === 2 && s.perkOffers.every((o) => o.length === 3), String(s.perkOffers.length));
       // 저장 유지: 새로고침
       await page.waitForTimeout(500);
       await page.reload();
@@ -484,8 +489,9 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         const { ctx, page } = await newPage(browser, null, '');
         await page.waitForTimeout(500);
         const g = await guideRowInfo(page);
-        check('가이드: 새 게임은 가이드 1/17', g.vis && g.chip === '가이드 1/17' && g.text.includes('10번'), `${g.chip} ${g.text}`);
+        check('가이드: 새 게임은 가이드 1/18', g.vis && g.chip === '가이드 1/18' && g.text.includes('10번'), `${g.chip} ${g.text}`);
         check('가이드: 잠긴 요소(피버 막대·오함마 카드·강타 게이지·연속 칩)가 안 보인다', !(await vis(page, '.fever-gauge')) && !(await vis(page, '.strike-card')) && !(await vis(page, '.streak-chip')) && !(await vis(page, '.charge')));
+        check('가이드: 잠긴 새 게임에는 게이지 띠가 없다(자리도 없다)', await page.evaluate(() => { const e = document.querySelector('.charge'); return !e || e.getBoundingClientRect().height === 0; }));
         const mv = await page.evaluate(() => ({ w: document.querySelector('.move-block')?.getBoundingClientRect().width, txt: document.querySelector('.bar-text')?.textContent, fit: (() => { const e = document.querySelector('.bar-text'); return e.scrollWidth <= e.clientWidth; })() }));
         check('가이드: 새 게임 첫 화면에 이사 줄과 다음 집 이름이 보인다', mv.w > 0 && mv.txt.includes('투룸으로') && mv.fit, `${mv.w} ${mv.txt}`);
         check('가이드: 새 게임에서 열림 토스트가 뜨지 않는다', (await page.locator('.toast').allInnerTexts()).join(' ').indexOf('이사') < 0);
@@ -515,15 +521,15 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         check('가이드: 단계 완료 시 머리글이 뜬다(토스트 중복 없음)', sayTxt.includes('가이드 1 완료!') && !toastTxt.includes('가이드 1 완료'), `${sayTxt} | ${toastTxt}`);
         const held = await guideRowInfo(page);
         check('가이드: 완료 순간 줄이 가득 찬 막대로 붙잡힌다', held.text.includes('완료'), held.text);
-        await waitChip(page, '가이드 2/17');
+        await waitChip(page, '가이드 2/18');
         let g = await guideRowInfo(page);
-        check('가이드: 10번 치면 2단계', g.chip === '가이드 2/17', `${g.chip}`);
+        check('가이드: 10번 치면 2단계', g.chip === '가이드 2/18', `${g.chip}`);
         await setS(page, { points: 1e6 });
         await page.waitForTimeout(200);
         await page.locator('.tap-card .btn.buy').first().click();
-        await waitChip(page, '가이드 3/17');
+        await waitChip(page, '가이드 3/18');
         g = await guideRowInfo(page);
-        check('가이드: 공구를 강화하면 3단계', g.chip === '가이드 3/17', g.chip);
+        check('가이드: 공구를 강화하면 3단계', g.chip === '가이드 3/18', g.chip);
         await ctx.close();
       }
       // 단계를 건너뛰며 요소가 열린 뒤 보이는지(가이드 n에서 열림: 콤보 4·강타 5·급소 6·피버 7·오함마 8·연속 9·특별 11·공구 12)
@@ -547,6 +553,18 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
           if (noCombo === want.combo) bad.push(`${n}:콤보`);
         }
         check('가이드: 각 요소가 열린 단계부터 보인다', bad.length === 0, bad.join(','));
+        // 강타가 열린 뒤(9단계)에는 띠 자리가 늘 있어, 눌러도 가이드 줄·이사 줄이 밀리지 않는다
+        {
+          await page.evaluate(() => window.__ajd.guide(9));
+          await page.waitForTimeout(300);
+          const gy = () => page.evaluate(() => ['.guide-row', '.move-block'].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().y)).join(','));
+          const before = await gy();
+          await page.evaluate(() => window.__ajd.holdAt(0.4));
+          await page.waitForTimeout(200);
+          const during = await gy();
+          await page.evaluate(() => window.__ajd.release());
+          check('가이드: 게이지를 눌러도 가이드 줄·이사 줄의 y가 같다(밀림 없음)', before === during && !before.startsWith('0,'), `${before} -> ${during}`);
+        }
         // 영구 공구 카드: 12단계 전에는 없다
         await page.evaluate(() => window.__ajd.guide(11));
         await setS(page, { earned: 1e20, points: 1e20, tapLevel: 40, unpack: { box: 70 } });
@@ -556,6 +574,15 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.waitForTimeout(300);
         const gear12 = await page.locator('.gear-card:not([hidden])').count();
         check('가이드: 영구 공구 카드는 12단계부터', gear11 === 0 && gear12 > 0, `${gear11}->${gear12}`);
+        // 특전 상자 카드: 13단계 전에는 숨고, 13단계에서 상자 탭에 보인다
+        await page.evaluate(() => window.__ajd.guide(12));
+        await page.locator('.tab', { hasText: '상자' }).click();
+        await page.waitForTimeout(400);
+        const pb12 = await page.locator('.perkbox-card').evaluate((e) => !e.hidden && e.getBoundingClientRect().height > 0);
+        await page.evaluate(() => window.__ajd.guide(13));
+        await page.waitForTimeout(400);
+        const pb13 = await page.locator('.perkbox-card').evaluate((e) => !e.hidden && e.getBoundingClientRect().height > 0);
+        check('가이드: 특전 상자 카드는 12단계까지 숨고 13단계부터 보인다', !pb12 && pb13, `${pb12}->${pb13}`);
         await ctx.close();
       }
       // 누적 P 문턱 대기 문구, 문턱을 넘으면 다음 단계
@@ -564,29 +591,29 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await setS(page, { guide: { step: 2, n: 1, done: false }, earned: 100, points: 100 });
         await page.waitForTimeout(400);
         let g = await guideRowInfo(page);
-        check('가이드: 누적 P 문턱 대기 문구', g.text.includes('누적') && g.text.includes('모으면') && g.chip === '가이드 3/17', `${g.chip} ${g.text}`);
+        check('가이드: 누적 P 문턱 대기 문구', g.text.includes('누적') && g.text.includes('모으면') && g.chip === '가이드 3/18', `${g.chip} ${g.text}`);
         await setS(page, { earned: 5000 });
-        await waitChip(page, '가이드 4/17');
+        await waitChip(page, '가이드 4/18');
         g = await guideRowInfo(page);
-        check('가이드: 문턱을 넘으면 다음 단계', g.chip === '가이드 4/17', g.chip);
+        check('가이드: 문턱을 넘으면 다음 단계', g.chip === '가이드 4/18', g.chip);
         // 선물 상자 보상 단계: 도감 수집품이 는다
         const before = sumColl(await gs(page));
-        await setS(page, { guide: { step: 12, n: 0, done: false }, tapLevel: 100, earned: 1e14, points: 1e14 });
+        await setS(page, { guide: { step: 13, n: 0, done: false }, tapLevel: 100, earned: 1e14, points: 1e14 });
         const scene = await page.waitForSelector('.box-scene', { timeout: 6000 }).then(() => true).catch(() => false);
         check('가이드: 선물 상자 단계 완료 시 결과 장면이 뜬다', scene);
         const closed = await page.waitForSelector('.box-scene', { state: 'detached', timeout: 12000 }).then(() => true).catch(() => false);
         check('가이드: 선물 상자 결과 장면이 저절로 닫힌다', closed);
         const after = await gs(page);
-        check('가이드: 선물 상자 보상 단계를 끝내면 도감 수집품이 는다', sumColl(after) === before + 4 && after.guide.step === 13, `${before}->${sumColl(after)} step=${after.guide.step}`);
+        check('가이드: 선물 상자 보상 단계를 끝내면 도감 수집품이 는다', sumColl(after) === before + 4 && after.guide.step === 14, `${before}->${sumColl(after)} step=${after.guide.step}`);
         await ctx.close();
       }
       // 이사하면 가이드 줄이 사라진다
       {
-        const seed = { version: 10, unlocked: ALL, points: 5e9, earned: 1e30, moves: 0, tapLevel: 12, guide: { step: 16, n: 0, done: false } };
+        const seed = { version: 11, unlocked: ALL, points: 5e9, earned: 1e30, moves: 0, tapLevel: 12, guide: { step: 17, n: 0, done: false } };
         const { ctx, page } = await newPage(browser, seed, '?debug&guide');
         await page.waitForTimeout(700);
         let g = await guideRowInfo(page);
-        check('가이드: 17단계에서는 줄이 보인다', g.vis && g.chip === '가이드 17/17', `${g.chip}`);
+        check('가이드: 18단계에서는 줄이 보인다', g.vis && g.chip === '가이드 18/18', `${g.chip}`);
         await page.locator('.move-btn').click();
         await page.waitForSelector('.modal');
         await page.locator('.modal .btn.primary').click();
@@ -598,7 +625,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       }
       // 가이드 완료 저장·기본 ?debug에는 줄이 없다
       {
-        const { ctx, page } = await newPage(browser, { version: 10, unlocked: ALL, guide: { step: 17, n: 0, done: true } }, '');
+        const { ctx, page } = await newPage(browser, { version: 11, unlocked: ALL, guide: { step: 18, n: 0, done: true } }, '');
         await page.waitForTimeout(500);
         check('가이드: 완료 저장을 불러오면 줄이 없다', !(await guideRowInfo(page)).vis);
         await ctx.close();
@@ -611,11 +638,11 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       for (const w of [320, 360, 430]) {
         const { ctx, page } = await newPage(browser, null, '?debug&guide', { ...MOBILE, viewport: { width: w, height: 640 } });
         const bad = [];
-        for (let n = 1; n <= 17; n++) {
+        for (let n = 1; n <= 18; n++) {
           for (const wait of [false, true]) {
             await page.evaluate(([k, ww]) => {
               const s = window.__ajd.get();
-              const goal = [10, 1, 1, 10, 1, 1, 1, 3, 3, 1, 1, 1, 100, 2000, 100, 3e5, 1][k - 1];
+              const goal = [10, 1, 1, 10, 1, 1, 1, 3, 3, 1, 1, 1, 1, 100, 2000, 100, 3e5, 1][k - 1];
               window.__ajd.set({ ...s, earned: ww ? 1.5e14 / 7 : 1e30, guide: { step: k - 1, n: ww ? goal : 0, done: false } });
             }, [n, wait]);
             await page.waitForTimeout(120);
@@ -637,6 +664,61 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await ctx.close();
     }
 
+    // 특전 상자: 구매 -> 3택 창 -> 고르면 레벨 +1·가격 2배, 이사 보상 수 표기, 폭별 글자 넘침
+    {
+      const { ctx, page } = await newPage(browser, null, '?debug');
+      await setS(page, { unlocked: ALL });
+      await page.locator('.tab', { hasText: '상자' }).click();
+      await page.waitForTimeout(400);
+      check('특전 상자: 카드에 이름·설명·가격·확률 안내가 있다', (await text(page, '.perkbox-card')).includes('특전 상자') && (await text(page, '.perkbox-card')).includes('특전 3개 중 하나를 골라요') && (await text(page, '.perkbox-card')).includes('같은 확률로 3개'));
+      await setS(page, { points: 0 });
+      await page.waitForTimeout(300);
+      check('특전 상자: 포인트가 모자라면 버튼이 꺼진다', await page.locator('.perkbox-buy').isDisabled());
+      const st0 = await gs(page);
+      const costOf = () => page.evaluate(() => { const t = document.querySelector('.perkbox-buy .bx-cost').textContent; const u = { 만: 1e4, 억: 1e8, 조: 1e12, 경: 1e16 }; const m = t.replace(/,/g, '').match(/([0-9.]+)\s*([만억조경]?)/); return Number(m[1]) * (u[m[2]] || 1); });
+      const cost0 = await costOf();
+      await setS(page, { points: 1e10 });
+      await page.waitForTimeout(300);
+      check('특전 상자: 포인트가 있으면 버튼이 켜진다', !(await page.locator('.perkbox-buy').isDisabled()));
+      const pBefore = (await gs(page)).points;
+      await page.locator('.perkbox-buy').click();
+      await page.waitForSelector('.modal .pcard', { timeout: 8000 });
+      const st1 = await gs(page);
+      check('특전 상자: 구매하면 포인트가 줄고 3택 묶음이 1개 생기고 바로 3택 창이 뜬다', st1.points < pBefore && st1.perkBoxBought === 1 && st1.perkOffers.length === 1 && (await page.locator('.modal .pcard').count()) === 3, `bought=${st1.perkBoxBought} offers=${st1.perkOffers.length}`);
+      const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+      await page.locator('.modal .pcard:not(:disabled)').first().click();
+      await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 });
+      const st2 = await gs(page);
+      check('특전 상자: 고르면 특전 레벨이 합계 1 오르고 대기 묶음이 사라진다', sum(st2.perks) === sum(st1.perks) + 1 && st2.perkOffers.length === 0, `${sum(st1.perks)}->${sum(st2.perks)}`);
+      await page.waitForTimeout(400);
+      const cost1 = await costOf();
+      check('특전 상자: 다음 가격이 2배', cost1 > 0 && Math.abs(cost1 / cost0 - 2) < 0.05, `${cost0}->${cost1}`);
+      check('특전 상자: 이번 집에서 1번 뽑음 안내', (await text(page, '.pb-hint')).includes('1번 뽑음'));
+      await page.locator('.pb-odds-btn').click();
+      await page.waitForSelector('.modal');
+      check('특전 상자: 확률 보기에 후보와 같은 확률이 보인다', (await page.locator('.modal .odds-row').count()) >= 3 && (await text(page, '.modal')).includes('같은 확률'));
+      await ctx.close();
+    }
+    for (const w of [390, 360, 320]) {
+      const { ctx, page } = await newPage(browser, null, '?debug', { ...MOBILE, viewport: { width: w, height: 800 } });
+      await setS(page, { points: 1e30, unlocked: ALL });
+      await page.locator('.tab', { hasText: '상자' }).click();
+      await page.waitForTimeout(400);
+      const bad = await page.evaluate(() => [...document.querySelectorAll('.perkbox-card, .perkbox-card *')].filter((e) => e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).display !== 'inline').map((e) => e.className || e.tagName));
+      check(`${w}px: 특전 상자 카드 글자 넘침 없음`, bad.length === 0 && (await noHScroll(page)), bad.join(','));
+      await ctx.close();
+    }
+    // 특전 목록: 무한 특전은 'Lv N'과 상한 없음, 상한 있는 특전은 'Lv N/최대'
+    {
+      const { ctx, page } = await newPage(browser, null, '?debug');
+      await setS(page, { unlocked: ALL, perks: { tap_power: 7, crit: 2 } });
+      await page.locator('.perk-btn').click();
+      await page.waitForSelector('.perk-list');
+      const rows = await page.evaluate(() => [...document.querySelectorAll('.perk-row')].map((r) => `${r.querySelector('.fb').textContent}|${r.querySelector('.pr-lv b').textContent}|${r.querySelector('.pr-lv').textContent}`));
+      check('특전 목록: 무한 특전 Lv 7·상한 없음, 상한 있는 특전 Lv 2/5', rows.some((r) => r.startsWith('손목 단련|Lv 7|') && r.includes('상한 없음')) && rows.some((r) => r.startsWith('촉이 좋은 손가락|Lv 2/5')) && rows.length === 12, rows.slice(0, 3).join(' / '));
+      await ctx.close();
+    }
+
     // 가이드 화살표: 2단계(포인트 충분)는 강화 버튼 위, 모자라면 없음, 10단계는 상자 탭 → 뽑기 버튼, 완료 후엔 없음, 완료 머리글과 말풍선은 겹치지 않는다
     {
       const { ctx, page } = await newPage(browser, null, '?debug&guide');
@@ -655,6 +737,10 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       a = await arrowBox(page); b = await btnBox(page, '.box-open');
       const edge = b.top >= (await page.evaluate(() => document.querySelector('.dock-band').getBoundingClientRect().top)) - 2;
       check('가이드 10단계: 상자 탭에서 뽑기 버튼(화면 밖이면 탭 바 위 가장자리)', !!a && Math.abs(a.cx - b.cx) < 80 && (edge || Math.abs(b.top - a.bot) < 12), JSON.stringify({ a, b }));
+      await setG(page, 12, { points: 1e30, earned: 1e30 }); await page.waitForTimeout(600);
+      a = await arrowBox(page); b = await btnBox(page, '.perkbox-buy');
+      const edge13 = b.top >= (await page.evaluate(() => document.querySelector('.dock-band').getBoundingClientRect().top)) - 2;
+      check('가이드 13단계: 상자 탭에서 특전 상자 뽑기 버튼(화면 밖이면 탭 바 위 가장자리)', !!a && Math.abs(a.cx - b.cx) < 80 && (edge13 || Math.abs(b.top - a.bot) < 12), JSON.stringify({ a, b }));
       await page.evaluate(() => window.__ajd.guide('done')); await page.waitForTimeout(500);
       check('가이드 완료: 화살표 없음', (await arrowBox(page)) === null);
       await setG(page, 4, { points: 1e7, earned: 3e6, stats: { ...(await page.evaluate(() => window.__ajd.get().stats)), totalTaps: 30 } }); await page.waitForTimeout(800);

@@ -1,4 +1,4 @@
-import { PERKS, PERK_OFFER_SIZE, type PerkDef } from '../data/perks';
+import { MOVE_PERK_BOXES_BASE, MOVE_PERK_BOXES_MAX, PERKS, PERK_OFFER_SIZE, type PerkDef } from '../data/perks';
 import { setEffects } from './collection';
 import { CRIT_MULT, CRIT_CHANCE, FEVER_SEC } from './fever';
 import type { GameState } from './state';
@@ -33,6 +33,14 @@ export interface PerkEffects {
   feverSec: number;
   boxPriceMult: number;
   parcelDelayScale: number;
+  /** 강타·급소 탭 수에 곱하는 배율(강타 단련) */
+  strikeMult: number;
+  /** 연속 퍼펙트 배수 계수에 더하는 값(기본 계수 0.5에 얹는다) */
+  streakBonus: number;
+  /** 특별 상자 확률에 곱하는 배율 */
+  specialRateMult: number;
+  /** 피버 게이지 충전량에 곱하는 배율 */
+  feverCharge: number;
 }
 
 export function perkEffects(state: Pick<GameState, 'perks'> & { collection?: GameState['collection'] }): PerkEffects {
@@ -46,6 +54,10 @@ export function perkEffects(state: Pick<GameState, 'perks'> & { collection?: Gam
     feverSec: FEVER_SEC + per('fever_long') * lv('fever_long') + set.feverSec,
     boxPriceMult: 1 - per('box_discount') * lv('box_discount'),
     parcelDelayScale: 1 - per('parcel_freq') * lv('parcel_freq'),
+    strikeMult: 1 + per('strike_power') * lv('strike_power'),
+    streakBonus: per('streak_coef') * lv('streak_coef'),
+    specialRateMult: 1 + per('special_freq') * lv('special_freq'),
+    feverCharge: 1 + per('fever_charge') * lv('fever_charge'),
   };
 }
 
@@ -72,6 +84,11 @@ export function rollPerkOffer(perks: Record<string, number>, rng: () => number):
   return out;
 }
 
+/** 이사 보상 특전 상자 수: moves(이사 전 횟수)가 0이면 2개, 그 뒤 3·4·5·5… */
+export function movePerkBoxes(moves: number): number {
+  return Math.min(MOVE_PERK_BOXES_BASE + Math.max(0, Math.floor(moves)), MOVE_PERK_BOXES_MAX);
+}
+
 export interface PerkOptionView {
   id: string;
   name: string;
@@ -79,7 +96,10 @@ export interface PerkOptionView {
   category: PerkDef['category'];
   desc: string;
   level: number;
+  /** 끝없이 오르는 특전은 Infinity(화면은 `unlimited`로 가른다) */
   maxLevel: number;
+  /** 레벨 상한이 없다(maxed는 항상 false) */
+  unlimited: boolean;
   maxed: boolean;
 }
 
@@ -90,7 +110,7 @@ export function perkOfferViews(state: GameState): PerkOptionView[][] {
       const d = perkDef(id);
       if (!d) return [];
       const level = perkLevel(state, id);
-      return [{ id, name: d.name, emoji: d.emoji, category: d.category, desc: d.desc, level, maxLevel: d.maxLevel, maxed: level >= d.maxLevel }];
+      return [{ id, name: d.name, emoji: d.emoji, category: d.category, desc: d.desc, level, maxLevel: d.maxLevel, unlimited: !Number.isFinite(d.maxLevel), maxed: level >= d.maxLevel }];
     }),
   );
 }

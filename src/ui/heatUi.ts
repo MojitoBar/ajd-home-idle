@@ -9,30 +9,45 @@ import { boxAnchor } from './unpackUi';
 const HEAT_WARN = 88;
 const FLASH_MS = 83;
 const STEAM_MS = 420;
+/** 열기 줄 기본 폭(CSS px, 100칸 기준). 줄이 좁아지는 화면은 render가 실제 폭으로 바꾼다. 채움·눈금은 2px(1도트) 격자 */
+const HEAT_W = 120;
+let heatW = HEAT_W;
+const heatPx = (v: number): number => Math.round((v * heatW) / 100 / 2) * 2;
 
 let root: HTMLElement;
+let trackEl: HTMLElement;
 let fillEl: HTMLElement;
 let chipEl: HTMLElement;
 let flashEl: HTMLElement;
+let tickEl: HTMLElement;
 let lastW = -1;
 let lastKey = '';
 let lastSteam = 0;
 
 const CHIP: Record<string, string> = { cool: '파워', warm: '파워', hot: '파워 x1.5', over: '과열' };
 
-/** 열기 줄을 만들어 게이지 위젯 안에 붙인다 */
+/** 열기 줄(이름표 + 8px 줄)을 만들어 게이지 띠 아래 줄에 붙인다 */
 export function mount(parent: HTMLElement): void {
   fillEl = el('i', { cls: 'heat-fill' });
   chipEl = el('span', { cls: 'heat-chip', text: CHIP.cool });
   flashEl = el('i', { cls: 'heat-flash', attrs: { hidden: '' } });
-  root = el('div', { cls: 'charge-heat z-cool' }, fillEl, el('i', { cls: 'heat-tick' }), flashEl, chipEl);
-  root.querySelector<HTMLElement>('.heat-tick')!.style.left = `${HEAT_HOT * 2}px`;
+  const tick = el('i', { cls: 'heat-tick' });
+  tickEl = tick;
+  tick.style.left = `${heatPx(HEAT_HOT)}px`;
+  trackEl = el('div', { cls: 'heat-track' }, fillEl, tick, flashEl);
+  root = el('div', { cls: 'charge-heat z-cool' }, chipEl, trackEl);
   parent.append(root);
 }
 
 /** 채움은 2px(1도트) 단위로 끊고, 구간이 바뀌면 색·이름표를 바꾼다. 과열 중에는 김이 드문드문 오른다 */
 export function render(h: HeatState): void {
-  const w = Math.round(h.v) * 2;
+  const tw = trackEl.clientWidth;
+  if (tw && tw !== heatW) {
+    heatW = tw;
+    lastW = -1;
+    tickEl.style.left = `${heatPx(HEAT_HOT)}px`;
+  }
+  const w = heatPx(h.v);
   if (w !== lastW) {
     lastW = w;
     fillEl.style.width = `${w}px`;
@@ -69,7 +84,7 @@ function blink(): void {
 
 /** 줄 양 끝에서 위로 튀는 입자 */
 function ends(colors: string[]): void {
-  const r = root.getBoundingClientRect();
+  const r = trackEl.getBoundingClientRect();
   if (!r.width) return;
   const a = boxAnchor();
   for (const x of [r.left, r.right]) fx.burst(x, r.top, { n: 4, colors, up: true, speed: 180 * a.k, lift: -60 * a.k, gravity: 500 * a.k, size: 4 * a.k, clip: true });

@@ -21,7 +21,9 @@ export type GuideFeature =
   /** 특별 상자(황금·폭탄·시계) */
   | 'special'
   /** 영구 공구 카드 */
-  | 'gear';
+  | 'gear'
+  /** 특전 상자 구매 */
+  | 'perkBox';
 
 /** 가이드 단계를 올리는 사건. `value` 사건은 지금 값(콤보·연쇄·연속 퍼펙트)을 알리고, 나머지는 1번 일어날 때마다 알린다 */
 export type GuideEvent =
@@ -37,6 +39,7 @@ export type GuideEvent =
   | { type: 'boxBuy' }
   | { type: 'special' }
   | { type: 'gearBuy' }
+  | { type: 'perkBoxBuy' }
   | { type: 'move' }
   /** 아무 일도 없음: 누적 포인트만 기다리던 단계가 끝났는지 확인한다 */
   | { type: 'tick' };
@@ -84,6 +87,7 @@ export const GUIDE_STEPS: readonly GuideStepDef[] = [
   { id: 'boxBuy', text: '상자 탭에서 상자를 뽑아 보세요', event: 'boxBuy', goal: 1, gate: 1e8, rewardTaps: 0, rewardBoxes: 2 },
   { id: 'special', text: '특별 상자를 터뜨려 보세요', event: 'special', goal: 1, opens: 'special', gate: 1.8e8, rewardTaps: 0, rewardBoxes: 2 },
   { id: 'gear', text: '영구 공구를 하나 사 보세요', event: 'gearBuy', goal: 1, opens: 'gear', gate: 0, rewardTaps: 0, rewardBoxes: 3 },
+  { id: 'perkBox', text: '특전 상자를 뽑아 보세요', event: 'perkBoxBuy', goal: 1, opens: 'perkBox', gate: 0, rewardTaps: 0, rewardBoxes: 3 },
   { id: 'tapLv', text: '공구를 Lv 68까지 강화해요', event: 'tick', goal: 68, progress: (s) => s.tapLevel, gate: 0, rewardTaps: 0, rewardBoxes: 4 },
   { id: 'home', text: '살림 레벨 합계를 250까지 올려요', event: 'tick', goal: 250, progress: (s) => s.homeLv.reduce((a, b) => a + b, 0), gate: 0, rewardTaps: 0, rewardBoxes: 6 },
   { id: 'strikeLv', text: '오함마를 Lv 62까지 강화해요', event: 'tick', goal: 62, progress: (s) => s.strikeLevel, gate: 0, rewardTaps: 0, rewardBoxes: 6 },

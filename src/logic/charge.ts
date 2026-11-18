@@ -4,6 +4,7 @@ import type { GameState } from './state';
 import { strikeMult } from './economy';
 import { gearEffects } from './gear';
 import { featureOpen } from './guide';
+import { perkEffects } from './perks';
 import { GEAR_PERFECT_HALF_BASE, GEAR_PERFECT_HALF_MAX } from '../data/gear';
 
 /** 이보다 길게 누르면 모으기 시작, 짧으면 일반 탭 */
@@ -74,9 +75,9 @@ export const CHARGE_STREAK_STEP = 0.5;
 export const CHARGE_STREAK_SPEED = 0.08;
 export const CHARGE_STREAK_SPEED_MAX = 10;
 
-/** 연속 퍼펙트 streak(이번 이전까지)번째 퍼펙트에 곱하는 배수 */
-export function streakMult(streak: number): number {
-  return 1 + CHARGE_STREAK_STEP * Math.max(0, streak);
+/** 연속 퍼펙트 streak(이번 이전까지)번째 퍼펙트에 곱하는 배수. bonus는 특전(`perkEffects().streakBonus`)이 계수에 더하는 값 */
+export function streakMult(streak: number, bonus = 0): number {
+  return 1 + (CHARGE_STREAK_STEP + bonus) * Math.max(0, streak);
 }
 
 /** 모으기 시작 후 elapsedMs 시점의 표시 위치(0~1, 삼각파) */
@@ -97,9 +98,9 @@ export function chargeSpeed(streak: number): number {
 }
 
 /** 이 판정이 주는 탭 수(streak은 이번 이전까지의 연속 퍼펙트 수) */
-export function chargeTaps(grade: ChargeGrade, streak: number): number {
+export function chargeTaps(grade: ChargeGrade, streak: number, bonus = 0): number {
   const base = CHARGE_REWARD[grade].taps;
-  return grade === 'perfect' ? base * streakMult(streak) : base;
+  return grade === 'perfect' ? base * streakMult(streak, bonus) : base;
 }
 
 export interface ChargeRelease extends HeavyResult {
@@ -125,7 +126,8 @@ export function releaseCharge(
   const grade = chargeGrade(pos, zone);
   const reward = CHARGE_REWARD[grade];
   const mult = typeof tapsMult === 'function' ? tapsMult(grade) : tapsMult;
-  const taps = Math.round(chargeTaps(grade, featureOpen(state, 'streak') ? streak : 0) * mult * strikeMult(state.strikeLevel));
+  const fx = perkEffects(state);
+  const taps = Math.round(chargeTaps(grade, featureOpen(state, 'streak') ? streak : 0, fx.streakBonus) * mult * strikeMult(state.strikeLevel) * fx.strikeMult);
   const h = heavyHit(state, rng, taps, comboMult, reward.fever);
   return { ...h, grade, streak: grade === 'perfect' ? streak + 1 : 0, comboAdd: reward.combo, taps };
 }

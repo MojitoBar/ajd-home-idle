@@ -208,3 +208,9 @@ body:has(.box-scene) .dock, body:has(.move-scene) .dock { display: none; }
   .overlay { align-items: flex-end; padding: 0; }
   .modal { max-width: 480px; max-height: 94%; padding-bottom: calc(var(--s4) + env(safe-area-inset-bottom)); animation: sheetin 0.24s steps(4); }
 }
+
+/* 특전 상자: 고른 직후 확인 줄(안내 문장 자리에 이름 + 새 레벨), 상한 없음 표기 */
+.pk-got { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: var(--s2); margin: 0; text-align: center; font: 700 var(--fs-l)/var(--lh-l) var(--f-bold); color: var(--k0); word-break: keep-all; }
+.pk-got-lv { color: var(--g0); background: var(--g2); padding: 0 var(--s2); box-shadow: 0 0 0 2px var(--g1); }
+.pc-lv.got { font-size: var(--fs-l); line-height: var(--lh-l); color: var(--g0); }
+.pr-inf { font: 400 var(--fs-s)/var(--lh-s) var(--f-bold); color: var(--k2); }

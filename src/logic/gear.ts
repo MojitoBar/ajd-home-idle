@@ -18,6 +18,7 @@ import {
 import type { ChargeGrade } from './charge';
 import { GUIDE_SPECIAL_RATE, featureOpen, guideAt, guideEnded, type GuideFeature } from './guide';
 import { houseInfo } from './house';
+import { perkEffects } from './perks';
 import type { GameState } from './state';
 
 export function gearLevel(state: GameState, id: GearId): number {
@@ -73,7 +74,7 @@ export function gearEffects(state: GameState): GearEffects {
     chainCap: GEAR_CHAIN_CAP_BASE + GEAR_CHAIN_CAP_STEP * lv('crowbar'),
     weakTaps: GEAR_WEAK_TAPS_BASE + GEAR_WEAK_TAPS_STEP * lv('awl'),
     weakDelayMult: 1 - GEAR_WEAK_DELAY_STEP * lv('awl'),
-    specialRate: Math.max(GEAR_SPECIAL_RATE_BASE + GEAR_SPECIAL_RATE_STEP * lv('loupe'), guideAt(state, 'special') ? GUIDE_SPECIAL_RATE : 0),
+    specialRate: Math.max(GEAR_SPECIAL_RATE_BASE + GEAR_SPECIAL_RATE_STEP * lv('loupe'), guideAt(state, 'special') ? GUIDE_SPECIAL_RATE : 0) * perkEffects(state).specialRateMult,
   };
 }
 
