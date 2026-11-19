@@ -133,6 +133,38 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
   const u3 = await gs(page);
   const say = (await page.locator('.charge-say b, .un-chain-judge').count()) ? await page.locator('.charge-say b, .un-chain-judge').first().innerText() : '';
   check('Space 떼면: 판정 글자와 함께 탭 1번보다 많이 깎인다', /퍼펙트|굿|아쉽/.test(say) && dmgOf(u3) - dmgOf(u2) > one * 1.5 && (await page.locator('.charge.on:not(.res)').count()) === 0, `say=${say}`);
+  // 연쇄 도중 Space 꾹 누르기: 차징이 켜지고, 퍼펙트 칸에서 떼면 강타가 한 번만 나간다
+  {
+    const cc = await open();
+    const pg = cc.page;
+    await setS(pg, { unlocked: ALL, points: 1e6, earned: 1e5, tapLevel: 200, unpack: { box: 30, damage: 0, hp: 1 } });
+    await pg.waitForTimeout(600);
+    await pg.evaluate(() => { window.__ajd.chain(1700); window.__p1 = window.__ajd.get().points; });
+    await pg.waitForTimeout(250);
+    await pg.keyboard.down('Space');
+    await pg.waitForTimeout(500);
+    const k1 = await pg.evaluate(() => ({ playing: window.__ajd.getChain().playing, on: document.querySelectorAll('.charge.on:not(.res)').length, x: document.querySelector('.charge-mark')?.style.translate }));
+    const kr = await pg.evaluate(async () => {
+      const t0 = performance.now();
+      while (!document.querySelector('.charge-mark.in') && performance.now() - t0 < 4000) await new Promise((q) => requestAnimationFrame(q));
+      const inZone = !!document.querySelector('.charge-mark.in');
+      const tRel = performance.now();
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space' }));
+      let tStrike = -1;
+      while (performance.now() - tRel < 4000) {
+        await new Promise((q) => requestAnimationFrame(q));
+        if (document.querySelector('.un-chain-judge')?.textContent.includes('x1.5')) { tStrike = Math.round(performance.now() - tRel); break; }
+      }
+      return { inZone, tStrike };
+    });
+    await pg.keyboard.up('Space');
+    await pg.waitForTimeout(3000);
+    const jt = await pg.evaluate(() => document.querySelector('.un-chain-judge')?.textContent ?? '');
+    const pts = (await gs(pg)).points;
+    const p1 = await pg.evaluate(() => window.__p1);
+    check('Space 꾹(연쇄 도중): 게이지가 켜지고, 퍼펙트 칸에서 떼면 강타가 한 번만 나간다(x1.5, x2 아님)', k1.playing && k1.on === 1 && !!k1.x && kr.inZone && kr.tStrike > 0 && kr.tStrike < 1500 && /x1\.5/.test(jt) && !/x2/.test(jt) && pts > p1, JSON.stringify({ k1, kr, jt, p1, pts }));
+    await cc.ctx.close();
+  }
   await page.waitForTimeout(300);
   await page.keyboard.press('Tab');
   const focusedTab = await page.evaluate(() => document.activeElement?.tagName);

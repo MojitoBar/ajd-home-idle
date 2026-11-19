@@ -65,7 +65,7 @@ import { clearSave, readSave, writeBackup, writeSave } from './storage';
 import * as fx from './fx';
 import { sfx } from './sound';
 import { getPrefs, hapticsSupported, setPrefs, vibrate } from './prefs';
-import { boxAnchor, boxCenter, chainVisible, dockToolEl, initUnpack, makeToolEl, roomStrip, syncUnpack, chainInfo, chainPlaying, unpackHeavy, unpackHit, unpackRush } from './unpackUi';
+import { boxAnchor, boxCenter, chainVisible, dockToolEl, initUnpack, makeToolEl, roomStrip, syncUnpack, chainFinish, chainFinishing, chainHurry, chainInfo, chainPlaying, unpackHeavy, unpackHit, unpackRush } from './unpackUi';
 import { textBoxes } from './clutter';
 import { fresh, markFresh, type UiCtx } from './collectUi';
 import { row as guideRow, syncGuide } from './guideUi';
@@ -322,8 +322,9 @@ function build(): void {
   comboUi.attach(refs.room, refs.phone, document.getElementById('app')!);
   chargeUi.initCharge({
     room: refs.room,
-    canStart: () => featureOpen(state, 'charge') && !moving && !chainPlaying() && document.visibilityState === 'visible' && !document.querySelector('.overlay, .box-scene, .move-scene'),
+    canStart: () => featureOpen(state, 'charge') && !moving && !chainFinishing() && document.visibilityState === 'visible' && !document.querySelector('.overlay, .box-scene, .move-scene'),
     streak: () => (featureOpen(state, 'streak') ? chargeStreak : 0),
+    onReleaseStart: chainHurry,
     onRelease: applyCharge,
   });
   weakUi.initWeak({ room: refs.room, onHit: applyWeak });
@@ -655,7 +656,12 @@ function applyHeavy<T extends { state: GameState; gain: number; comboAdd: number
 
 /** 꾹 눌러 강타: 떼는 순간의 표시 위치 pos로 판정한다 */
 function applyCharge(pos: number, x: number, y: number, only?: number): void {
-  if (moving || chainPlaying() || document.visibilityState !== 'visible') return;
+  if (moving || document.visibilityState !== 'visible') return;
+  // 연쇄 재생 중에 뗀 강타: 판정은 뗀 순간 눈금(pos)으로 이미 정해졌고, 연쇄를 서둘러 마무리한 뒤 실행한다
+  if (chainPlaying()) {
+    chainFinish(() => applyCharge(pos, x, y, only));
+    return;
+  }
   let power = 1;
   let saved = false;
   let savedAt = 0;

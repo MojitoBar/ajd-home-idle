@@ -845,8 +845,26 @@ function playBursts(i: HeavyHitInput): void {
   playChain(i);
 }
 
-/** 연쇄 재생 중이면 입력을 로직에 넣지 않는다(app이 확인) */
+/** 연쇄 재생 중이면 일반 탭·러시 탭을 로직에 넣지 않는다(app이 확인). 꾹 누르기(차징)는 막지 않고, 뗀 강타만 chainFinish로 연쇄 마무리 뒤에 실행한다 */
 export const chainPlaying = (): boolean => chainRun !== null;
+/** 연쇄를 서둘러 끝내는 중이다(그 뒤 예약된 강타가 곧 나간다): 이때 새로 모으기를 시작하지 않는다 */
+export const chainFinishing = (): boolean => chainAfter !== null;
+/** 재생 중인 연쇄의 남은 칸을 CHAIN_FAST_TICKS틱(약 0.07초)에 몰아 처리하고 chainEnd(합계·상금·보상)까지 평소대로 마친 뒤, 합계가 보이도록 CHAIN_FAST_HOLD_MS 머물렀다가 cb를 부른다. 재생 중이 아니면 바로 cb. 화면만 서두르고 로직(이미 반영됨)·chainEnd 처리는 그대로다 */
+export function chainFinish(cb: () => void): void {
+  if (!chainRun) return cb();
+  if (chainAfter) return;
+  chainAfter = cb;
+  chainHurry();
+}
+/** 연쇄의 남은 칸을 서둘러 넘기기 시작한다(뗀 순간 호출: 예약은 chainFinish가 따로 건다). 이미 서두르는 중이거나 재생 중이 아니면 아무것도 안 한다 */
+export function chainHurry(): void {
+  if (!chainRun || !chainStep || chainFast > 0) return;
+  chainFast = CHAIN_FAST_TICKS;
+  chainHurried = true;
+  window.clearTimeout(chainRun.timer);
+  chainStep();
+}
+
 /** 디버그: 재생 중 여부와 마지막으로 올라간 연쇄 숫자 */
 export const chainInfo = (): { playing: boolean; n: number; total: number } => ({ playing: chainRun !== null, n: chainN, total: chainTotal });
 
@@ -861,6 +879,13 @@ interface ChainMeta {
   sz?: number;
 }
 let chainRun: { timer: number } | null = null;
+/** 서둘러 끝내기: 남은 빠른 틱 수(0이면 평소 속도), 끝난 뒤 부를 예약, 다음 틱을 당겨 부를 함수 */
+let chainFast = 0;
+let chainHurried = false;
+let chainAfter: (() => void) | null = null;
+let chainStep: (() => void) | null = null;
+const CHAIN_FAST_TICKS = 2;
+const CHAIN_FAST_HOLD_MS = 90;
 let chainN = 0;
 /** 연쇄가 끝난 시각: 사은품 장면이 합계·상금 표시를 바로 덮지 않게 1.6초 기다린다 */
 let chainEndAt = -1e9;
@@ -922,7 +947,10 @@ function playChain(i: HeavyHitInput): void {
   const step = (): void => {
     const box = boxes[0];
     let cut = at + 1;
-    if (grouped) {
+    if (chainFast > 0) {
+      cut = chainFast <= 1 ? n : Math.min(n, at + Math.ceil((n - at) / chainFast));
+      chainFast--;
+    } else if (grouped) {
       const last = t >= ticks - 1;
       cut = last ? n : Math.min(n, Math.max(at + 1, Math.round(n * ((t + 1) / ticks) ** 2)));
       if (cut - at > 1 && (!last || t - (ticks - 1) < Math.ceil(ticks / 8))) {
@@ -951,21 +979,41 @@ function playChain(i: HeavyHitInput): void {
       chainShow(cut, cum[cut - 1], cum[n - 1], n);
     } catch (e) {
       chainRun = null;
+      chainStep = null;
+      chainFast = 0;
+      chainHurried = false;
+      chainAfter = null;
       fx.headHold(false);
       throw e;
     }
     at = cut;
     t++;
     if (at < n) {
-      chainRun = { timer: window.setTimeout(step, grouped ? CHAIN_TICK_MS : Math.max(35, base * (1.3 - (0.6 * at) / n))) };
+      chainRun = { timer: window.setTimeout(step, grouped || chainFast > 0 ? CHAIN_TICK_MS : Math.max(35, base * (1.3 - (0.6 * at) / n))) };
       return;
     }
     chainRun = null;
+    chainStep = null;
+    chainFast = 0;
+    const hurried = chainHurried;
+    chainHurried = false;
     chainEndAt = performance.now();
     if (lastState) syncUnpack(lastState);
     chainEnd(bs, i.prize, i.pointsEl, false, cum[n - 1]);
+    if (hurried) {
+      // 서둘러 끝낸 연쇄는 뗀 강타가 곧 이어지니, 합계가 보이도록 잠깐 머문다(그동안 chainRun을 잡아 탭·러시가 끼지 않게). 강타가 머무는 중에 오면 chainAfter에 걸린다
+      chainRun = {
+        timer: window.setTimeout(() => {
+          chainRun = null;
+          const after = chainAfter;
+          chainAfter = null;
+          after?.();
+        }, CHAIN_FAST_HOLD_MS),
+      };
+    }
   };
   chainRun = { timer: 0 };
+  chainStep = step;
   step();
 }
 

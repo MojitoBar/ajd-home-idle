@@ -297,6 +297,52 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await ctx.close();
     }
 
+    // 6b. 연쇄 도중 꾹 누르기: 차징이 켜지고, 퍼펙트 칸에서 떼면 이전 연쇄가 서둘러 끝난 뒤 강타가 한 번만 나간다
+    {
+      const { ctx, page } = await newPage(browser);
+      await setS(page, { unlocked: ALL, points: 1e6, earned: 1e5, tapLevel: 200, unpack: { box: 30, damage: 0, hp: 1 } });
+      await page.waitForTimeout(600);
+      const m = await mid(page);
+      const p0 = (await gs(page)).points;
+      await page.evaluate(() => {
+        window.__seen = [];
+        const c = document.querySelector('.un-chain');
+        const rec = () => window.__seen.push(document.querySelector('.un-chain b')?.textContent ?? '');
+        window.__ajd.chain(1700);
+        new MutationObserver(rec).observe(document.querySelector('.un-chain'), { childList: true, characterData: true, subtree: true });
+        window.__p1 = window.__ajd.get().points;
+      });
+      await page.waitForTimeout(250);
+      await page.mouse.move(m.x, m.y);
+      await page.mouse.down();
+      await page.waitForTimeout(500);
+      const c1 = await page.evaluate(() => ({ playing: window.__ajd.getChain().playing, on: document.querySelectorAll('.charge.on:not(.res)').length, x: document.querySelector('.charge-mark')?.style.translate }));
+      await page.waitForTimeout(120);
+      const x2 = await page.evaluate(() => document.querySelector('.charge-mark')?.style.translate);
+      check('연쇄 도중 꾹 누르면 게이지가 켜지고 눈금이 움직인다', c1.playing && c1.on === 1 && !!c1.x && c1.x !== x2, JSON.stringify({ ...c1, x2 }));
+      const rel = await page.evaluate(async () => {
+        const t0 = performance.now();
+        while (!document.querySelector('.charge-mark.in') && performance.now() - t0 < 4000) await new Promise((q) => requestAnimationFrame(q));
+        const inZone = !!document.querySelector('.charge-mark.in');
+        const tRel = performance.now();
+        window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+        let tStrike = -1;
+        while (performance.now() - tRel < 4000) {
+          await new Promise((q) => requestAnimationFrame(q));
+          if (document.querySelector('.un-chain-judge')?.textContent.includes('x1.5')) { tStrike = Math.round(performance.now() - tRel); break; }
+        }
+        return { inZone, tStrike };
+      });
+      await page.mouse.up();
+      await page.waitForTimeout(3000);
+      const s1 = await gs(page);
+      const p1 = await page.evaluate(() => window.__p1);
+      const seen = await page.evaluate(() => window.__seen);
+      const jt = await page.evaluate(() => document.querySelector('.un-chain-judge')?.textContent ?? '');
+      check('연쇄 도중 떼면 강타가 한 번 나가고(x1.5, x2 아님) 이전 연쇄 수익이 전부 들어온다', rel.inZone && rel.tStrike > 0 && rel.tStrike < 1500 && /x1\.5/.test(jt) && !/x2/.test(jt) && seen.some((t) => /^1[67]\d\d연쇄!$/.test(t)) && p1 > p0 && s1.points > p1, JSON.stringify({ ...rel, jt, p0, p1, p: s1.points, last: seen.slice(-3) }));
+      await ctx.close();
+    }
+
     // 7. 연쇄·피버·특별 상자
     {
       const { ctx, page } = await newPage(browser);

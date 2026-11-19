@@ -37,6 +37,8 @@ export interface ChargeOpts {
   room: HTMLElement;
   canStart: () => boolean;
   streak: () => number;
+  /** 뗀 순간(퍼펙트 정지 연출 전) 바로 부른다 */
+  onReleaseStart?: () => void;
   onRelease: (pos: number, x: number, y: number) => void;
 }
 
@@ -302,6 +304,7 @@ function end(kind: Hold['kind'], id: number): void {
   }
   const pos = currentPos(h, performance.now());
   hold = null;
+  opts.onReleaseStart?.();
   const go = (): void => {
     stopping = false;
     hideGauge();
