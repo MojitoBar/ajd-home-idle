@@ -1,6 +1,7 @@
 import { MOVE_PERK_BOXES_BASE, MOVE_PERK_BOXES_MAX, PERKS, PERK_OFFER_SIZE, type PerkDef } from '../data/perks';
 import { setEffects } from './collection';
 import { CRIT_MULT, CRIT_CHANCE, FEVER_SEC } from './fever';
+import { deckEffects, type DeckState } from './deck';
 import type { GameState } from './state';
 
 export function perkDef(id: string): PerkDef | undefined {
@@ -43,7 +44,7 @@ export interface PerkEffects {
   feverCharge: number;
 }
 
-export function perkEffects(state: Pick<GameState, 'perks'> & { collection?: GameState['collection'] }): PerkEffects {
+export function perkEffects(state: Pick<GameState, 'perks'> & { collection?: GameState['collection']; deck?: DeckState }): PerkEffects {
   const set = setEffects({ collection: state.collection ?? {} });
   const lv = (id: string) => perkLevel(state, id);
   const per = (id: string) => perkDef(id)!.per;
@@ -55,7 +56,7 @@ export function perkEffects(state: Pick<GameState, 'perks'> & { collection?: Gam
     boxPriceMult: 1 - per('box_discount') * lv('box_discount'),
     parcelDelayScale: 1 - per('parcel_freq') * lv('parcel_freq'),
     strikeMult: 1 + per('strike_power') * lv('strike_power'),
-    streakBonus: per('streak_coef') * lv('streak_coef'),
+    streakBonus: per('streak_coef') * lv('streak_coef') + deckEffects(state).streakBonus,
     specialRateMult: 1 + per('special_freq') * lv('special_freq'),
     feverCharge: 1 + per('fever_charge') * lv('fever_charge'),
   };

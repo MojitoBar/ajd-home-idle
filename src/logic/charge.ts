@@ -1,4 +1,5 @@
 /** 꾹 눌러 강타: 길게 누르면 표시(marker)가 0 -> 1 -> 0을 왕복하고, 손을 뗀 자리가 판정이 된다. 저장하지 않는 실행 중 상태(연속 퍼펙트 streak 포함). */
+import { deckMultFires, deckStrikeMult } from './deck';
 import { heavyHit, type HeavyResult } from './unpack';
 import type { GameState } from './state';
 import { strikeMult } from './economy';
@@ -127,7 +128,10 @@ export function releaseCharge(
   const reward = CHARGE_REWARD[grade];
   const mult = typeof tapsMult === 'function' ? tapsMult(grade) : tapsMult;
   const fx = perkEffects(state);
-  const taps = Math.round(chargeTaps(grade, featureOpen(state, 'streak') ? streak : 0, fx.streakBonus) * mult * strikeMult(state.strikeLevel) * fx.strikeMult);
+  const nextStreak = grade === 'perfect' ? streak + 1 : 0;
+  const deckMult = deckStrikeMult(state, grade, nextStreak);
+  const taps = Math.round(chargeTaps(grade, featureOpen(state, 'streak') ? streak : 0, fx.streakBonus) * mult * strikeMult(state.strikeLevel) * fx.strikeMult * deckMult);
   const h = heavyHit(state, rng, taps, comboMult, reward.fever);
-  return { ...h, grade, streak: grade === 'perfect' ? streak + 1 : 0, comboAdd: reward.combo, taps };
+  const deckFires = deckMult > 1 ? [...deckMultFires(state, grade, nextStreak), ...h.deckFires] : h.deckFires;
+  return { ...h, deckFires, grade, streak: nextStreak, comboAdd: reward.combo, taps };
 }

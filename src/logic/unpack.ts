@@ -30,6 +30,7 @@ import type { BoxResult } from './gacha';
 import { tapBase, tapValue } from './economy';
 import { gearEffects } from './gear';
 import { featureOpen } from './guide';
+import { checkMarks, deckEvent, type DeckFire } from './deck';
 import { chargeFever, feverMultOf } from './fever';
 import { perkEffects, seededRng, tapPowerMult } from './perks';
 import { HOME_SLOTS, type GameState } from './state';
@@ -315,7 +316,8 @@ function tapCore(state: GameState, rng: () => number, damped: boolean, comboMult
   const p = chainPrize(state, next, chain);
   let out = p.state;
   if (chain > 1 && chain > out.bestChain) out = { ...out, bestChain: chain };
-  return { ...r, state: out, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize: p.prize };
+  const d = settleDeck(state, out, 0);
+  return { ...r, state: d.state, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize: p.prize, deckFires: [], deckOffered: d.offered };
 }
 
 /**
@@ -339,6 +341,28 @@ export interface HeavyResult extends TapResult {
   chain: number;
   /** 연쇄 상금(5·10·20개 이상). 없으면 null. tier는 CHAIN_PRIZES 인덱스 */
   prize: { tier: 0 | 1 | 2; n: number; gain: number } | null;
+  /** 이번 강타에 터진 공구함 카드(강타·급소만. 카드마다 한 줄, 곱하는 카드는 `releaseCharge`가 앞에 붙인다). 보상 카드는 `gain`(P)이 이미 `state`에 들어 있다 */
+  deckFires: DeckFire[];
+  /** 이번에 진행 문턱을 넘어 카드 3택 묶음이 새로 생겼는가(`state.deck.offers`에 들어 있다) */
+  deckOffered: boolean;
+}
+
+/** 공구함 정산: 강타 사건의 보상 카드(탭 1회 수익 x taps, 연쇄 상금과 같은 방식)를 P·누적에 더하고, 진행 문턱을 판정한다. 일반 탭은 chain을 0으로 넘겨 문턱만 본다 */
+function settleDeck(start: GameState, state: GameState, chain: number): { state: GameState; fires: DeckFire[]; offered: boolean } {
+  let out = state;
+  const fires = chain > 0 ? deckEvent(out, { chain }) : [];
+  if (fires.length > 0) {
+    const unit = tapValue(start) / feverMultOf(start.fever);
+    let gain = 0;
+    for (const f of fires) {
+      if (f.taps === undefined) continue;
+      f.gain = unit * f.taps;
+      gain += f.gain;
+    }
+    if (gain > 0) out = { ...out, points: out.points + gain, earned: out.earned + gain, stats: { ...out.stats, totalEarned: out.stats.totalEarned + gain } };
+  }
+  const marked = checkMarks(out);
+  return { state: marked, fires, offered: marked.deck.mark > out.deck.mark };
 }
 
 /** i번째(0부터) 터진 상자의 연쇄 보너스 배율 */
@@ -371,7 +395,8 @@ export function heavyHit(state: GameState, rng: () => number, taps: number, comb
   next = p.state;
   const prize = p.prize;
   if (chain > next.bestChain) next = { ...next, bestChain: chain };
-  return { ...r, state: next, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize };
+  const d = settleDeck(state, next, chain);
+  return { ...r, state: d.state, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize, deckFires: d.fires, deckOffered: d.offered };
 }
 
 export interface RoomProgress {

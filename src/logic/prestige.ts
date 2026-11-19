@@ -1,4 +1,5 @@
 import { permMult } from './economy';
+import { deckAfterMove } from './deck';
 import { houseInfo } from './house';
 import { initialFever } from './fever';
 import { movePerkBoxes, rollPerkOffer, seededRng } from './perks';
@@ -49,6 +50,7 @@ export function move(state: GameState, rng?: () => number): GameState | null {
     strikeLevel: 0,
     boxesThisRun: 0,
     perkOffers: [...state.perkOffers, ...offers],
+    deck: deckAfterMove(state),
     perkBoxBought: 0,
     fever: initialFever(),
     unpack: initialUnpack(rollSalt(r)),

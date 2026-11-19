@@ -1,0 +1,50 @@
+/* 공구함 덱 1단계: 카드 줄(이사 줄 위) · 공구함 창 · 카드 고르기 창 · 발동 연출. 설계 DESIGN-DECK.md 7·8절 */
+:root { --tag-precise: var(--b2); --tag-chain: var(--or); --tag-special: var(--pu); --tag-rush: var(--b4); --tag-fever: var(--pk); }
+
+/* 카드 줄: 칸 40x40(아이콘 32), 간격 8, 줄 높이 48. 받침 아래 6px이 레이아웃에 안 잡히므로 아래 간격 8 */
+.deck-row { box-sizing: border-box; display: flex; align-items: center; gap: var(--s2); height: 48px; padding: 0 2px; margin: 0 0 var(--s2); cursor: pointer; }
+.deck-slot { position: relative; flex: none; box-sizing: border-box; width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; outline: 2px dashed var(--on-bg-dim); outline-offset: -2px; }
+.deck-slot.on { background: var(--p1); outline: 0; box-shadow: 0 0 0 2px var(--tc, var(--k1)), 0 6px 0 0 var(--k1); }
+.deck-slot .ico { display: block; width: 32px; height: 32px; image-rendering: pixelated; pointer-events: none; }
+.deck-slot.on.lit { box-shadow: 0 0 0 2px var(--g3), 0 6px 0 0 var(--k1); }
+.deck-slot:active { translate: 0 4px; }
+.deck-label { flex: 1; min-width: 0; margin-left: var(--s1); font: 700 var(--fs-s)/16px var(--f-bold); font-synthesis: none; color: var(--on-bg-dim); white-space: nowrap; overflow: hidden; }
+
+/* 발동: ×N 글자(24px, k0 4방향 2px 외곽선). 칸 한가운데에서 위로 8px 뜬다(칸 위 띠의 글자와 안 섞이게 칸 위에 겹친다) */
+.deck-x { position: absolute; left: 50%; top: 50%; margin-top: -14px; translate: -50% 0; z-index: 30; pointer-events: none; font: 700 var(--fs-l)/28px var(--f-bold); font-synthesis: none; color: var(--g3); white-space: nowrap; text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
+.deck-x.still { translate: -50% -8px; }
+
+/* 알림 버튼은 특전 알림(.perk-alert)과 같은 크기·맥박. 둘 다 뜨면 세로로 쌓인다 */
+.deck-alert { width: 100%; }
+
+/* 공구함 창 · 카드 고르기 창 */
+.deck-card { --face: var(--p1); --line: var(--k1); }
+.deck-card .pr-name em { box-shadow: 0 0 0 2px var(--cc) inset; }
+.deck-card-empty { --face: var(--p1); --line: var(--k3); color: var(--k2); box-shadow: none; outline: 2px dashed var(--k3); outline-offset: -2px; }
+.deck-card-empty .pr-emoji { box-sizing: border-box; outline: 2px dashed var(--k3); outline-offset: -2px; }
+.deck-pick .pcard-inner { animation-name: pdrop; }
+.deck-pick .incoming { margin-top: var(--s2); --face: var(--g3); --line: var(--g1); }
+.deck-pick .incoming .pr-name em { box-shadow: 0 0 0 2px var(--cc) inset; }
+.deck-pick .modal-actions { gap: var(--s2); }
+/* 효과 글이 긴 카드(줄자 감기)도 안 잘리게: 칸 높이를 글에 맞추고 3장은 같은 높이로 늘인다 */
+.deck-pick .pcard { display: flex; }
+.deck-pick .pcard-inner { height: auto; flex: 1; display: flex; }
+.deck-pick .pface { position: relative; inset: auto; flex: 1; padding-bottom: var(--s1); }
+.deck-pick .pc-fx { padding: var(--s1) 0; }
+
+/* PC 방 2배 화면: 카드 줄이 이사 블록에 +56px(2배면 +112px)이라 이사 블록 2배 기준을 올린다(m6-desktop.css의 944·1084 기준은 카드 줄이 없을 때 값).
+   2배는 높이 1110 이상(알림 버튼이 없을 때) / 1200 이상(알림 버튼이 떠 있을 때)에서만, 그 아래는 1배 */
+@media (min-width: 1280px) and (min-height: 944px) and (max-height: 1109px) {
+  html:root body.un-mode.has-deck .col-play > .move-block, html:root body.un-mode.has-deck .col-play:not(:has(.perk-alert:not([hidden]))) > .move-block { zoom: 1; width: var(--strip-w); }
+}
+@media (min-width: 1280px) and (min-height: 1110px) and (max-height: 1199px) {
+  html:root body.un-mode.has-deck .col-play:has(.perk-alert:not([hidden])) > .move-block { zoom: 1; width: var(--strip-w); }
+}
+/* 방 2배인데 높이 900~943(예: 1440x900): 힌트 줄·바닥 여백을 접고, 카드 고르기 버튼은 카드 줄 오른쪽에 같은 줄로 올려 높이를 맞춘다 */
+@media (min-width: 1280px) and (min-height: 900px) and (max-height: 943px) {
+  body.has-deck .col-play .key-hint { display: none; }
+  body.has-deck .col-play { padding-bottom: 0; }
+  body.has-deck .col-play .move-extra { margin-top: 0; }
+  body.has-deck .col-play .deck-alert { position: absolute; top: 4px; right: 2px; width: auto; min-width: 180px; height: 40px; min-height: 40px; z-index: 2; }
+  body.has-deck .col-play:has(.deck-alert:not([hidden])) .deck-label { visibility: hidden; }
+}

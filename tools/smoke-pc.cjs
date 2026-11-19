@@ -11,6 +11,7 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
 const gs = (page) => page.evaluate(() => window.__ajd.get());
 const setS = (page, over) => page.evaluate((o) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, ...o, unpack: { ...s.unpack, ...(o.unpack || {}) } }); }, over);
 const activeTab = (page) => page.locator('.dock .tab.active').innerText();
+const text = (page, sel) => page.locator(sel).first().innerText();
 const IGNORE = /Extension context invalidated|Receiving end does not exist/;
 
 (async () => {
@@ -283,6 +284,43 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
   await page.keyboard.press('Space');
   await page.waitForTimeout(150);
   check('되돌린 뒤에도 Space 동작', (await gs(page)).stats.totalTaps > p2);
+
+  // ---- 공구함 덱 1단계(PC) ----
+  {
+    const deckSet = (pg, slots, offers, moves = 1) => pg.evaluate(([sl, of, mv]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: mv, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1 })), offers: of } }); }, [slots, offers, moves]);
+    const fit = (pg) => pg.evaluate(() => { const r = document.querySelector('.deck-row')?.getBoundingClientRect(); const m = document.querySelector('.move-row')?.getBoundingClientRect(); return { rowH: r && Math.round(r.height), gap: r && m ? Math.round(m.top - r.bottom) : null, scrollH: document.documentElement.scrollHeight, innerH: innerHeight, hs: document.documentElement.scrollWidth > document.documentElement.clientWidth }; });
+    for (const size of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+      const { ctx, page } = await open(size);
+      await page.waitForTimeout(500);
+      await deckSet(page, ['P2', 'P3'], [['C1', 'C3', 'P2']], 0);
+      await page.waitForTimeout(500);
+      check(`덱(PC ${size.width}): 첫 집(moves 0)에는 카드 줄이 없다`, (await page.locator('.deck-row').count()) === 0);
+      await deckSet(page, ['P2', 'P3'], [['C1', 'C3', 'P2']], 1);
+      await page.waitForTimeout(700);
+      const f = await fit(page);
+      check(`덱(PC ${size.width}): 카드 줄이 보이고 카드 고르기 버튼이 뜬다`, (await page.locator('.deck-row').isVisible()) && (await page.locator('.deck-alert').isVisible()) && f.rowH === 48 && f.gap >= 0, JSON.stringify(f));
+      check(`덱(PC ${size.width}): 카드 줄이 떠도 세로·가로로 넘치지 않는다`, f.scrollH <= f.innerH && !f.hs, JSON.stringify(f));
+      await page.locator('.deck-alert').click();
+      await page.waitForSelector('.modal.deck-pick .pcard');
+      await page.waitForTimeout(900);
+      await page.locator('.pcard[data-card="C1"]').click();
+      await page.waitForTimeout(1400);
+      const s = await gs(page);
+      check(`덱(PC ${size.width}): 카드를 고르면 칸에 들어가고 묶음이 사라진다`, s.deck.slots.map((x) => x.id).join() === 'P2,P3,C1' && s.deck.offers.length === 0 && (await page.locator('.modal').count()) === 0);
+      await deckSet(page, ['P2', 'P3', 'C1'], [['C3', 'P2', 'P3']], 1);
+      await page.waitForTimeout(500);
+      await page.locator('.deck-alert').click();
+      await page.waitForSelector('.modal.deck-pick .pcard');
+      await page.waitForTimeout(900);
+      await page.locator('.pcard[data-card="C3"]').click();
+      await page.waitForTimeout(500);
+      check(`덱(PC ${size.width}): 칸이 차면 바꿀 칸을 골라 교체된다`, (await text(page, '.modal-head h2')) === '바꿀 칸 고르기');
+      await page.locator('.pcard[data-card="P3"]').click();
+      await page.waitForTimeout(1400);
+      check(`덱(PC ${size.width}): 교체 결과`, (await gs(page)).deck.slots.map((x) => x.id).join() === 'P2,C3,C1' || (await gs(page)).deck.slots.map((x) => x.id).join() === 'P2,C1,C3');
+      await ctx.close();
+    }
+  }
 
   check('콘솔 오류 0건', errors.length === 0, errors.slice(0, 3).join(' | '));
   const pass = results.filter(Boolean).length;

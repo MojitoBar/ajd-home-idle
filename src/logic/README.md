@@ -59,6 +59,7 @@
 - `perks: Record<perkId, 레벨>` 영구 특전 레벨. 이사해도 유지.
 - `perkOffers: string[][]` 선택 대기 중인 특전 3택 묶음(오래된 순, 묶음당 perkId 3개). 새로고침해도 같은 후보가 유지된다. 이사 시 `movePerkBoxes(이사 전 횟수)`개 추가, 특전 상자를 사면 1묶음 추가, 선택하면 그 묶음 삭제. 여러 묶음이 쌓여도 게임은 막히지 않는다.
 - `perkBoxBought: number` 이 집에서 산 특전 상자 수(다음 가격이 오른다). 저장됨, 이사하면 0.
+- `deck` 공구함 덱(아래 "공구함 덱" 절). 저장됨, 이사하면 초기화.
 - `homeLv: number[8]` 살림 칸 레벨, `gear` 공구 레벨(영구), `unlocked`(선택 필드, 열린 요소).
 
 ## 호출 시점 요약
@@ -133,6 +134,13 @@
 - `gearEffects(state)`가 효과 값을 모은다. 읽는 곳: `charge.releaseCharge`(구간을 안 넘기면 `perfectHalf`로 기본 구간을 만든다), `unpack`(`chainBonus(i, cap)`, `specialAt(salt, k, rate)`, `hitChained`·`hitBox`·`boxSpecial`), `weak`(`hitWeak`, `advanceWeak(…, delayMult)`).
 - 구간은 `chargeZoneAt(center, half)`·`rollChargeZone(rng, prev, half)`로 만든다. 화면은 `gearEffects(state).perfectHalf`를 넘기고, 게이지 그림도 같은 구간을 읽는다.
 - 안전모 실드는 저장하지 않는 런타임 값이다: `initialShield(max)` -> `{n, toNext}`(불러오기·이사 때 가득), `resolveStreak(prev, grade, shield, max)` -> `{streak, shield, saved}`. 퍼펙트 `SHIELD_CHARGE_PERFECTS`(8)번마다 한 칸 차고, 굿·미스는 연속이 있고 칸이 있으면 칸 하나를 쓰고 연속을 지킨다(보상은 실제 판정대로). `releaseCharge`의 streak 계산은 그대로라 화면이 이 결과로 연속 수를 덮어쓴다.
+
+## 공구함 덱 (`deck.ts`, 카드 `data/cards.ts`, 설계 `DESIGN-DECK.md`, 1단계: 카드 4장·3칸)
+- `state.deck = { slots: {id, star}[], offers: string[][], rerolls, mark, seen }`(저장 v12, 이사하면 `deckAfterMove`로 초기화: 빈 칸·첫 3택 1묶음·mark 1·다시 받기 2, `seen`만 이어받음). 첫 집(`moves 0`)은 빈 덱이고 `unlock.ts`의 `'deck'`은 첫 이사 뒤에 열린다.
+- 카드 P2 먹줄 튕기기(연속 계수 +0.25, `perkEffects.streakBonus`)·C1 긴 빠루(연쇄 상한 +30, `gearEffects.chainCap`)는 `deckEffects(state)`가 합쳐 준다(`state.deck` 키 WeakMap 캐시). P3 줄자 감기는 `deckStrikeMult(state, grade, streak)`(연속 10의 배수 퍼펙트 강타 탭 수 x3, `releaseCharge`가 곱함), C3 줄줄이 짐은 `deckEvent(state, {chain})`(강타 1회에 연쇄 100개마다 탭 1회 x20, 카드당 한 줄 `{id, times, taps}`).
+- 호출 자리: `unpack.heavyHit`(강타·급소)이 끝에서 `deckEvent`로 보상 P를 `points`·`earned`·`stats.totalEarned`에 더하고, `tapAndHit`·`rushTap`·`heavyHit` 모두 `checkMarks`로 진행 문턱을 본다. 결과에 `deckFires`(터진 카드, 보상은 `gain` 포함, P3의 `mult`는 `releaseCharge`가 앞에 붙임)와 `deckOffered`(새 묶음이 생겼나)가 붙는다. 화면이 따로 부를 필요 없다.
+- 문턱: `markThreshold(moves, k)` = 목표 x 10^(-d), k=1..5. d는 `DECK_MARK_DIGITS[이사 횟수 1~5][k]`(6 이상은 마지막 행)로 집 시간의 대략 15·30·50·70·85%에 오게 시뮬로 잡은 표. 한 번에 여러 개를 넘어도 묶음 1개(`checkMarks`). 묶음 추첨은 호출자의 rng를 쓰지 않는 시드 추첨(`offerSeed`, 시뮬 난수열 보호). 1단계는 "안 낀 카드 먼저 서로 다른 3장"뿐이다.
+- 고르기: `chooseCard(state, offerIndex, cardId | null, replaceSlot?)`(null = 건너뛰기, 칸이 차면 `deckFull(state)`가 true라 `replaceSlot` 필수, 실패는 null).
 
 ## 시뮬 도구
 `node tools/box-sim.mjs`: 실제 로직을 vite ssr로 불러 한 판을 초 단위로 돈다. 정책 3개(기본·고수·가볍게) x 시드 5개(`SEED_N`으로 최대 10개). 환경변수 `POLICY=기본,고수,가볍게`·`SEED_N`(시드 수)·`GATES=0,0,4e3,...`(가이드 문턱 18개 덮어쓰기)·`NOBOX=1`(선물 상자 없이)·`NOPERK=1`(특전을 안 고르는 비교용)·`PERK_SHARE`(특전 상자 구매 기준, 기본 0.35)·`DBG=1`(단계 완료 때 상태 출력)·`TARGETS=1e10,1e11,...`는 집 목표를 메모리에서만 덮어쓰고 `MAX_MOVES`(기본 6)·`MAX_SEC`(기본 5시간)로 범위를 줄인다. 집 목표를 바꿀 땐 이 도구로 이사 시각을 다시 본다. 정책은 가이드를 따른다(잠긴 요소는 못 쓰고 지금 단계 목표를 우선 수행). 출력에 첫 특전 시각·이사 때까지 산 특전 상자 수(집마다), 가이드 단계별 완료 시각, 첫 집의 누적 P 1e3·1e6·1e9·1e12·1e15 도달 시각, J 커브(자릿수/분)가 더해졌다.

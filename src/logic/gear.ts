@@ -17,6 +17,7 @@ import {
 } from '../data/gear';
 import type { ChargeGrade } from './charge';
 import { GUIDE_SPECIAL_RATE, featureOpen, guideAt, guideEnded, type GuideFeature } from './guide';
+import { deckEffects } from './deck';
 import { houseInfo } from './house';
 import { perkEffects } from './perks';
 import type { GameState } from './state';
@@ -71,7 +72,7 @@ export function gearEffects(state: GameState): GearEffects {
   return {
     perfectHalf: Math.min(GEAR_PERFECT_HALF_MAX, GEAR_PERFECT_HALF_BASE + GEAR_PERFECT_HALF_STEP * lv('level')),
     shieldMax: lv('helmet'),
-    chainCap: GEAR_CHAIN_CAP_BASE + GEAR_CHAIN_CAP_STEP * lv('crowbar'),
+    chainCap: GEAR_CHAIN_CAP_BASE + GEAR_CHAIN_CAP_STEP * lv('crowbar') + deckEffects(state).chainCapAdd,
     weakTaps: GEAR_WEAK_TAPS_BASE + GEAR_WEAK_TAPS_STEP * lv('awl'),
     weakDelayMult: 1 - GEAR_WEAK_DELAY_STEP * lv('awl'),
     specialRate: Math.max(GEAR_SPECIAL_RATE_BASE + GEAR_SPECIAL_RATE_STEP * lv('loupe'), guideAt(state, 'special') ? GUIDE_SPECIAL_RATE : 0) * perkEffects(state).specialRateMult,

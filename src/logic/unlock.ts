@@ -5,7 +5,7 @@ import { formatNumber } from './format';
 import { guideEnded, guideReached } from './guide';
 import type { GameState } from './state';
 
-export const UNLOCK_IDS = ['box', 'home', 'dex', 'mult', 'badge', 'perk'] as const;
+export const UNLOCK_IDS = ['box', 'home', 'dex', 'mult', 'badge', 'perk', 'deck'] as const;
 export type UnlockId = (typeof UNLOCK_IDS)[number];
 
 /** 토스트에 쓰는 이름("새로 열렸어요 · 결합") */
@@ -16,6 +16,7 @@ export const UNLOCK_NAME: Record<UnlockId, string> = {
   mult: '배율 내역',
   badge: '총 배율',
   perk: '특전',
+  deck: '공구함',
 };
 
 /** 문턱값. 새 게임에서 초당 4탭으로 쉬지 않고 한 사람 기준 시각은 UI-GUIDE.md 표 */
@@ -40,6 +41,8 @@ const RULES: Record<UnlockId, (s: GameState) => boolean> = {
   mult: multChanged,
   badge: multChanged,
   perk: (s) => s.perkOffers.length > 0 || Object.keys(s.perks).length > 0,
+  // 첫 이사 뒤에만 열린다(isMet이 moves > 0이면 전부 충족으로 본다)
+  deck: () => false,
 };
 
 /** 지금 조건이 충족돼 있는가. 이사를 한 번이라도 했으면 전부 충족(이미 겪은 사람) */

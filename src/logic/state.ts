@@ -1,8 +1,9 @@
 import { BOX_KINDS, UNPACK_HP_BASE } from '../data/unpack';
 import type { GearId } from '../data/gear';
+import { emptyDeck, type DeckState } from './deck';
 import { initialFever, initialParcel } from './fever';
 
-export const CURRENT_VERSION = 11;
+export const CURRENT_VERSION = 12;
 
 export interface CollectionSlot {
   base: number;
@@ -75,6 +76,8 @@ export interface GameState {
   perks: Record<string, number>;
   /** 선택 대기 중인 특전 3택 묶음(오래된 순). 저장됨 */
   perkOffers: string[][];
+  /** 공구함 덱(logic/deck.ts): 이 집에서만 쓰는 카드. 이사하면 초기화. 저장됨 */
+  deck: DeckState;
   /** 이 집에서 산 특전 상자 수(가격이 오른다). 이사하면 0 */
   perkBoxBought: number;
   stats: { totalTaps: number; totalEarned: number; playSec: number; boxesOpened: number };
@@ -109,6 +112,7 @@ export function defaultState(savedAt = 0, salt = 0): GameState {
     gear: {},
     perks: {},
     perkOffers: [],
+    deck: emptyDeck(),
     perkBoxBought: 0,
     stats: { totalTaps: 0, totalEarned: 0, playSec: 0, boxesOpened: 0 },
     settings: { reduceMotion: false },

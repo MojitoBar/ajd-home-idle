@@ -29,6 +29,7 @@ const POP_SELECTOR: Partial<Record<UnlockId, string>> = {
   mult: '.speed-wrap .info-btn',
   badge: '.top .badge',
   perk: '.perk-btn',
+  deck: '.deck-row',
 };
 /** 테두리 점멸을 그릴 대상(자리가 잡혀 있는 하나) */
 const EDGE_SELECTOR: Partial<Record<UnlockId, string>> = {
@@ -38,6 +39,7 @@ const EDGE_SELECTOR: Partial<Record<UnlockId, string>> = {
   mult: '.speed-wrap .info-btn',
   badge: '.top .badge',
   perk: '.perk-btn',
+  deck: '.deck-row',
 };
 
 /** 토스트에 붙는 열린 대상의 아이콘 */
@@ -48,6 +50,7 @@ const ICON: Partial<Record<UnlockId, IconName>> = {
   mult: 'fever',
   badge: 'ui-rocket',
   perk: 'perk',
+  deck: 'ui-tools',
 };
 
 let H: UnlockHooks;

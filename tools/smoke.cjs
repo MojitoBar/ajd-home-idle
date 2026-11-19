@@ -228,7 +228,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await page.locator('.modal .btn.primary').click();
       await page.waitForTimeout(400);
       const sv = await save(page);
-      check('안내를 닫으면 notice가 지워지고 version 11로 저장', sv.version === 11 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
+      check('안내를 닫으면 notice가 지워지고 현재 version 12로 저장', sv.version === 12 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
       await page.reload();
       await page.waitForSelector('.phone');
       await page.waitForTimeout(800);
@@ -810,6 +810,95 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       for (let i = 0; i < 80; i++) { overlap = overlap || (await page.evaluate(() => { const bx = window.__ajd.textBoxes(); const tips = bx.filter((x) => x.kind === 'tip'); const hs = bx.filter((x) => x.kind === 'head'); return tips.some((t) => hs.some((h) => Math.min(t.x + t.w, h.x + h.w) > Math.max(t.x, h.x) && Math.min(t.y + t.h, h.y + h.h) > Math.max(t.y, h.y))); })); await page.waitForTimeout(50); }
       check('가이드 단계 완료 머리글이 말풍선과 겹치지 않는다', !overlap);
       await ctx.close();
+    }
+
+    // ---- 공구함 덱 1단계(화면) ----
+    {
+      const DECK_ALL = [...ALL, 'deck'];
+      const GUIDE_DONE = { step: 18, n: 0, done: true };
+      const deckSet = (page, slots, offers, moves = 1) => page.evaluate(([sl, of, m]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: m, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1 })), offers: of } }); }, [slots, offers, moves]);
+      {
+        const { ctx, page } = await newPage(browser, { version: 12, unlocked: ALL, moves: 0, guide: GUIDE_DONE });
+        await page.waitForTimeout(700);
+        check('덱: 첫 집에는 카드 줄이 없다', (await page.locator('.deck-row').count()) === 0 && !(await vis(page, '.deck-alert')));
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 12, unlocked: ALL, moves: 0, guide: GUIDE_DONE });
+        await page.waitForTimeout(500);
+        await deckSet(page, [], [['P2', 'C1', 'P3']]);
+        await page.waitForTimeout(600);
+        check('덱: 이사 뒤 카드 줄(칸 3개)과 노란 카드 고르기 버튼이 보인다', (await vis(page, '.deck-row')) && (await page.locator('.deck-slot').count()) === 3 && (await text(page, '.deck-alert')).includes('카드 고르기'));
+        const g = await page.evaluate(() => { const r = document.querySelector('.deck-row').getBoundingClientRect(); const m = document.querySelector('.move-row').getBoundingClientRect(); const c = document.querySelector('.charge')?.getBoundingClientRect(); return { rowBottom: r.bottom, moveTop: m.top, chargeBottom: c && c.width ? c.bottom : 0, rowTop: r.top, h: r.height }; });
+        check('덱: 카드 줄(높이 48)이 이사 줄·강타 띠와 겹치지 않는다', g.h === 48 && g.rowBottom <= g.moveTop && g.rowTop >= g.chargeBottom, JSON.stringify(g));
+        check('덱: 공구 탭을 보는 중에는 공구 강화 탭에 알림 점이 없다', (await page.locator('.dock .tab:not([data-ux]) .dot:visible').count()) === 0);
+        await tab(page, 'home').click();
+        await page.waitForTimeout(300);
+        check('덱: 다른 탭을 보면 공구 강화 탭에 알림 점', (await page.locator('.dock .tab:not([data-ux]) .dot:visible').count()) === 1);
+        await tab(page, 'tap').click();
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(900);
+        check('덱: 카드 고르기 창에 카드 3장 + 건너뛰기', (await page.locator('.deck-pick .pcard').count()) === 3 && (await page.locator('.deck-pick .modal-actions .btn', { hasText: '건너뛰기' }).count()) === 1);
+        await page.locator('.pcard[data-card="P2"]').click();
+        await page.waitForTimeout(1400);
+        const s1 = await gs(page);
+        check('덱: 카드를 고르면 칸에 들어가고 묶음이 사라진다', s1.deck.slots.map((x) => x.id).join() === 'P2' && s1.deck.offers.length === 0 && (await page.locator('.deck-slot.on').count()) === 1 && (await page.locator('.modal').count()) === 0 && !(await vis(page, '.deck-alert')));
+        await deckSet(page, ['P2', 'C1', 'P3'], [['C3', 'P2', 'C1']]);
+        await page.waitForTimeout(400);
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(900);
+        check('덱: 이미 낀 카드는 고를 수 없게 표시된다', (await page.locator('.deck-pick .pcard.maxed:disabled').count()) === 2);
+        await page.locator('.pcard[data-card="C3"]').click();
+        await page.waitForTimeout(500);
+        const stage = await page.evaluate(() => ({ title: document.querySelector('.modal-head h2')?.textContent, modals: document.querySelectorAll('.modal').length, cards: [...document.querySelectorAll('.deck-pick .pcard')].map((c) => c.dataset.card).join() }));
+        check('덱: 칸이 차면 같은 창 안에서 바꿀 칸 고르기로 넘어간다', stage.title === '바꿀 칸 고르기' && stage.modals === 1 && stage.cards === 'P2,C1,P3', JSON.stringify(stage));
+        await page.locator('.modal-actions .btn', { hasText: '돌아가기' }).click();
+        await page.waitForTimeout(500);
+        check('덱: 돌아가기로 카드 고르기로 돌아간다', (await text(page, '.modal-head h2')).includes('카드 고르기') && (await gs(page)).deck.slots.length === 3);
+        await page.locator('.pcard[data-card="C3"]').click();
+        await page.waitForTimeout(400);
+        await page.locator('.pcard[data-card="C1"]').click();
+        await page.waitForTimeout(1400);
+        const s2 = await gs(page);
+        check('덱: 바꿀 칸을 고르면 교체되고 묶음이 사라진다', s2.deck.slots.map((x) => x.id).join() === 'P2,C3,P3' && s2.deck.offers.length === 0 && (await page.locator('.modal').count()) === 0, s2.deck.slots.map((x) => x.id).join());
+        await deckSet(page, ['P2'], [['C1', 'P3', 'C3'], ['C3', 'C1', 'P3']]);
+        await page.waitForTimeout(400);
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(500);
+        await page.locator('.modal-actions .btn', { hasText: '건너뛰기' }).click();
+        await page.waitForTimeout(500);
+        const s3 = await gs(page);
+        check('덱: 건너뛰면 묶음만 사라지고 다음 묶음으로 이어진다', s3.deck.slots.map((x) => x.id).join() === 'P2' && s3.deck.offers.length === 1 && (await page.locator('.modal .pcard').count()) === 3);
+        await page.locator('.modal-actions .btn', { hasText: '건너뛰기' }).click();
+        await page.waitForTimeout(500);
+        check('덱: 마지막 묶음을 건너뛰면 창이 닫힌다', (await gs(page)).deck.offers.length === 0 && (await page.locator('.modal').count()) === 0);
+        await page.locator('.deck-row').click();
+        await page.waitForTimeout(400);
+        check('덱: 카드 줄을 누르면 공구함 창이 열린다(낀 카드 이름)', (await text(page, '.modal-head h2')) === '공구함' && (await text(page, '.modal-body')).includes('먹줄 튕기기'));
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 12, unlocked: DECK_ALL, moves: 1, guide: GUIDE_DONE });
+        await page.waitForTimeout(500);
+        await deckSet(page, ['C3'], []);
+        await setS(page, { points: 1e6, earned: 1e5, tapLevel: 200, unpack: { box: 30, damage: 0, hp: 1 } });
+        await page.evaluate(() => { window.__xs = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('deck-x')) window.__xs.push(n.textContent); }).observe(document.querySelector('.deck-row'), { childList: true, subtree: true }); window.__ajd.chain(3000); });
+        for (let i = 0; i < 300; i++) { await page.waitForTimeout(100); const w = await page.evaluate(() => ({ p: window.__ajd.getChain().playing, n: window.__xs.length })); if (i > 5 && !w.p && w.n > 0) break; }
+        await page.waitForTimeout(1500);
+        const xs = await page.evaluate(() => window.__xs);
+        check('덱: 3,000연쇄 강타 한 번에 C3 발동 표시가 ×30으로 한 번만 뜬다', xs.length === 1 && xs[0] === '×30', JSON.stringify(xs));
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 11, unlocked: ALL, moves: 2, earned: 1e6, points: 1e6, guide: GUIDE_DONE });
+        await page.waitForTimeout(800);
+        const sv = await gs(page);
+        check('덱: v11 저장(moves > 0)으로 열면 대기 묶음이 1개 있고 카드 고르기 버튼이 뜬다', sv.deck.offers.length === 1 && sv.deck.offers[0].length === 3 && (await vis(page, '.deck-alert')), JSON.stringify(sv.deck));
+        await ctx.close();
+      }
     }
 
     check('콘솔 오류 0건', errors.length === 0, errors.slice(0, 3).join(' | '));

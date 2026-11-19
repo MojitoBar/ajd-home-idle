@@ -1,5 +1,7 @@
 import { GEARS } from '../data/gear';
 import { PERKS, PERK_OFFER_SIZE } from '../data/perks';
+import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, cardDef } from '../data/cards';
+import { deckSlots, emptyDeck, marksPassed, rollCardOffer, type DeckSlot, type DeckState } from './deck';
 import { rollPerkOffer, seededRng } from './perks';
 import { BOX_PATTERN, ROOM_BOXES } from '../data/unpack';
 import { boxHp, endlessHp } from './unpack';
@@ -117,6 +119,13 @@ export const MIGRATIONS: Migrations = {
     const guide = g && g.done !== true && num(g.step, 0, true) >= V11_GUIDE_INSERT_AT ? { ...g, step: num(g.step, 0, true) + 1 } : s.guide;
     return { ...s, version: 11, perkBoxBought: 0, guide };
   },
+  // 11 -> 12: 공구함 덱(deck). 이사한 적이 있으면 지금 진행으로 이미 지난 문턱 수를 채우고 소개용 3택 1묶음을 준다. 첫 집은 빈 덱
+  11: (s) => {
+    const moves = num(s.moves, 0, true);
+    if (moves === 0) return { ...s, version: 12, deck: emptyDeck() };
+    const mark = marksPassed(moves, num(s.earned, 0));
+    return { ...s, version: 12, deck: { ...emptyDeck(), mark, offers: [rollCardOffer([], moves * 7919 + 29)] } };
+  },
 };
 
 export type LoadResult =
@@ -186,6 +195,30 @@ export function sanitize(raw: Raw): GameState {
     }
   }
   const moves = num(raw.moves, d.moves, true);
+  const rawDeck = isObj(raw.deck) ? raw.deck : {};
+  const deckSlotsMax = deckSlots(moves);
+  const slots: DeckSlot[] = [];
+  if (Array.isArray(rawDeck.slots)) {
+    for (const o of rawDeck.slots) {
+      if (!isObj(o) || typeof o.id !== 'string' || !cardDef(o.id) || slots.some((s) => s.id === o.id) || slots.length >= deckSlotsMax) continue;
+      slots.push({ id: o.id, star: Math.min(3, Math.max(1, num(o.star, 1, true))) });
+    }
+  }
+  const cardOffers: string[][] = [];
+  if (Array.isArray(rawDeck.offers)) {
+    for (const o of rawDeck.offers) {
+      if (!Array.isArray(o)) continue;
+      const ids = [...new Set(o.filter((id): id is string => typeof id === 'string' && CARDS.some((c) => c.id === id)))].slice(0, CARD_OFFER_SIZE);
+      if (ids.length > 0) cardOffers.push(ids);
+    }
+  }
+  const deck: DeckState = {
+    slots,
+    offers: cardOffers,
+    rerolls: Math.min(9, num(rawDeck.rerolls, d.deck.rerolls, true)),
+    mark: Math.min(DECK_MARKS, num(rawDeck.mark, 0, true)),
+    seen: Array.isArray(rawDeck.seen) ? [...new Set(rawDeck.seen.filter((id): id is string => typeof id === 'string' && !!cardDef(id)))] : [],
+  };
   const rawUnpack = isObj(raw.unpack) ? raw.unpack : {};
   const unpackBox = num(rawUnpack.box, 0, true);
   const rawLv = Array.isArray(raw.homeLv) ? raw.homeLv : [];
@@ -215,6 +248,7 @@ export function sanitize(raw: Raw): GameState {
     gear,
     perks,
     perkOffers,
+    deck,
     perkBoxBought: num(raw.perkBoxBought, 0, true),
     stats: {
       totalTaps: num(stats.totalTaps, 0, true),
