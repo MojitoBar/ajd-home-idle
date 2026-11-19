@@ -16,7 +16,7 @@
 | `guide.ts` | 첫 가이드(손맛 요소가 하나씩 열리는 순서, `state.guide`) |
 | `unlock.ts` | 단계적 공개(`UNLOCK_IDS`) |
 | `offline.ts` | 복귀 러시 판정 |
-| `save.ts` · `state.ts` | 저장·불러오기·`MIGRATIONS`, 상태 정의(`CURRENT_VERSION = 13`) |
+| `save.ts` · `state.ts` | 저장·불러오기·`MIGRATIONS`, 상태 정의(`CURRENT_VERSION = 14`) |
 | `format.ts` | 한국식 큰 수 표기 |
 
 ## 상자·도감 (`gacha.ts`, 데이터 `data/collectibles.ts`)
@@ -135,12 +135,14 @@
 - 구간은 `chargeZoneAt(center, half)`·`rollChargeZone(rng, prev, half)`로 만든다. 화면은 `gearEffects(state).perfectHalf`를 넘기고, 게이지 그림도 같은 구간을 읽는다.
 - 안전모 실드는 저장하지 않는 런타임 값이다: `initialShield(max)` -> `{n, toNext}`(불러오기·이사 때 가득), `resolveStreak(prev, grade, shield, max)` -> `{streak, shield, saved}`. 퍼펙트 `SHIELD_CHARGE_PERFECTS`(8)번마다 한 칸 차고, 굿·미스는 연속이 있고 칸이 있으면 칸 하나를 쓰고 연속을 지킨다(보상은 실제 판정대로). `releaseCharge`의 streak 계산은 그대로라 화면이 이 결과로 연속 수를 덮어쓴다.
 
-## 공구함 덱 (`deck.ts`, 카드 `data/cards.ts`, 설계 `DESIGN-DECK.md`, 2단계: 카드 12장·3칸)
-- `state.deck = { slots: {id, star}[], offers: string[][], rerolls, mark, seen }`(저장 v12, 이사하면 `deckAfterMove`로 초기화: 빈 칸·첫 3택 1묶음·mark 1·다시 받기 2, `seen`만 이어받음). 첫 집(`moves 0`)은 빈 덱이고 `unlock.ts`의 `'deck'`은 첫 이사 뒤에 열린다.
+## 공구함 덱 (`deck.ts`, 카드 `data/cards.ts`, 설계 `DESIGN-DECK.md`, 4단계: 카드 12장·4칸)
+- `state.deck = { slots: {id, star}[], offers: string[][], rerolls, mark, seen }`(저장 v14, 이사하면 `deckAfterMove`로 초기화: 빈 칸·첫 3택 1묶음·mark 1·다시 받기 2, `seen`만 이어받음). 첫 집(`moves 0`)은 빈 덱이고 `unlock.ts`의 `'deck'`은 첫 이사 뒤에 열린다.
 - 카드 12장(값은 시뮬으로 맞춘 최종값, `data/cards.ts`): P1 수평 맞추기(퍼펙트 반폭 +0.01, `gearEffects.perfectHalf`, 고정 상한 `DECK_PERFECT_HALF_HARD_MAX` 0.125. `chargeZoneAt`도 0.125까지 받는다)·P2 먹줄 튕기기(연속 계수 +0.3)·P3 줄자 감기·C1 긴 빠루(연쇄 상한 +30)·C3 줄줄이 짐·C4 뚫어뻥(급소 탭 수 x1.5·간격 x0.85, `gearEffects.weakTaps·weakDelayMult`)·S1 금박 포장지(황금 배율 10 -> 25, `hitBox`가 황금일 때만 읽음)·S3 눈썰미(특별 확률 x1.7, `perkEffects.specialRateMult`)·S4 황금 손잡이·F1 불쏘시개(피버 충전 +50%, `perkEffects.feverCharge`)·F2 숯불 유지(피버 +8초, `perkEffects.feverSec`)·F3 풀무질. 상시 효과는 `deckEffects(state)`가 합쳐 준다(`state.deck` 키 WeakMap 캐시, 칸 수만큼만 도는 산술).
 - 발동 카드: P3는 `deckStrikeMult(state, grade, streak)`(연속 10의 배수 퍼펙트 강타 탭 수 x3, `releaseCharge`가 곱함). C3(100연쇄마다 탭 1회 x30)·S4(한 강타에서 황금 상자 3개 이상이면 황금 수 x 탭 1회 x150)는 `deckEvent(state, {chain, gold})`가 카드당 한 줄 `{id, times, taps}`로 돌려주고(S4의 `times`는 황금 수), `heavyHit`이 `gain`을 채워 `points`·`earned`·`stats.totalEarned`에 더한다. F3는 `deckFeverFires(state, grade)`: 피버 중(강타 직전 상태) 퍼펙트 강타마다 `releaseCharge`가 `fever.activeSec`에 +2초를 더하고 `{id: 'F3', times: 1, sec: 2}`를 `deckFires`에 붙인다(`feverRatio`는 1을 넘을 수 있으니 화면이 자른다).
 - 호출 자리: `unpack.heavyHit`(강타·급소)이 끝에서 `deckEvent`로 보상 P를 더하고, `tapAndHit`·`rushTap`·`heavyHit` 모두 `checkMarks`로 진행 문턱을 본다. 결과에 `deckFires`(터진 카드. 보상은 `gain`, P3의 `mult`·F3의 `sec`는 `releaseCharge`가 앞에 붙임. 뗀 순간 터지는 것은 P3·F3, 강타 끝에 터지는 것은 C3·S4)와 `deckOffered`(새 묶음이 생겼나)가 붙는다. 화면이 따로 부를 필요 없다.
-- 문턱: `markThreshold(moves, k)` = 목표 x 10^(-d), k=1..5. d는 `DECK_MARK_DIGITS[이사 횟수 1~5][k]`(6 이상은 마지막 행)로 집 시간의 대략 15·30·50·70·85%에 오게 시뮬(현실 정책, 원형 4개 덱 x 시드 20개의 중앙값)으로 잡은 표. 한 번에 여러 개를 넘어도 묶음 1개(`checkMarks`). 묶음 추첨은 호출자의 rng를 쓰지 않는 시드 추첨(`offerSeed`, 시뮬 난수열 보호): 서로 다른 3장이고, 안 낀 카드가 3장 이상 남아 있으면 낀 카드는 나오지 않는다(희귀도 추첨·다시 받기는 3단계).
+- 칸·문턱(4단계): `deckSlots(moves)` = 4(`DECK_SLOTS`, 5·6칸은 7단계). 고르기 횟수 `DECK_MARKS` = 칸 수 + 3 = 7(이사 직후 1회 + 진행 문턱 6곳. 앞 4번은 칸을 채우고 뒤 3번은 교체). `markThreshold(state, k)` = `houseTarget` x 10^(-d), k=1..6, d는 `DECK_MARK_DIGITS[이사 횟수 1~5][k]`(6 이상은 마지막 행)이고 집 시간의 대략 9·19·31·46·63·80%에 오게 시뮬(현실 정책, 원형 4개 덱 x 시드 20개)으로 잡은 표. `checkMarks`는 넘은 문턱마다 묶음을 1개씩 쌓는다(한 번에 여러 개를 넘어도 `mark`가 그만큼 오르고 `offers`가 그만큼 늘어 고르기 횟수 = 문턱 수). 묶음 추첨은 호출자의 rng를 쓰지 않는 시드 추첨(`offerSeed`, 시뮬 난수열 보호): 서로 다른 3장이고, 안 낀 카드가 3장 이상 남아 있으면 낀 카드는 나오지 않는다(희귀도 추첨·다시 받기는 5단계).
+- 화면용 API(`deck.ts`): `deckPicksLeft(state)` = 이 집에서 앞으로 받을 고르기 횟수(안 지난 문턱 수 + 받고 안 고른 묶음 수, 첫 집 0). `deckNextMark(state)` = `{k, at, progress}`(다음 문턱 번호·누적 P 금액·앞 문턱에서 다음 문턱까지 자릿수(로그) 진행률 0~1, 문턱을 다 지났거나 첫 집이면 null). `deckSlots`·`deckFull`은 4칸 기준.
+- 저장 v13 -> v14(`MIGRATIONS[13]`): 낀 카드·눈금·묶음·`targetScale`은 그대로, 새 4번째 칸은 빈 칸. `mark`는 새 표로 이미 넘은 문턱 수까지 채우되(묶음은 안 줌) 지금 값보다 줄이지 않는다. 첫 집은 그대로.
 - 고르기: `chooseCard(state, offerIndex, cardId | null, replaceSlot?)`(null = 건너뛰기, 칸이 차면 `deckFull(state)`가 true라 `replaceSlot` 필수, 실패는 null).
 - **공구함 배율(3단계 로직, v13)**: 낀 카드 칸은 `{id, star, charge}`, `deck.targetScale`(이 집 목표 배수, 이사할 때 `DECK_TARGET_SCALE[새 이사 횟수]`로 고정, 6 이상은 마지막 값, 첫 집 1). 값표는 `data/cards.ts`(`CARD_CHARGE_NEED` 일반 40 = 지금 카드 전부, `CHARGE_NEED_SCALE[이사 횟수]`, `DECK_TARGET_SCALE`, `CHARGE_RULES`). 저장 v12 -> v13(`MIGRATIONS[12]`)은 낀 카드 `charge 0`, `targetScale 1`(지금 집의 목표·진행 그대로).
   - `deckMult(state)` -> number: 낀 카드 배수의 곱(카드 배수 = 1 + (3 + star - 1) x min(1, charge / need), ★1 상한 x4, 3칸 꽉 차면 x64). `state.deck` 키 WeakMap 캐시. **`tapStable`에 곱해진다**(탭·강타·연쇄 상금·상자 가격·보상 카드 P). `multBreakdown`·머리 총 배율(`totalMult`, `checkTier`, 가이드 17단계)에는 **안 들어간다**: 화면이 "공구함 x`deckMult`"를 따로 보여 준다.

@@ -334,6 +334,32 @@ export const sfx = {
     tone(700 + i * 160, 0.07, 'triangle', 0.13);
     noise(0.04, 0.1, 0, 2500);
   },
+  /** 카드 착지(고르기 창 등장) */
+  cardDeal(i: number): void {
+    tone(200 + i * 30, 0.07, 'triangle', 0.12, 0, 120);
+    noise(0.04, 0.08, 0, 1200);
+  },
+  /** 카드 뒤집힘(앞면이 나오는 순간). 희귀도가 높을수록 길고 높다 */
+  cardReveal(rarity: 'common' | 'rare' | 'legend', i: number): void {
+    if (rarity === 'legend') {
+      [784, 988, 1175, 1568].forEach((f, k) => tone(f, 0.16, 'square', 0.13, k * 0.06));
+      tone(2093, 0.45, 'sine', 0.14, 0.24);
+      noise(0.2, 0.1, 0.1, 5000);
+    } else if (rarity === 'rare') {
+      [988, 1319].forEach((f, k) => tone(f, 0.12, 'square', 0.12, k * 0.05));
+      tone(1976, 0.22, 'sine', 0.1, 0.1);
+      noise(0.08, 0.08, 0, 4500);
+    } else {
+      tone(880 + i * 110, 0.08, 'square', 0.1);
+      noise(0.05, 0.08, 0, 4000);
+    }
+  },
+  /** 고른 카드가 칸에 꽂힘 */
+  cardSlot(): void {
+    tone(220, 0.1, 'square', 0.14, 0, 110);
+    noise(0.06, 0.12, 0, 2500);
+    tone(1319, 0.14, 'square', 0.1, 0.06);
+  },
   perkPick(): void {
     [659, 880, 1109, 1319].forEach((f, k) => tone(f, 0.2, 'square', 0.13, k * 0.07));
     tone(1760, 0.5, 'sine', 0.15, 0.3);

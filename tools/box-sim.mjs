@@ -9,7 +9,7 @@
 // 출력: 가이드 단계별 완료 시각, 첫 집에서 누적 P가 1e3·1e6·1e9·1e12·1e15를 넘는 시각, J 커브(초반 1/3 vs 마지막 1/3 자릿수 증가 속도), 1분 최대 배수(누적 P 1e3 이후 시작하는 1분 창).
 // 환경변수: POLICY=현실,고수,가볍게 · SEED_N=시드 수(최대 20) · SEED_FROM=시작 번호(기본 0, 시드를 나눠 돌릴 때) · MAX_MOVES · MAX_SEC · TARGETS
 // 공구함 덱 정책: DECK=없음,정밀,연쇄,특별,피버 (쉼표로 여럿). 문턱마다 그 원형 태그 카드를 우선 고르고(없으면 칸이 비었을 때만 아무 카드), 칸이 차면 원형 밖 카드부터 바꾼다.
-//   3단계: 덱 정책이 충전·deckMult·houseTarget을 그대로 쓴다. 출력에 집별 공구함 배율(떠날 때)과 카드 완성 시점(집 시간 %)이 붙는다. 시험용 덮어쓰기: DTS=1,58,... (DECK_TARGET_SCALE) · CNS=1,0.35,... (CHARGE_NEED_SCALE) · DIG='[[5개]x5행]' (DECK_MARK_DIGITS). 시드를 나눠 병렬로 돌릴 때는 DECK=원형 하나씩 + DECK_DUMP.
+//   3단계: 덱 정책이 충전·deckMult·houseTarget을 그대로 쓴다. 출력에 집별 공구함 배율(떠날 때)과 카드 완성 시점(집 시간 %)이 붙는다. 시험용 덮어쓰기: DTS=1,58,... (DECK_TARGET_SCALE) · CNS=1,0.35,... (CHARGE_NEED_SCALE) · DIG='[[6개]x5행]' (DECK_MARK_DIGITS) · DQ=0.1,0.22,... (문턱 d 후보 시점 6개). 4단계: 4칸·고르기 7번(문턱 6곳), 출력에 한 행동에 문턱 2개 이상 넘은 빈도가 붙는다. 시드를 나눠 병렬로 돌릴 때는 DECK=원형 하나씩 + DECK_DUMP.
 //   출력은 원형별 이사 시각 표와 문턱 k별 통과 시점(집 시간 대비 %)뿐이다. DECK_DUMP=파일.json이면 결과를 저장하고, DECK_LOAD=a.json,b.json이면 돌리지 않고 합쳐서 표만 낸다(원형별로 나눠 병렬로 돌릴 때). DECK을 안 주면 위의 기본 출력 그대로다.
 import { createServer } from 'vite';
 
@@ -39,6 +39,8 @@ if (process.env.DTS) process.env.DTS.split(',').forEach((v, i) => { DECK_TARGET_
 if (process.env.DIG) JSON.parse(process.env.DIG).forEach((row, i) => row.forEach((v, k) => { DECK_MARK_DIGITS[i][k] = v; }));
 if (process.env.CNS) process.env.CNS.split(',').forEach((v, i) => { CHARGE_NEED_SCALE[i] = Number(v); });
 
+/** 문턱 d 후보를 재는 집 시간 비율(문턱 6곳). DQ=0.1,0.2,... 로 덮어쓴다 */
+const DIG_Q = process.env.DQ ? process.env.DQ.split(',').map(Number) : [0.1, 0.22, 0.35, 0.5, 0.66, 0.82];
 const DECKS = process.env.DECK ? process.env.DECK.split(',') : process.env.DECK_LOAD ? [] : undefined;
 const ARCH = { 정밀: 'precise', 연쇄: 'chain', 특별: 'special', 피버: 'fever' };
 /** 같은 원형 카드끼리는 이 순서로 고른다(레어·효과가 큰 것 먼저) */
@@ -103,7 +105,7 @@ function run(pol, seed, dk) {
   let firstPerkAt, boxesInHouse = 0;
   let trT = [], trV = []; // 이 집의 (시각, log10 이 집에서 번 P): 문턱 자릿수 d를 구할 때 쓴다
   let fullAt = {}; // 이 집에서 카드가 꽉 찬 시각(낀 채로)
-  let markT = [], markSeen = 0; // 이 집에서 진행 문턱 k(1~5)를 넘은 시각(DECK 시험 때만)
+  let markT = [], markSeen = 0, markActs = 0, markMulti = 0; // 이 집에서 진행 문턱 k(1~6)를 넘은 시각, 문턱을 넘긴 행동 수, 그중 2개 이상 한꺼번에 넘긴 행동 수(DECK 시험 때만)
   const logT = [], logV = []; // 첫 집 행동마다 (시각, log10(누적 P))
   const ev = (e) => {
     const r = guide.guideEvent(s, e);
@@ -152,6 +154,8 @@ function run(pol, seed, dk) {
     s = r.state;
     if (dk !== undefined && rows.length > 0) {
       if (dk) s = takeCards(s, dk);
+      const dm = s.deck.mark - 1 - markSeen;
+      if (dm > 0) { markActs++; if (dm >= 2) markMulti++; }
       while (markSeen < s.deck.mark - 1) { markT.push(t); markSeen++; }
       const need = cardChargeNeed(s.moves), held = new Set(s.deck.slots.map((x) => x.id));
       for (const id of Object.keys(fullAt)) if (!held.has(id)) delete fullAt[id];
@@ -242,8 +246,9 @@ function run(pol, seed, dk) {
       if (dk !== undefined) {
         row.marks = markT.map((x) => (x - (t - row.sec)) / row.sec);
         const t0 = t - row.sec, lgt = Math.log10(row.tgt);
-        row.dig = [0.15, 0.3, 0.5, 0.7, 0.85].map((q) => { const x = t0 + q * row.sec; let lo = 0, hi = trT.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (trT[m] <= x) lo = m; else hi = m - 1; } return lgt - trV[lo]; });
-        markT = []; markSeen = 0; trT = []; trV = [];
+        row.markActs = markActs; row.markMulti = markMulti;
+        row.dig = DIG_Q.map((q) => { const x = t0 + q * row.sec; let lo = 0, hi = trT.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (trT[m] <= x) lo = m; else hi = m - 1; } return lgt - trV[lo]; });
+        markT = []; markSeen = 0; markActs = 0; markMulti = 0; trT = []; trV = [];
         if (dk) s = takeCards(s, dk);
       }
       rows.push(row);
@@ -344,7 +349,7 @@ if (DECKS !== undefined) {
   /** { 정책: { 덱: [시드별 rows([{sec, marks}])] } } */
   const data = {};
   for (const f of (process.env.DECK_LOAD ?? '').split(',').filter(Boolean)) for (const [pn, byDeck] of Object.entries(JSON.parse(fs.readFileSync(f, 'utf8')))) for (const [dn, runs] of Object.entries(byDeck)) ((data[pn] ??= {})[dn] ??= []).push(...runs);
-  for (const pol of POLICIES) for (const name of DECKS) (data[pol.name] ??= {})[name] = SEEDS.map((sd) => run(pol, sd, name === '없음' ? null : name).map((r) => ({ sec: r.sec, total: r.total, marks: r.marks, dig: r.dig, mult: r.mult, cards: r.cards })));
+  for (const pol of POLICIES) for (const name of DECKS) (data[pol.name] ??= {})[name] = SEEDS.map((sd) => run(pol, sd, name === '없음' ? null : name).map((r) => ({ sec: r.sec, total: r.total, marks: r.marks, dig: r.dig, markActs: r.markActs, markMulti: r.markMulti, mult: r.mult, cards: r.cards })));
   if (process.env.DECK_DUMP) fs.writeFileSync(process.env.DECK_DUMP, JSON.stringify(data));
   const allNames = [...new Set(POLICIES.flatMap((p) => Object.keys(data[p.name] ?? {})))];
   const names = ['없음', ...Object.keys(ARCH), ...allNames.filter((n) => n !== '없음' && !ARCH[n])].filter((n) => allNames.includes(n));
@@ -379,16 +384,19 @@ if (DECKS !== undefined) {
       });
       console.log(`${i + 1}회: ${parts.join('  //  ')}`);
     }
-    console.log(`\n[${pol.name}] 문턱 자릿수 d 후보(원형 4개 x 시드 중앙값. 집 시간 15·30·50·70·85% 시점의 log10(목표) - log10(번 P))`);
+    console.log(`\n[${pol.name}] 문턱 자릿수 d 후보(원형 4개 x 시드 중앙값. 집 시간 DQ(기본 10·22·35·50·66·82%) 시점의 log10(목표) - log10(번 P))`);
     for (let i = 1; i < maxI; i++) {
       const v = archs.flatMap((n) => (d[n] ?? []).map((r) => r[i]?.dig)).filter(Boolean);
-      if (v.length) console.log(`  [${[0, 1, 2, 3, 4].map((k) => med(v.map((x) => x[k])).toFixed(2)).join(', ')}], // ${i + 1}번째 집(moves ${i}), ${v.length}개`);
+      if (v.length) console.log(`  [${DIG_Q.map((_, k) => med(v.map((x) => x[k])).toFixed(2)).join(', ')}], // ${i + 1}번째 집(moves ${i}), ${v.length}개`);
     }
-    console.log(`\n[${pol.name}] 문턱 k=1..5 통과 시점(집 시간 대비 %, 중앙(최소~최대)). 원형 = 원형 4개 x 시드 전체를 합쳐서 / 없음은 참고`);
+    console.log(`\n[${pol.name}] 문턱 k=1..6 통과 시점(집 시간 대비 %, 중앙(최소~최대)). 원형 = 원형 4개 x 시드 전체를 합쳐서 / 없음은 참고`);
     for (let i = 1; i < maxI; i++) {
       const at = (ns, k) => ns.flatMap((n) => (d[n] ?? []).map((r) => r[i]?.marks?.[k])).filter((v) => v !== undefined).map((v) => v * 100);
       const f = (v) => (v.length ? `${med(v).toFixed(0)}(${Math.min(...v).toFixed(0)}~${Math.max(...v).toFixed(0)})` : '-');
-      console.log(`${i + 1}회 원형: ${[0, 1, 2, 3, 4].map((k) => f(at(archs, k))).join(' | ')}   / 없음: ${[0, 1, 2, 3, 4].map((k) => f(at(['없음'], k))).join(' | ')}`);
+      console.log(`${i + 1}회 원형: ${DIG_Q.map((_, k) => f(at(archs, k))).join(' | ')}   / 없음: ${DIG_Q.map((_, k) => f(at(['없음'], k))).join(' | ')}`);
+      const mr = archs.flatMap((n) => (d[n] ?? []).map((r) => r[i])).filter((x) => x && x.markActs !== undefined);
+      const acts = mr.reduce((a, x) => a + x.markActs, 0), multi = mr.reduce((a, x) => a + x.markMulti, 0);
+      console.log(`   한 행동에 문턱 2개 이상 ${multi}/${acts}회(${acts ? ((multi / acts) * 100).toFixed(1) : 0}%)`);
     }
   }
   await vite.close();

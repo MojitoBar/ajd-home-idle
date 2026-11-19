@@ -1,6 +1,6 @@
 // 공구함 덱 화면(1단계): 카드 줄 · 공구함 창 · 카드 고르기 창 · 발동 연출. 로직은 logic/deck.ts, 설계는 DESIGN-DECK.md 7·8절.
 import { cardDef, type CardDef, type CardTag } from '../data/cards';
-import { cardMult, chooseCard, deckFull, deckMult, deckSlotViews, deckSlots, type DeckChargeResult, type DeckFire, type DeckSlotView } from '../logic/deck';
+import { cardMult, chooseCard, deckFull, deckMult, deckNextMark, deckPicksLeft, deckSlotViews, deckSlots, type DeckChargeResult, type DeckFire, type DeckSlotView } from '../logic/deck';
 import { formatNumber } from '../logic/format';
 import type { GameState } from '../logic/state';
 import type { UiCtx } from './collectUi';
@@ -43,8 +43,8 @@ const chip = (t: CardTag, cls: string): HTMLElement => {
 const row = el('div', { cls: 'deck-row', attrs: { role: 'group', 'aria-label': '공구함' } });
 const rowLabel = el('span', { cls: 'deck-label' });
 const multEl = el('b', { cls: 'deck-mult calm' });
-const side = el('div', { cls: 'deck-side' }, multEl, rowLabel);
-const multRoll = fx.roller(multEl, (v) => `공구함 ×${fmtMult(v)}`);
+const side = el('div', { cls: 'deck-side' }, el('span', { cls: 'deck-title', text: '공구함' }), multEl, rowLabel);
+const multRoll = fx.roller(multEl, (v) => `×${fmtMult(v)}`);
 interface Cell {
   slot: HTMLElement;
   fill: HTMLElement | null;
@@ -59,7 +59,7 @@ let rowKey = '';
 
 export function initDeck(hooks: DeckHooks): void {
   H = hooks;
-  row.addEventListener('click', () => openToolbox());
+  row.addEventListener('click', () => H.ctx.goto('deck'));
   alertBtn.addEventListener('click', () => openPick());
 }
 
@@ -79,6 +79,7 @@ export function sync(state: GameState): void {
     document.body.classList.remove('has-deck');
     return;
   }
+  if (rowHold) return;
   if (!row.isConnected) {
     H.host.prepend(row);
     document.body.classList.add('has-deck');
@@ -173,42 +174,71 @@ function cardRow(d: CardDef, v?: DeckSlotView): HTMLElement {
   return r;
 }
 
-export function openToolbox(): void {
-  const state = H.ctx.get();
+// ---------- 공구함 탭(이사 뒤 4번째 탭) ----------
+export const panel = el('div', { cls: 'panel-inner deck-panel' });
+let panelKey = '';
+const panelMult = el('b', { cls: 'dp-mult' });
+const panelRoll = fx.roller(panelMult, (v) => `×${fmtMult(v)}`);
+
+/** 매 update에서(공구함 탭을 보는 동안) 부른다. 낀 카드·고르기·진행이 바뀔 때만 다시 짠다 */
+export function syncPanel(state: GameState, force = false): void {
   if (!state.deck) return;
-  const n = deckSlots(state.moves);
+  const views = deckSlotViews(state);
   const pend = pendingCount(state);
-  const body: HTMLElement[] = [];
+  const next = deckNextMark(state);
+  const left = deckPicksLeft(state);
+  const n = deckSlots(state.moves);
+  const prog = next ? Math.floor(next.progress * 25) * 4 : 0;
+  const key = `${n}|${views.map((v) => `${v.id}${v.star}:${v.full ? 'F' : barPx(v)}:${Math.round(v.mult * 10)}`).join(',')}|${pend}|${left}|${prog}`;
+  const m = deckMult(state);
+  if (force) panelRoll.snap(m);
+  else panelRoll.set(m);
+  panelMult.classList.toggle('calm', m <= 1.0001);
+  if (key === panelKey && !force) return;
+  panelKey = key;
+  const top = el('div', { cls: 'dp-top' }, el('div', { cls: 'dp-lbl' }, el('span', { text: '공구함 배율' }), el('span', { cls: 'dp-sub', text: '낀 카드의 배수를 모두 곱해요' })), panelMult);
+  const body: HTMLElement[] = [top];
   if (pend > 0) {
-    const b = el('button', { cls: 'btn gold perk-pick-btn', attrs: { type: 'button' } });
+    const b = el('button', { cls: 'btn gold perk-pick-btn dp-pick', attrs: { type: 'button' } });
     setLabel(b, 'ui-tools', 32, `카드 고르기${pend > 1 ? ` ${pend}` : ''}`);
-    b.addEventListener('click', () => {
-      H.ctx.dismissModal();
-      openPick();
-    });
+    b.addEventListener('click', () => openPick());
     body.push(b);
+  } else if (next) {
+    const fill = el('i');
+    fill.style.width = `${prog}%`;
+    body.push(el('div', { cls: 'pf dp-next' }, el('div', { cls: 'dp-next-head' }, el('b', { text: '다음 카드까지' }), el('span', { text: `남은 고르기 ${left}번` })), el('span', { cls: 'dp-track' }, fill)));
+  } else {
+    body.push(el('div', { cls: 'pf dp-next' }, el('div', { cls: 'dp-next-head' }, el('b', { text: '이 집의 카드를 모두 받았어요' }))));
   }
-  const empty = n - state.deck.slots.length;
-  body.unshift(el('div', { cls: 'tb-total' }, el('span', { text: '공구함 배율' }), el('b', { text: `×${fmtMult(deckMult(state))}` })));
-  body.push(el('p', { cls: 'dim', text: empty > 0 ? `빈 칸 ${empty}개 · 카드는 이 집에서만 써요. 이사하면 비워져요.` : '칸이 가득 찼어요. 새 카드를 고르면 바꿀 칸을 골라요.' }));
-  const list = el('div', { cls: 'perk-list' });
-  deckSlotViews(state).forEach((v) => {
+  const list = el('div', { cls: 'perk-list dp-list' });
+  for (const v of views) {
     const d = cardDef(v.id);
     if (d) list.append(cardRow(d, v));
-  });
-  for (let i = 0; i < empty; i++) list.append(el('div', { cls: 'perk-row deck-card-empty' }, el('span', { cls: 'pr-emoji' }), el('div', { cls: 'pr-main' }, el('div', { cls: 'pr-name' }, el('span', { text: '빈 칸' })))));
-  body.push(list);
-  H.ctx.showModal('공구함', body, [{ label: '닫기', onClick: H.ctx.dismissModal }], { icon: titleIcon(), cls: 'deck-box' });
+  }
+  for (let i = views.length; i < n; i++) list.append(el('div', { cls: 'perk-row deck-card-empty' }, el('span', { cls: 'pr-emoji' }), el('div', { cls: 'pr-main' }, el('div', { cls: 'pr-name' }, el('span', { text: '빈 칸' })))));
+  body.push(list, el('p', { cls: 'note dim dp-note', text: '이사하면 공구함은 비워져요' }));
+  panel.replaceChildren(...body);
 }
 
 // ---------- 카드 고르기 창 ----------
 let busy = false;
+/** 등장·뒤집기 연출 재생 중(이 동안 누르면 건너뛰기만 하고 카드는 안 골라진다) */
+let playing = false;
+let swallow = false;
+let introToken = 0;
+let introStop: (() => void) | null = null;
+/** 고른 카드가 칸에 꽂히기 전까지 카드 줄을 옛 모습으로 붙든다 */
+let rowHold = false;
+/** 촬영용: 연출을 N배 느리게(`window.__deckSlow`) */
+const slow = (): number => (window as unknown as { __deckSlow?: number }).__deckSlow ?? 1;
+const ms = (n: number): number => n * slow();
+const REVEAL_COLOR: Record<CardDef['rarity'], string> = { common: 'k5', rare: 'b4', legend: 'g3' };
 
 function pickBtn(text: string): HTMLElement {
   return el('span', { cls: 'btn sm primary pick-btn', text });
 }
 
-/** 선택 카드(`pcard`): 칩 = 태그, 이미 낀 카드·고를 수 없는 카드는 `maxed` 모양 */
+/** 선택 카드(`pcard`): 칩 = 태그, 이미 낀 카드·고를 수 없는 카드는 `maxed` 모양. 앞면 위에 희귀도 뒷면(`pback`)이 겹쳐 있다 */
 function deckCard(d: CardDef, k: number, o: { lv: string; btn: string; locked?: boolean }): HTMLButtonElement {
   const front = el(
     'div',
@@ -221,11 +251,123 @@ function deckCard(d: CardDef, k: number, o: { lv: string; btn: string; locked?: 
     el('span', { cls: 'pc-lv', text: o.lv }),
     pickBtn(o.btn),
   );
-  const b = el('button', { cls: `pcard${o.locked ? ' maxed' : ''}`, attrs: { type: 'button', 'data-card': d.id } }, el('div', { cls: 'pcard-inner' }, front));
+  const back = el('div', { cls: 'pback' }, iconImg(`card/back-${d.rarity}` as IconName, { size: 48, alt: '' }));
+  const b = el('button', { cls: `pcard r-${d.rarity}${o.locked ? ' maxed' : ''}`, attrs: { type: 'button', 'data-card': d.id } }, el('div', { cls: 'pcard-inner' }, front, back));
   b.style.setProperty('--k', String(k));
   b.style.setProperty('--cc', tagVar(d));
   b.disabled = !!o.locked;
   return b;
+}
+
+const inner = (c: HTMLElement): HTMLElement => c.querySelector<HTMLElement>('.pcard-inner')!;
+
+/** 가로 폭을 계단식으로 줄였다 늘린다(회전 없음). 폭이 0인 순간 `toBack`에 맞게 앞면·뒷면을 바꾼다 */
+function flip(c: HTMLElement, toBack: boolean, track: Animation[], then?: () => void): void {
+  const a1 = fx.pxFrames(inner(c), [{ scale: '1 1' }, { scale: '0.67 1' }, { scale: '0.33 1' }, { scale: '0 1' }], ms(30), { fill: 'forwards' });
+  track.push(a1);
+  a1.onfinish = () => {
+    c.classList.toggle('back', toBack);
+    const a2 = fx.pxFrames(inner(c), [{ scale: '0.33 1' }, { scale: '0.67 1' }, { scale: '1 1' }], ms(30));
+    track.push(a2);
+    a1.cancel();
+    then?.();
+  };
+}
+
+/** 앞면이 나오는 순간: 흰 번쩍 → 희귀도 색 번쩍 + 반짝임 입자 + 효과음. 전설은 노랑 테두리 깜빡임 */
+function revealFx(c: HTMLElement, d: CardDef, k: number): void {
+  const box = inner(c);
+  const r = box.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  const fl = el('i', { cls: 'pflash' });
+  box.append(fl);
+  const col = `var(--${REVEAL_COLOR[d.rarity]})`;
+  const frames: Keyframe[] = d.rarity === 'common' ? [{ visibility: 'visible', background: 'var(--k5)' }, { visibility: 'hidden' }] : [{ visibility: 'visible', background: 'var(--k5)' }, { visibility: 'visible', background: col }, { visibility: 'hidden' }];
+  fx.pxFrames(fl, frames, ms(40)).onfinish = () => fl.remove();
+  sfx.cardReveal(d.rarity, k);
+  if (d.rarity === 'legend') {
+    fx.edge(box, 'g3', [1, 0, 1, 0, 1, 0, 1, 1]);
+    fx.burst(cx, cy, { n: 14, kind: 'star', colors: ['g2', 'g3', 'k5', 'or'], speed: 300, size: 6 });
+    fx.twinkle(r.left + 8, r.top + 8, 'g3', 8);
+    fx.twinkle(r.right - 8, r.bottom - 8, 'g3', 8);
+    vibrate([15, 20, 30]);
+  } else if (d.rarity === 'rare') {
+    fx.edge(box, 'b4', [1, 0, 1, 1]);
+    fx.burst(cx, cy, { n: 8, kind: 'star', colors: ['b4', 'k5', 'b3'], speed: 240, size: 6 });
+  } else {
+    fx.burst(cx, cy, { n: 4, kind: 'star', colors: ['k5', 'b4'], speed: 180, size: 4 });
+  }
+}
+
+/** 등장(뒷면이 아래에서 한 장씩) → 왼쪽부터 뒤집기. 전체 약 1.1초. 아무 데나 누르면 `introStop`으로 즉시 완성 */
+function intro(cards: HTMLElement[], defs: CardDef[]): void {
+  const T = ++introToken;
+  const timers: number[] = [];
+  const anims: Animation[] = [];
+  const body = cards[0]?.closest<HTMLElement>('.modal-body');
+  const stop = (): void => {
+    if (T !== introToken) return;
+    timers.forEach(clearTimeout);
+    anims.forEach((a) => a.cancel());
+    introToken++;
+    playing = false;
+    introStop = null;
+    body?.classList.remove('dealing');
+    for (const c of cards) {
+      c.classList.remove('pre', 'back');
+      c.querySelectorAll('.pflash, .fx-edgebox').forEach((e) => e.remove());
+    }
+  };
+  if (fx.isReduced() || cards.length === 0) {
+    playing = false;
+    return;
+  }
+  playing = true;
+  introStop = stop;
+  body?.classList.add('dealing');
+  const at = (t: number, f: () => void): void => {
+    timers.push(window.setTimeout(() => T === introToken && cards[0].isConnected && f(), ms(t)));
+  };
+  cards.forEach((c, k) => {
+    const t0 = 100 + k * 120;
+    at(t0, () => {
+      c.classList.remove('pre');
+      anims.push(fx.pxFrames(c, [{ translate: '0 140px' }, { translate: '0 84px' }, { translate: '0 40px' }, { translate: '0 8px' }, { translate: '0 0' }, { translate: '0 -4px' }, { translate: '0 0' }], ms(36)));
+    });
+    at(t0 + 4 * 36, () => sfx.cardDeal(k));
+    at(580 + k * 160, () => flip(c, false, anims, () => revealFx(c, defs[k], k)));
+  });
+  at(1130, stop);
+}
+
+/** 연출 도중 창을 누르면 건너뛰기만 한다(눌린 카드는 안 골라진다) */
+function guardIntro(): void {
+  const ov = document.querySelector('.modal.deck-pick')?.closest('.overlay');
+  if (!ov) return;
+  ov.addEventListener(
+    'pointerdown',
+    () => {
+      if (!playing) {
+        swallow = false;
+        return;
+      }
+      swallow = true;
+      introStop?.();
+    },
+    true,
+  );
+  ov.addEventListener(
+    'click',
+    (e) => {
+      if (!playing && !swallow) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      swallow = false;
+      introStop?.();
+    },
+    true,
+  );
 }
 
 export function openPick(): void {
@@ -241,10 +383,13 @@ export function openPick(): void {
     ],
     { chip: '카드', cls: 'perk-pick deck-pick', icon: titleIcon() },
   );
+  guardIntro();
   renderPick();
 }
 
-function renderPick(): void {
+function renderPick(replay = true): void {
+  introStop?.();
+  swallow = false;
   const state = H.ctx.get();
   const offer = state.deck.offers[0];
   if (!offer) return H.ctx.dismissModal();
@@ -257,6 +402,8 @@ function renderPick(): void {
     c.addEventListener('click', () => pickCard(d, c, cards));
     return c;
   });
+  const play = replay && !fx.isReduced();
+  if (play) cards.forEach((c) => c.classList.add('pre', 'back'));
   const allOwned = defs.every((d) => owned.has(d.id));
   setModal(
     `카드 고르기${pend > 1 ? ` (남은 묶음 ${pend})` : ''}`,
@@ -266,7 +413,8 @@ function renderPick(): void {
       { label: '건너뛰기', primary: allOwned, onClick: skipOffer },
     ],
   );
-  if (!fx.isReduced()) cards.forEach((_, k) => window.setTimeout(() => sfx.perkFlip(k), 250 + k * 180));
+  if (play) intro(cards, defs);
+  else playing = false;
 }
 
 function skipOffer(): void {
@@ -290,15 +438,18 @@ function afterChoice(wait: number): void {
 }
 
 function pickCard(d: CardDef, card: HTMLElement, all: HTMLElement[]): void {
-  if (busy) return;
+  if (busy || playing) return;
   const state = H.ctx.get();
   if (deckFull(state)) return renderReplace(d);
   const next = chooseCard(state, 0, d.id);
   if (!next) return;
-  commit(next, card, all);
+  commit(next, card, all, d, state.deck.slots.length, card.querySelector('.pc-emoji .ico'));
 }
 
-function commit(next: GameState, card: HTMLElement, all: HTMLElement[]): void {
+/** 카드를 골랐다: 고른 카드 튐·번쩍, 나머지는 뒷면으로 뒤집혀 아래로 빠지고, 창이 닫히며 아이콘이 카드 줄 칸으로 날아가 꽂힌다 */
+function commit(next: GameState, card: HTMLElement, all: HTMLElement[], d: CardDef, slotIdx: number, iconEl: Element | null): void {
+  const reduced = fx.isReduced();
+  rowHold = !reduced;
   H.ctx.set(next);
   H.ctx.save();
   H.ctx.update();
@@ -308,30 +459,106 @@ function commit(next: GameState, card: HTMLElement, all: HTMLElement[]): void {
   sfx.perkPick();
   vibrate([20, 30, 40]);
   fx.burst(r.left + r.width / 2, r.top + r.height / 2, { n: 18, kind: 'star', colors: ['#ffc83d', '#ffffff', '#5b92ff'], speed: 260, size: 6 });
-  afterChoice(fx.isReduced() ? 350 : 800);
+  if (reduced) return afterChoice(350);
+  busy = true;
+  card.closest('.modal-body')?.classList.add('dealing');
+  const box = inner(card);
+  fx.pxFrames(box, [{ translate: '0 4px' }, { translate: '0 -4px' }, { translate: '0 2px' }, { translate: '0 0' }], ms(45));
+  const fl = el('i', { cls: 'pflash' });
+  box.append(fl);
+  fx.pxFrames(fl, [{ visibility: 'visible', background: 'var(--k5)' }, { visibility: 'visible', background: 'var(--g3)' }, { visibility: 'hidden' }], ms(40)).onfinish = () => fl.remove();
+  fx.edge(box, 'g3', [1, 0, 1, 0, 1, 1]);
+  const trash: Animation[] = [];
+  for (const c of all) {
+    if (c === card) continue;
+    flip(c, true, trash, () => {
+      fx.pxFrames(c, [{ translate: '0 8px' }, { translate: '0 28px' }, { translate: '0 56px' }, { translate: '0 96px', visibility: 'hidden' }], ms(40), { fill: 'forwards' });
+    });
+  }
+  const from = iconEl?.getBoundingClientRect() ?? r;
+  window.setTimeout(() => {
+    H.ctx.dismissModal();
+    flyToSlot(d, from, slotIdx);
+  }, ms(360));
+}
+
+/** 닫히는 창에서 고른 카드 아이콘이 카드 줄 칸으로 날아간다(6걸음, 위로 솟았다 내려앉는 계단 경로). 도착하면 칸에 꽂힌다 */
+function flyToSlot(d: CardDef, from: DOMRect, idx: number): void {
+  const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[idx];
+  const finish = (): void => {
+    rowHold = false;
+    busy = false;
+    if (!H.ctx.get().deck) return;
+    sync(H.ctx.get());
+    landSlot(d);
+    if (pendingCount(H.ctx.get()) > 0) window.setTimeout(() => openPick(), ms(260));
+  };
+  if (!slot || !row.isConnected) return finish();
+  const to = slot.getBoundingClientRect();
+  const size = Math.max(2, Math.round((to.width / 48) * 16) * 2);
+  const img = iconImg(d.icon as IconName, { size, alt: '', cls: 'deck-fly' });
+  img.style.width = `${size}px`;
+  img.style.height = `${size}px`;
+  document.body.append(img);
+  const ax = from.left + from.width / 2;
+  const ay = from.top + from.height / 2;
+  const bx = to.left + to.width / 2;
+  const by = to.top + to.height / 2;
+  const STEPS = [0, 0.14, 0.32, 0.54, 0.76, 0.92, 1];
+  const ARC = [0, 18, 34, 38, 28, 12, 0];
+  const pos = (i: number): Keyframe => ({ translate: `${Math.round((ax + (bx - ax) * STEPS[i] - size / 2) / 2) * 2}px ${Math.round((ay + (by - ay) * STEPS[i] - ARC[i] * (Math.abs(by - ay) > 40 ? 1 : 0.5) - size / 2) / 2) * 2}px` });
+  const frames = STEPS.map((_, i) => pos(i));
+  const a = fx.pxFrames(img, frames, ms(50));
+  [2, 4].forEach((i) => window.setTimeout(() => fx.twinkle(ax + (bx - ax) * STEPS[i], ay + (by - ay) * STEPS[i], 'g3', 4, 0.3), ms(50 * i)));
+  let done = false;
+  const end = (): void => {
+    if (done) return;
+    done = true;
+    img.remove();
+    finish();
+  };
+  a.onfinish = end;
+  window.setTimeout(end, ms(700));
+}
+
+/** 칸에 꽂힌 순간: 칸 튐 + 칸 테두리 번쩍 + 입자 + 효과음 */
+function landSlot(d: CardDef): void {
+  const i = slotIndex(d.id);
+  const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[i];
+  if (!slot) return;
+  sfx.cardSlot();
+  vibrate(15);
+  if (fx.isReduced()) return;
+  fx.pxFrames(slot, [{ translate: '0 6px' }, { translate: '0 -6px' }, { translate: '0 2px' }, { translate: '0 0' }], ms(50));
+  slot.classList.add('lit');
+  window.setTimeout(() => slot.classList.remove('lit'), ms(420));
+  fx.edge(slot, 'g3', [1, 0, 1, 0, 1, 1]);
+  const r = slot.getBoundingClientRect();
+  fx.burst(r.left + r.width / 2, r.top + r.height / 2, { n: 8, kind: 'star', colors: ['g2', 'g3', 'k5'], speed: 200, size: 4 });
 }
 
 /** 칸이 차 있을 때: 같은 창 안에서 바꿀 칸을 고른다 */
 function renderReplace(d: CardDef): void {
+  introStop?.();
   const state = H.ctx.get();
   const views = deckSlotViews(state);
+  const incoming = cardRow(d);
+  incoming.classList.add('incoming');
   const cards = views.map((v, i) => {
     const sd = cardDef(v.id);
     if (!sd) return null;
     const c = deckCard(sd, i, { lv: `지금 ×${fmtMult(v.mult)}`, btn: '바꾸기' });
     c.addEventListener('click', () => {
-      if (busy) return;
+      if (busy || playing) return;
       const next = chooseCard(H.ctx.get(), 0, d.id, i);
-      if (next) commit(next, c, cards.filter((x): x is HTMLButtonElement => !!x));
+      if (next) commit(next, c, cards.filter((x): x is HTMLButtonElement => !!x), d, i, incoming.querySelector('.pr-emoji .ico'));
     });
     return c;
   });
-  const incoming = cardRow(d);
-  incoming.classList.add('incoming');
   setModal(
     '바꿀 칸 고르기',
     [el('p', { cls: 'dim', text: '새 카드를 끼울 칸을 골라요. 고른 칸의 카드는 사라지고, 바꾸면 이 카드의 충전이 사라져요.' }), incoming, el('div', { cls: 'pcards' }, ...cards.filter((c): c is HTMLButtonElement => !!c))],
-    [{ label: '돌아가기', quiet: true, onClick: () => renderPick() }],
+    [{ label: '돌아가기', quiet: true, onClick: () => renderPick(false) }],
   );
 }
 

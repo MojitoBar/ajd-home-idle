@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, DECK_PERFECT_HALF_HARD_MAX } from '../data/cards';
-import { chooseCard, checkMarks, deckAfterMove, deckEffects, deckEvent, deckFeverFires, deckFull, deckSlots, deckStrikeMult, emptyDeck, markThreshold, marksPassed, rollCardOffer, type DeckState } from './deck';
+import { chooseCard, checkMarks, deckAfterMove, deckEffects, deckEvent, deckFeverFires, deckFull, deckPicksLeft, deckNextMark, deckSlots, deckStrikeMult, emptyDeck, markThreshold, marksPassed, rollCardOffer, type DeckState } from './deck';
+import { deckMult } from './deck';
 import { gearEffects } from './gear';
 import { houseInfo } from './house';
 import { perkEffects } from './perks';
@@ -20,7 +21,7 @@ const slot = (id: string) => ({ id, star: 1, charge: 0 });
 
 describe('공구함 덱: 칸·효과', () => {
   it('1단계는 3칸', () => {
-    expect([0, 1, 4, 9].map(deckSlots)).toEqual([3, 3, 3, 3]);
+    expect([0, 1, 4, 9].map(deckSlots)).toEqual([4, 4, 4, 4]);
   });
   it('카드 12장과 자료 구조 필드', () => {
     expect(CARDS.map((c) => c.id)).toEqual(['P2', 'C1', 'P3', 'C3', 'P1', 'C4', 'S1', 'S3', 'S4', 'F1', 'F2', 'F3']);
@@ -89,10 +90,10 @@ describe('공구함 덱: 강타 사건', () => {
 
 describe('공구함 덱: 문턱·묶음', () => {
   it('문턱은 목표 쪽 자릿수 표이고 커진다', () => {
-    const t = [1, 2, 3, 4, 5].map((k) => mt(1, k));
+    const t = [1, 2, 3, 4, 5, 6].map((k) => mt(1, k));
     for (let i = 1; i < t.length; i++) expect(t[i]).toBeGreaterThan(t[i - 1]);
-    expect(t[4]).toBeCloseTo(houseInfo(1).target * 10 ** -0.35, -3);
-    expect(mt(9, 1)).toBeCloseTo(houseInfo(9).target * 10 ** -2.87, -3);
+    expect(t[5]).toBeCloseTo(houseInfo(1).target * 10 ** -0.53, -3);
+    expect(mt(9, 1)).toBeCloseTo(houseInfo(9).target * 10 ** -3.73, -3);
   });
   it('첫 집은 문턱을 보지 않고 같은 상태를 돌려준다', () => {
     const s = { ...defaultState(), earned: 1e30 };
@@ -106,12 +107,30 @@ describe('공구함 덱: 문턱·묶음', () => {
     expect(new Set(r.deck.offers[0]).size).toBe(3);
     expect(checkMarks(r)).toBe(r);
   });
-  it('한 번에 문턱 여러 개를 넘어도 묶음은 1개', () => {
-    const s = withDeck({ mark: 1 }, { earned: mt(1, 5) * 2 });
+  it('고르기 횟수 = 칸 수 + 3이고, 한 번에 문턱 여러 개를 넘어도 묶음이 하나씩 쌓인다', () => {
+    expect(DECK_MARKS).toBe(deckSlots(1) + 3);
+    const s = withDeck({ mark: 1 }, { earned: mt(1, DECK_MARKS - 1) * 2 });
     const r = checkMarks(s);
     expect(r.deck.mark).toBe(DECK_MARKS);
-    expect(r.deck.offers).toHaveLength(1);
+    expect(r.deck.offers).toHaveLength(DECK_MARKS - 1);
+    expect(deckPicksLeft(r)).toBe(DECK_MARKS - 1);
+    const two = checkMarks(withDeck({ mark: 1 }, { earned: mt(1, 2) }));
+    expect(two.deck.mark).toBe(3);
+    expect(two.deck.offers).toHaveLength(2);
     expect(checkMarks(r)).toBe(r);
+  });
+  it('다음 문턱 진행률은 0~1이고 문턱을 다 지나면 null', () => {
+    expect(deckNextMark(withDeck({ mark: 1 }, { earned: 0 }))).toMatchObject({ k: 1, progress: 0 });
+    const mid = deckNextMark(withDeck({ mark: 3 }, { earned: Math.sqrt(mt(1, 2) * mt(1, 3)) }))!;
+    expect(mid.k).toBe(3);
+    expect(mid.progress).toBeCloseTo(0.5);
+    expect(deckNextMark(withDeck({ mark: DECK_MARKS }, { earned: 1e30 }))).toBeNull();
+    expect(deckPicksLeft(withDeck({ mark: 1 }))).toBe(DECK_MARKS - 1);
+    expect(deckPicksLeft({ ...defaultState(), moves: 0 })).toBe(0);
+  });
+  it('4칸이 다 차고 꽉 차면 공구함 배율의 최대는 256', () => {
+    const full = withDeck({ slots: ['P2', 'C1', 'P3', 'C3'].map((id) => ({ ...slot(id), charge: 1e9 })) });
+    expect(deckMult(full)).toBe(256);
   });
   it('묶음은 안 낀 카드를 먼저 담는다', () => {
     const o = rollCardOffer([slot('P2'), slot('C1')], 5);
@@ -159,12 +178,12 @@ describe('공구함 덱: 고르기·교체·건너뛰기', () => {
     expect(chooseCard(offer(['P2', 'C1', 'P3'], [slot('P2')]), 0, 'P2')).toBeNull();
   });
   it('칸이 차면 바꿀 칸을 줘야 하고 원래 카드는 버려진다', () => {
-    const full = offer(['C3', 'C1', 'P3'], [slot('P2'), slot('C1'), slot('P3')]);
+    const full = offer(['C3', 'C1', 'P3'], [slot('P2'), slot('C1'), slot('P3'), slot('S1')]);
     expect(deckFull(full)).toBe(true);
     expect(chooseCard(full, 0, 'C3')).toBeNull();
-    expect(chooseCard(full, 0, 'C3', 3)).toBeNull();
+    expect(chooseCard(full, 0, 'C3', 4)).toBeNull();
     const r = chooseCard(full, 0, 'C3', 1)!;
-    expect(r.deck.slots.map((s) => s.id)).toEqual(['P2', 'C3', 'P3']);
+    expect(r.deck.slots.map((s) => s.id)).toEqual(['P2', 'C3', 'P3', 'S1']);
     expect(r.deck.offers).toEqual([]);
   });
   it('건너뛰기는 묶음만 버린다', () => {

@@ -13,6 +13,7 @@
 .deck-bar i { display: block; height: 4px; width: 0; background: var(--b2); transition: width 240ms steps(6); }
 .deck-bar.full i { background: var(--g3); }
 .deck-side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-start; margin-left: var(--s1); }
+.deck-title { display: block; font: 700 var(--fs-s)/16px var(--f-bold); font-synthesis: none; color: var(--on-bg-dim); white-space: nowrap; }
 .deck-mult { display: block; font: 700 var(--fs-l)/28px var(--f-bold); font-synthesis: none; color: var(--or); white-space: nowrap; text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0); }
 .deck-mult.calm { color: var(--on-bg-dim); text-shadow: none; }
 .deck-mult.pop { color: var(--g3); }
@@ -26,10 +27,33 @@
 /* 알림 버튼은 특전 알림(.perk-alert)과 같은 크기·맥박. 둘 다 뜨면 세로로 쌓인다 */
 .deck-alert { width: 100%; }
 
-/* 공구함 창 · 카드 고르기 창 */
-.tb-total { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--s2); font-family: var(--f-bold); font-synthesis: none; }
-.tb-total span { font-size: var(--fs-m); color: var(--dim); }
-.tb-total b { font-size: var(--fs-xl); line-height: 40px; color: var(--or); }
+/* 이사 뒤 4번째 탭 = 공구함(도감 탭 자리). 잠금 칸은 접는다 */
+body.has-deck .tab-lock[data-lock="dex"] { display: none; }
+/* 상자 탭 [뽑기 / 도감] 토글: 두 칸 같은 폭, 선택된 쪽 = k1 면 + k5 글자 */
+.box-view { display: flex; gap: var(--s2); margin: 0 2px var(--s2); }
+.view-btn { flex: 1; min-width: 0; --face: var(--p1); --line: var(--k1); --fg: var(--k1); }
+.view-btn.on { --face: var(--k1); --line: var(--k0); --fg: var(--k5); --hi: transparent; --drop: var(--k0); }
+.view-btn .dot { top: -4px; right: -4px; }
+
+/* 공구함 탭 패널 */
+.deck-panel { display: flex; flex-direction: column; gap: var(--s2); }
+.dp-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.dp-lbl { flex: 1; min-width: 0; display: flex; flex-direction: column; font-family: var(--f-bold); font-synthesis: none; }
+.dp-lbl > span:first-child { font-size: var(--fs-m); line-height: var(--lh-m); color: var(--ink); }
+.dp-sub { font-size: var(--fs-s); line-height: var(--lh-s); color: var(--dim); }
+.dp-mult { flex: none; font: 700 var(--fs-xl)/40px var(--f-bold); font-synthesis: none; color: var(--or); white-space: nowrap; }
+.dp-mult.calm { color: var(--dim); }
+.dp-pick { width: 100%; }
+.dp-next { --face: var(--p1); --line: var(--k1); padding: var(--s2) var(--s3); margin: 0 2px; }
+.dp-next-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); font-family: var(--f-bold); font-synthesis: none; font-size: var(--fs-s); line-height: var(--lh-s); color: var(--dim); }
+.dp-next-head b { font-size: var(--fs-m); line-height: var(--lh-m); color: var(--ink); }
+.dp-track { display: block; box-sizing: border-box; height: 8px; margin-top: var(--s1); background: var(--k3); }
+.dp-track i { display: block; height: 8px; background: var(--b2); }
+.dp-list { margin-top: var(--s1); }
+.dp-note { margin: 0; text-align: center; }
+.deck-panel > .note.dim { color: var(--dim); }
+
+/* 카드 고르기 창 · 공구함 카드 줄 */
 .deck-card .pr-how, .deck-pick .pc-how { font-family: var(--f-bold); font-size: var(--fs-s); line-height: var(--lh-s); color: var(--b1); }
 .deck-pick .pc-how { display: block; padding-bottom: var(--s1); }
 .deck-card .deck-bar { width: 100%; margin-top: var(--s1); }
@@ -72,3 +96,19 @@
   body.has-deck .col-play:has(.deck-alert:not([hidden])) .deck-side, body.has-deck .col-play:has(.perk-alert:not(.deck-alert):not([hidden])) .deck-side { visibility: hidden; }
 }
 .mp-row.deck { grid-column: 1 / -1; }
+
+/* 카드 고르기 연출(4단계 화면 ②): 뒷면 등장 -> 가로 폭 계단 뒤집기(회전 없음) -> 번쩍. 시간표는 deckUi.ts `intro` */
+.deck-pick .pcard-inner { position: relative; animation: none; }
+.deck-pick .modal-body.dealing { overflow: hidden; }
+.deck-pick .pcard.pre { visibility: hidden; }
+.deck-pick .pback { display: none; position: absolute; inset: 0; z-index: 1; align-items: center; justify-content: center; background: var(--k1); --bc: var(--b2); box-shadow: 0 -2px 0 0 var(--bc), 0 2px 0 0 var(--bc), -2px 0 0 0 var(--bc), 2px 0 0 0 var(--bc), 0 6px 0 0 var(--k0); }
+.deck-pick .pcard.r-rare .pback { --bc: var(--b4); }
+.deck-pick .pcard.r-legend .pback { --bc: var(--g2); }
+.deck-pick .pcard.back .pback { display: flex; }
+.deck-pick .pcard.back .pface { visibility: hidden; }
+.deck-pick .pback .ico { width: 48px; height: 48px; image-rendering: pixelated; }
+.deck-pick .pflash { position: absolute; inset: 0; z-index: 5; visibility: hidden; pointer-events: none; }
+@media (min-width: 900px) {
+  .deck-pick .pback .ico { width: 96px; height: 96px; }
+}
+.deck-fly { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; max-width: none; image-rendering: pixelated; }

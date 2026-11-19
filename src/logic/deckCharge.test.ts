@@ -48,14 +48,14 @@ describe('공구함 배율: 충전 조건', () => {
     expect(charges(chargeOnStrike(s, { ...ev, feverBefore: true, feverAfter: true }))).toEqual([1]);
   });
   it('필요 눈금에서 멈추고 꽉 찬 카드·덱 전체 결과를 알려 준다', () => {
-    const s = withDeck({ slots: [slot('P2', NEED - 1), slot('C1', NEED), slot('S1', NEED)] });
+    const s = withDeck({ slots: [slot('P2', NEED - 1), slot('C1', NEED), slot('S1', NEED), slot('S3', NEED)] });
     const t = chargeOnPerfect(s, 1);
-    expect(charges(t)).toEqual([NEED, NEED, NEED]);
+    expect(charges(t)).toEqual([NEED, NEED, NEED, NEED]);
     const r = deckChargeResult(s, t);
     expect(r.full).toEqual(['P2']);
     expect(r.allFull).toBe(true);
-    expect(r.before).toBeCloseTo(4 * 4 * (1 + 3 * ((NEED - 1) / NEED)));
-    expect(r.after).toBe(64);
+    expect(r.before).toBeCloseTo(4 * 4 * 4 * (1 + 3 * ((NEED - 1) / NEED)));
+    expect(r.after).toBe(256);
     expect(deckChargeResult(t, chargeOnPerfect(t, 1)).allFull).toBe(false);
     expect(deckAllFull(withDeck({ slots: [slot('P2', NEED), slot('C1', NEED)] }))).toBe(false);
   });
@@ -80,9 +80,9 @@ describe('공구함 배율: 배수·연결', () => {
     expect(v[0].need).toBe(NEED);
   });
   it('카드를 바꾸면 그 칸의 눈금은 0, 다른 칸은 그대로', () => {
-    const s = withDeck({ slots: [slot('P2', 30), slot('C1', 10), slot('S1', 5)], offers: [['F1', 'F2', 'P1']] });
+    const s = withDeck({ slots: [slot('P2', 30), slot('C1', 10), slot('S1', 5), slot('S3', 7)], offers: [['F1', 'F2', 'P1']] });
     const n = chooseCard(s, 0, 'F1', 1)!;
-    expect(charges(n)).toEqual([30, 0, 5]);
+    expect(charges(n)).toEqual([30, 0, 5, 7]);
   });
   it('tapStable에는 곱해지지만 총 배율 분해(머리 칩)에는 안 섞인다', () => {
     const a = withDeck({});
@@ -148,10 +148,10 @@ describe('저장 v12 -> v13', () => {
     const r = parseSave(v12({ slots: [{ id: 'P2', star: 1 }, { id: 'C1', star: 1 }], offers: [['S1', 'S3', 'F1']], rerolls: 1, mark: 3, seen: ['P2'] }));
     expect(r.kind).toBe('ok');
     const s = r.state;
-    expect(s.version).toBe(13);
+    expect(s.version).toBe(14);
     expect(s.deck.slots).toEqual([{ id: 'P2', star: 1, charge: 0 }, { id: 'C1', star: 1, charge: 0 }]);
     expect(s.deck.targetScale).toBe(1);
-    expect(s.deck.mark).toBe(3);
+    expect(s.deck.mark).toBe(7);
     expect(s.deck.offers).toEqual([['S1', 'S3', 'F1']]);
     expect(deckMult(s)).toBe(1);
     expect(houseTarget(s)).toBe(houseInfo(2).target);

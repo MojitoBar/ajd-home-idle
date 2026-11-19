@@ -84,6 +84,7 @@ import * as strat from './strategyUi';
 import * as deckUi from './deckUi';
 import { rollCardOffer } from '../logic/deck';
 import { homePanel, syncHome } from './homeUi';
+import { getView, initBoxView, setView, syncBoxView, viewBar } from './boxView';
 import { clearNewTabDot, hasNewTabDot, initUnlock, markTabDot, syncUnlock, tabOpen } from './unlockUi';
 
 preloadIcons();
@@ -92,6 +93,10 @@ type TabId = 'tap' | 'home' | 'box' | 'dex';
 
 let state: GameState = defaultState();
 let activeTab: TabId = 'tap';
+/** 이사 1회 이상: 4번째 탭이 공구함, 도감은 상자 탭 토글 안 */
+let deckMode = false;
+const isDeckMode = (s: GameState): boolean => s.moves > 0 && !!s.deck;
+let dexTabSync: (m: boolean) => void = () => {};
 let tapGateState: TapGateState = initialTapGate();
 let closeModal: (() => void) | null = null;
 let moving = false;
@@ -367,6 +372,21 @@ function build(): void {
     tabDots.set(id, dot);
     tabBtns.set(id, b);
     if (id !== 'tap') b.dataset.ux = id;
+    if (id === 'dex') {
+      const lbl = b.querySelector('.tab-lbl')!;
+      const deckIco = iconImg('card/back-common', { size: 48 });
+      let cur: HTMLElement = icon;
+      const dexIco = icon;
+      dexTabSync = (m) => {
+        lbl.textContent = m ? '공구함' : '도감';
+        const next = m ? deckIco : dexIco;
+        if (cur !== next) {
+          cur.replaceWith(next);
+          cur = next;
+        }
+        b.dataset.ux = m ? 'deck' : 'dex';
+      };
+    }
     const grp = id === 'tap' || id === 'home' ? tabsL : tabsR;
     grp.append(b);
     if (id !== 'tap') grp.append(el('span', { cls: 'tab-lock', attrs: { 'aria-hidden': 'true', 'data-lock': id } }));
@@ -382,7 +402,7 @@ function build(): void {
     },
     update,
     save,
-    goto: selectTab,
+    goto: gotoTab,
     showModal,
     dismissModal,
     guide: guideSay,
@@ -407,6 +427,10 @@ function build(): void {
     holding: () => guideRow.classList.contains('done'),
   });
   initDex(uiCtx);
+  initBoxView(() => {
+    showBoxPanel();
+    update();
+  });
   initParcel(refs.room, ptsTarget, uiCtx);
   strat.initStrategy({ ctx: uiCtx });
   strat.moveExtra.append(deckUi.alertBtn);
@@ -444,7 +468,7 @@ function build(): void {
     release: () => chargeUi.releaseKey(),
     tab: (n) => {
       const id = (['tap', 'home', 'box', 'dex'] as TabId[])[n];
-      if (tabOpen(id)) selectTab(id);
+      if (tabOpen(id) || (id === 'dex' && deckMode)) selectTab(id);
     },
   });
   selectTab('tap');
@@ -546,14 +570,48 @@ function buildTapPanel(): void {
 
 function selectTab(id: TabId): void {
   activeTab = id;
-  clearNewTabDot(id);
-  const panels: Record<TabId, HTMLElement> = { tap: tapPanel, home: homePanel, box: boxPanel, dex: dexPanel };
-  refs.panel.replaceChildren(panels[id]);
-  toggleClass(refs.panel, 'surface', id === 'box' || id === 'dex');
+  deckMode = isDeckMode(state);
+  dexTabSync(deckMode);
+  if (!(id === 'dex' && deckMode)) clearNewTabDot(id);
+  if (id === 'box') showBoxPanel();
+  else {
+    const panels: Record<TabId, HTMLElement> = { tap: tapPanel, home: homePanel, box: boxPanel, dex: deckMode ? deckUi.panel : dexPanel };
+    refs.panel.replaceChildren(panels[id]);
+    toggleClass(refs.panel, 'surface', id === 'dex');
+    if (id === 'dex' && deckMode) deckUi.syncPanel(state, true);
+    else if (id === 'dex') renderDex(true);
+  }
   const top = refs.panel.getBoundingClientRect().top + window.scrollY - 8;
   if (!desktopMq.matches && window.scrollY > top) window.scrollTo(0, top);
-  if (id === 'dex') renderDex(true);
   update();
+}
+
+/** 상자 탭: 이사 뒤에는 맨 위 [뽑기 / 도감] 토글 아래에 둘 중 하나 */
+function showBoxPanel(): void {
+  deckMode = isDeckMode(state);
+  const dex = deckMode && getView() === 'dex';
+  refs.panel.replaceChildren(...(deckMode ? [viewBar, dex ? dexPanel : boxPanel] : [boxPanel]));
+  toggleClass(refs.panel, 'surface', true);
+  if (dex) {
+    clearNewTabDot('dex');
+    renderDex(true);
+  }
+}
+
+/** 코드에서 탭으로 보낼 때: 이사 뒤 도감은 상자 탭 도감 토글, 공구함은 4번째 탭(모바일은 패널이 보이게 스크롤) */
+function gotoTab(id: TabId | 'deck'): void {
+  if (id === 'deck') {
+    if (!isDeckMode(state)) return;
+    selectTab('dex');
+    if (!desktopMq.matches) window.scrollTo(0, refs.panel.getBoundingClientRect().top + window.scrollY - 8);
+    return;
+  }
+  if (id === 'dex' && isDeckMode(state)) {
+    if (getView() !== 'dex') setView('dex');
+    selectTab('box');
+    return;
+  }
+  selectTab(id);
 }
 
 /** PC(900px 이상)에서는 왼쪽 단(.col-play) 가운데, 모바일은 화면 가운데 */
@@ -1152,16 +1210,28 @@ function update(): void {
 
   for (const [id, b] of tabBtns) toggleClass(b, 'active', id === activeTab);
 
+  if (isDeckMode(state) !== deckMode && (activeTab === 'dex' || activeTab === 'box')) selectTab(activeTab);
+  else if (isDeckMode(state) !== deckMode) {
+    deckMode = !deckMode;
+    dexTabSync(deckMode);
+  }
   if (activeTab === 'tap') updateTapPanel();
   else if (activeTab === 'home') syncHome(state);
-  else if (activeTab === 'box') updateBox();
-  else if (activeTab === 'dex') updateDex();
+  else if (activeTab === 'box') {
+    updateBox();
+    if (deckMode && getView() === 'dex') updateDex();
+  } else if (activeTab === 'dex') {
+    if (deckMode) deckUi.syncPanel(state);
+    else updateDex();
+  }
+  const dexNew = fresh.size > 0 || hasNewTabDot('dex');
+  syncBoxView(dexNew && getView() !== 'dex');
 
   const dots: [TabId, boolean][] = [
-    ['tap', activeTab !== 'tap' && (hasNewTabDot('tap') || deckUi.hasPending())],
+    ['tap', activeTab !== 'tap' && hasNewTabDot('tap')],
     ['home', activeTab !== 'home' && hasNewTabDot('home')],
-    ['box', activeTab !== 'box' && (canBuyBox() || canBuyPerkBoxUi() || hasNewTabDot('box'))],
-    ['dex', activeTab !== 'dex' && (fresh.size > 0 || hasNewTabDot('dex'))],
+    ['box', activeTab !== 'box' && (canBuyBox() || canBuyPerkBoxUi() || hasNewTabDot('box') || (deckMode && dexNew))],
+    ['dex', activeTab !== 'dex' && (deckMode ? deckUi.hasPending() : dexNew)],
   ];
   for (const [id, on] of dots) {
     const d = tabDots.get(id)!;

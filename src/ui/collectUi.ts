@@ -80,7 +80,8 @@ export interface UiCtx {
   set(s: GameState): void;
   update(): void;
   save(): void;
-  goto(tab: 'tap' | 'home' | 'box' | 'dex'): void;
+  /** 'dex'는 도감(이사 뒤에는 상자 탭의 도감 토글), 'deck'은 공구함 탭(이사 뒤에만) */
+  goto(tab: 'tap' | 'home' | 'box' | 'dex' | 'deck'): void;
   showModal(title: string, body: Node[], actions: Parameters<typeof openModal>[2], opts?: Parameters<typeof openModal>[3]): void;
   dismissModal(): void;
   /** 가이드에 사건을 알린다 */

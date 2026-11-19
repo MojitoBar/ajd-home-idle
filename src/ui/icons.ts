@@ -6,11 +6,11 @@ const BASE = import.meta.env.BASE_URL;
 export type IconName =
   | 'box-closed' | 'box-open' | 'parcel' | 'coin' | 'coin-pile' | 'fever' | 'crit' | 'perk'
   | 'ui-settings' | 'ui-dex' | 'ui-rocket' | 'ui-move' | 'ui-tools'
-  | `house-${string}` | `perk-${string}` | `tool/${string}` | `box/${string}`;
+  | `house-${string}` | `perk-${string}` | `tool/${string}` | `box/${string}` | `card/${string}`;
 
 export const collectibleUrl = (id: string, variant: string): string => `${BASE}assets/px/col/${id}${variant === 'gold' || variant === 'rainbow' ? `-${variant}` : ''}.png`;
 
-export const iconUrl = (name: IconName): string => `${BASE}assets/px/${name.startsWith('tool/') || name.startsWith('box/') ? '' : 'icon/'}${name}.png`;
+export const iconUrl = (name: IconName): string => `${BASE}assets/px/${name.startsWith('tool/') || name.startsWith('box/') || name.startsWith('card/') ? '' : 'icon/'}${name}.png`;
 
 /** 특전 아이콘(데이터의 id 와 같다) */
 export const perkIcon = (id: string): IconName => `perk-${id}`;

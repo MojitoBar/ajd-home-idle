@@ -140,7 +140,7 @@ describe('가격·보장·저장', () => {
     const r = parseSave(serialize(s, 1));
     expect(r.kind).toBe('ok');
     const loaded = r.state;
-    expect(JSON.parse(serialize(s, 1)).version).toBe(13);
+    expect(JSON.parse(serialize(s, 1)).version).toBe(14);
     expect(loaded.collection.fan.base).toBe(7);
     expect(slotLevel(loaded.collection.fan.base)).toBe(3);
   });

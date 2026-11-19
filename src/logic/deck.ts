@@ -1,5 +1,5 @@
 /** 공구함 덱(설계 DESIGN-DECK.md): 이 집에서만 쓰는 카드. 칸 수는 이사 횟수, 카드는 진행 문턱마다 무료 3택. 이사하면 초기화(prestige.ts). 2단계는 카드 12장·3칸 */
-import { CARDS, CARD_CHARGE_NEED, CARD_MULT_CAP_BASE, CARD_OFFER_SIZE, CHARGE_NEED_SCALE, CHARGE_RULES, DECK_MARKS, DECK_MARK_DIGITS, DECK_TARGET_SCALE, cardDef, type CardTag } from '../data/cards';
+import { CARDS, CARD_CHARGE_NEED, CARD_MULT_CAP_BASE, CARD_OFFER_SIZE, CHARGE_NEED_SCALE, CHARGE_RULES, DECK_MARKS, DECK_MARK_DIGITS, DECK_SLOTS, DECK_TARGET_SCALE, cardDef, type CardTag } from '../data/cards';
 import { houseTarget } from './house';
 import type { ChargeGrade } from './charge';
 import type { GameState } from './state';
@@ -130,10 +130,10 @@ export function chargeOnPerfect(state: GameState, streak: number): GameState {
   return addCharge(state, (tags) => (tags.includes('precise') ? g : 0));
 }
 
-/** 칸 수. 1단계는 이사 횟수와 상관없이 3칸(뒤 단계에서 4·5·6칸) */
+/** 칸 수. 4단계는 이사 횟수와 상관없이 4칸(5·6칸은 7단계) */
 export function deckSlots(moves: number): number {
   void moves;
-  return 3;
+  return DECK_SLOTS;
 }
 
 export interface DeckEffects {
@@ -265,7 +265,7 @@ export function deckEvent(state: { deck?: DeckState }, ev: StrikeEvent): DeckFir
   return out;
 }
 
-/** 진행 문턱 k(1~5)의 누적 P: 이 집 목표(`houseTarget`) x 10^(-d), d는 `DECK_MARK_DIGITS[이사 횟수][k]` */
+/** 진행 문턱 k(1~DECK_MARKS-1)의 누적 P: 이 집 목표(`houseTarget`) x 10^(-d), d는 `DECK_MARK_DIGITS[이사 횟수][k]` */
 export function markThreshold(state: Pick<GameState, 'moves' | 'deck'>, k: number): number {
   const row = DECK_MARK_DIGITS[Math.min(Math.max(state.moves, 1), DECK_MARK_DIGITS.length) - 1];
   return houseTarget(state) * 10 ** -row[k - 1];
@@ -276,6 +276,31 @@ export function marksPassed(state: Pick<GameState, 'moves' | 'deck'>, earned: nu
   let m = 1;
   while (m < DECK_MARKS && earned >= markThreshold(state, m)) m++;
   return m;
+}
+
+/** 이 집에서 앞으로 받을 고르기 횟수(아직 안 지난 문턱 수 + 받아 놓고 안 고른 묶음 수). 첫 집은 0 */
+export function deckPicksLeft(state: Pick<GameState, 'moves' | 'deck'>): number {
+  if (state.moves === 0) return 0;
+  return DECK_MARKS - state.deck.mark + state.deck.offers.length;
+}
+
+export interface NextMark {
+  /** 다음 문턱 번호(1~DECK_MARKS-1). 지금 mark와 같다 */
+  k: number;
+  /** 다음 문턱 누적 P(이 집 `earned` 기준) */
+  at: number;
+  /** 앞 문턱(없으면 한 자릿수 아래)에서 다음 문턱까지 자릿수(로그) 기준 진행률 0~1 */
+  progress: number;
+}
+
+/** 다음 문턱과 진행률. 첫 집이거나 문턱을 다 지났으면 null */
+export function deckNextMark(state: Pick<GameState, 'moves' | 'deck' | 'earned'>): NextMark | null {
+  const k = state.deck.mark;
+  if (state.moves === 0 || k < 1 || k >= DECK_MARKS) return null;
+  const at = markThreshold(state, k);
+  const prev = k > 1 ? markThreshold(state, k - 1) : at / 10;
+  const progress = Math.min(1, Math.max(0, Math.log10(Math.max(state.earned, prev) / prev) / Math.log10(at / prev)));
+  return { k, at, progress };
 }
 
 function hashRng(seed: number): () => number {
@@ -317,15 +342,20 @@ export function deckAfterMove(prev: Pick<GameState, 'moves' | 'stats' | 'deck'>)
 }
 
 /**
- * 진행 문턱 판정. 이 집에서 번 P(`earned`)가 다음 문턱을 넘으면 3택 묶음을 1개 지급한다. 한 번에 문턱 여러 개를 넘어도 묶음은 1개.
- * 첫 집(moves 0)과 문턱을 다 넘긴 뒤에는 같은 객체를 돌려준다(탭마다 불리므로 가볍게). 화면은 `deck.mark`나 `deck.offers.length`가 늘었는지로 새 묶음을 안다.
+ * 진행 문턱 판정. 이 집에서 번 P(`earned`)가 넘은 문턱마다 3택 묶음을 1개씩 지급한다(한 번에 여러 개를 넘으면 그만큼 쌓인다. 고르기 횟수 = 문턱 수).
+ * 첫 집(moves 0)과 문턱을 다 넘긴 뒤, 새 문턱이 없을 때는 같은 객체를 돌려준다(탭마다 불리므로 가볍게). 화면은 `deck.mark`나 `deck.offers.length`가 늘었는지로 새 묶음을 안다.
  */
 export function checkMarks(state: GameState): GameState {
   if (state.moves === 0) return state;
   const deck = state.deck;
   if (deck.mark >= DECK_MARKS || state.earned < markThreshold(state, deck.mark)) return state;
-  const mark = marksPassed(state, state.earned);
-  return { ...state, deck: { ...deck, mark, offers: [...deck.offers, rollCardOffer(deck.slots, offerSeed(state, mark))] } };
+  let mark = deck.mark;
+  const offers = [...deck.offers];
+  while (mark < DECK_MARKS && state.earned >= markThreshold(state, mark)) {
+    mark++;
+    offers.push(rollCardOffer(deck.slots, offerSeed(state, mark)));
+  }
+  return { ...state, deck: { ...deck, mark, offers } };
 }
 
 /** 칸이 다 차 있어 고른 카드를 넣으려면 바꿀 칸을 지정해야 하는가 */

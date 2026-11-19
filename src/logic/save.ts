@@ -132,6 +132,20 @@ export const MIGRATIONS: Migrations = {
     const slots = Array.isArray(d.slots) ? d.slots.map((o) => (isObj(o) ? { ...o, charge: 0 } : o)) : [];
     return { ...s, version: 13, deck: { ...d, slots, targetScale: 1 } };
   },
+  // 13 -> 14: 4칸·문턱 = 칸 + 3(6곳). 낀 카드·눈금·targetScale·묶음은 그대로, 4번째 칸은 빈 칸. mark는 새 표로 이미 넘은 문턱까지 채우되(묶음은 안 준다, 단 빈 칸이 있는데 고르기가 0이면 1개) 지금보다 줄이지 않는다
+  13: (s) => {
+    const d = isObj(s.deck) ? s.deck : {};
+    const moves = num(s.moves, 0, true);
+    if (moves === 0) return { ...s, version: 14, deck: d };
+    const targetScale = Math.max(1e-6, num(d.targetScale, 1));
+    const passed = marksPassed({ moves, deck: { ...emptyDeck(), targetScale } }, num(s.earned, 0));
+    const mark = Math.max(num(d.mark, 0, true), passed);
+    const slots = Array.isArray(d.slots) ? d.slots.filter(isObj) : [];
+    const offers = Array.isArray(d.offers) ? d.offers : [];
+    // 문턱을 이미 다 넘어 새 4번째 칸을 채울 방법이 없으면 묶음 1개를 준다
+    if (slots.length < deckSlots(moves) && DECK_MARKS - mark + offers.length === 0) return { ...s, version: 14, deck: { ...d, mark, offers: [rollCardOffer(slots as unknown as DeckSlot[], moves * 7919 + 31)] } };
+    return { ...s, version: 14, deck: { ...d, mark } };
+  },
 };
 
 export type LoadResult =

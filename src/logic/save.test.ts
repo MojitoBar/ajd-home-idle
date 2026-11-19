@@ -4,6 +4,8 @@ import { exportString, importString, migrate, parseSave, sanitize, serialize } f
 import { defaultState } from './state';
 import { houseInfo } from './house';
 import { GUIDE_STEPS } from './guide';
+import { DECK_MARKS } from '../data/cards';
+import { checkMarks, deckFull, deckSlots } from './deck';
 
 describe('저장·불러오기', () => {
   it('직렬화 왕복', () => {
@@ -40,7 +42,7 @@ describe('저장·불러오기', () => {
     const r = parseSave(JSON.stringify({ points: 9 }));
     expect(r.kind).toBe('ok');
     expect(r.state.points).toBe(9);
-    expect(r.state.version).toBe(13);
+    expect(r.state.version).toBe(14);
   });
   it('migrate 체인은 순서대로 적용되고 빈 단계는 null', () => {
     const chain = {
@@ -71,7 +73,7 @@ describe('저장·불러오기', () => {
   it('3->4: 약정이 있던 예전 저장도 약정 필드 없이 v9로 올라온다', () => {
     const old = { ...JSON.parse(serialize(defaultState(), 1)), version: 3, moves: 1, contracts: [{ service: 0, kind: 'long', remainSec: 1800 }] };
     const r = parseSave(JSON.stringify(old));
-    expect(r.state.version).toBe(13);
+    expect(r.state.version).toBe(14);
     expect(r.state).not.toHaveProperty('contracts');
   });
   it('4->5: unpack를 첫 상자 기본값으로 채운다, 나머지는 보존', () => {
@@ -79,7 +81,7 @@ describe('저장·불러오기', () => {
     void unpack;
     const r = parseSave(JSON.stringify({ ...rest, version: 4 }));
     expect(r.kind).toBe('ok');
-    expect(r.state.version).toBe(13);
+    expect(r.state.version).toBe(14);
     expect(r.state.unpack).toMatchObject({ box: 0, damage: 0, roomDone: false, hp: 7, rushSec: 0 });
     expect(r.state.points).toBe(77);
     expect(r.state.moves).toBe(2);
@@ -107,7 +109,7 @@ describe('저장·불러오기', () => {
     void strikeLevel;
     void bestChain;
     const r = parseSave(JSON.stringify({ ...rest, version: 6 }));
-    expect(r.state.version).toBe(13);
+    expect(r.state.version).toBe(14);
     expect([r.state.strikeLevel, r.state.bestChain]).toEqual([0, 0]);
   });
   it('7->8: unpack에 salt(비음수 정수)와 러시 0이 채워지고 나머지는 보존', () => {
@@ -116,7 +118,7 @@ describe('저장·불러오기', () => {
     void salt;
     void rushSec;
     const r = parseSave(JSON.stringify({ ...base, version: 7, unpack: old }));
-    expect(r.state.version).toBe(13);
+    expect(r.state.version).toBe(14);
     expect(r.state.unpack).toMatchObject({ box: 33, damage: 4, hp: 9, rushSec: 0, salt: (3 * 7919 + 33 * 31 + 17) & 0x7fffffff });
     expect(Number.isInteger(r.state.unpack.salt) && r.state.unpack.salt >= 0).toBe(true);
   });
@@ -133,7 +135,7 @@ describe('저장·불러오기', () => {
     void homeLv;
     const r = parseSave(JSON.stringify({ ...rest, version: 5, unpack: { box: 35, damage: 3, roomDone: false } }));
     expect(r.kind).toBe('ok');
-    expect(r.state.version).toBe(13);
+    expect(r.state.version).toBe(14);
     expect(r.state.homeLv).toEqual([1, 1, 1, 0, 0, 0, 0, 0]);
     expect(r.state.unpack).toMatchObject({ box: 35, damage: 3, roomDone: false, hp: boxHp(35) });
     const done = parseSave(JSON.stringify({ ...rest, version: 5, unpack: { box: 200, damage: 0, roomDone: true } }));
@@ -157,7 +159,7 @@ describe('8->9: 서비스·결합·약정 삭제', () => {
   };
   it('버전 9, services·contracts 없음, 안내 표시가 붙는다', () => {
     const s = load(v8());
-    expect(s.version).toBe(13);
+    expect(s.version).toBe(14);
     expect(s).not.toHaveProperty('services');
     expect(s).not.toHaveProperty('contracts');
     expect(s.notice).toEqual({ kind: 'v9', boxes: 8 }); // 레벨 합 215 / 25 = 8
@@ -238,7 +240,7 @@ describe('8->9: 죽은 특전·이벤트 정리', () => {
     };
     it('이미 하던 저장은 전부 가이드 완료', () => {
       const played = load(v9({ stats: { totalTaps: 500, totalEarned: 1e6, playSec: 90, boxesOpened: 0 }, points: 1e6, earned: 1e6 }));
-      expect(played.version).toBe(13);
+      expect(played.version).toBe(14);
       expect(played.guide).toEqual({ step: GUIDE_STEPS.length, n: 0, done: true });
       expect(load(v9({ moves: 3, stats: { totalTaps: 9, totalEarned: 1, playSec: 1, boxesOpened: 0 } })).guide.done).toBe(true);
     });
@@ -263,7 +265,7 @@ describe('8->9: 죽은 특전·이벤트 정리', () => {
     };
     it('버전 11, perkBoxBought 0, 나머지는 보존', () => {
       const s = load(v10({ points: 77, perks: { tap_power: 3 } }));
-      expect(s.version).toBe(13);
+      expect(s.version).toBe(14);
       expect(s.perkBoxBought).toBe(0);
       expect(s.points).toBe(77);
       expect(s.perks).toEqual({ tap_power: 3 });
@@ -298,13 +300,13 @@ describe('8->9: 죽은 특전·이벤트 정리', () => {
     };
     it('첫 집은 빈 덱', () => {
       const s = load(v11());
-      expect(s.version).toBe(13);
+      expect(s.version).toBe(14);
       expect(s.deck).toEqual({ slots: [], offers: [], rerolls: 2, mark: 0, seen: [], targetScale: 1 });
     });
     it('이사한 저장은 지금 진행의 문턱 수와 소개용 묶음 1개를 받는다', () => {
       const target = houseInfo(2).target;
       const s = load(v11({ moves: 2, earned: target }));
-      expect(s.deck.mark).toBe(6);
+      expect(s.deck.mark).toBe(7);
       expect(s.deck.offers).toHaveLength(1);
       expect(s.deck.offers[0]).toHaveLength(3);
       expect(s.deck.slots).toEqual([]);
@@ -321,18 +323,59 @@ describe('8->9: 죽은 특전·이벤트 정리', () => {
       expect(s.deck.slots).toEqual([{ id: 'P2', star: 3, charge: 0 }, { id: 'C1', star: 1, charge: 0 }]);
       expect(s.deck.offers).toEqual([['P2', 'C1']]);
       expect(s.deck.rerolls).toBe(9);
-      expect(s.deck.mark).toBe(6);
+      expect(s.deck.mark).toBe(7);
       expect(s.deck.seen).toEqual(['P2']);
     });
     it('칸 수를 넘는 카드는 뒤에서부터 버린다', () => {
       const raw = JSON.parse(serialize(defaultState(), 1));
-      const slots = ['P2', 'C1', 'P3', 'C3'].map((id) => ({ id, star: 1 }));
-      expect(sanitize({ ...raw, moves: 1, deck: { slots } }).deck.slots.map((s) => s.id)).toEqual(['P2', 'C1', 'P3']);
+      const slots = ['P2', 'C1', 'P3', 'C3', 'S1'].map((id) => ({ id, star: 1 }));
+      expect(sanitize({ ...raw, moves: 1, deck: { slots } }).deck.slots.map((s) => s.id)).toEqual(['P2', 'C1', 'P3', 'C3']);
     });
     it('덱이 왕복하고 덱 필드가 없으면 빈 덱', () => {
       const s = { ...defaultState(), moves: 1, deck: { slots: [{ id: 'C3', star: 1, charge: 7 }], offers: [['P2', 'C1', 'P3']], rerolls: 1, mark: 3, seen: ['C3'], targetScale: 2 } };
       expect(parseSave(serialize(s, 5)).state.deck).toEqual(s.deck);
       expect(sanitize({ ...JSON.parse(serialize(defaultState(), 1)), deck: undefined }).deck).toEqual({ slots: [], offers: [], rerolls: 2, mark: 0, seen: [], targetScale: 1 });
     });
+  });
+});
+
+describe('저장 v13 -> v14 (4칸·문턱 = 칸 + 3)', () => {
+  const v13 = (deck: Record<string, unknown>, earned: number) => {
+    const raw = JSON.parse(serialize(defaultState(), 1));
+    return JSON.stringify({ ...raw, version: 13, moves: 2, earned, deck });
+  };
+  const deck13 = (mark: number) => ({ slots: [{ id: 'P2', star: 1, charge: 7 }, { id: 'C1', star: 1, charge: 3 }, { id: 'S1', star: 1, charge: 0 }], offers: [['F1', 'F2', 'P1']], rerolls: 1, mark, seen: ['P2'], targetScale: 85 });
+  it('낀 카드·눈금·묶음·목표 배수는 그대로이고 4번째 칸은 빈 칸', () => {
+    const s = parseSave(v13(deck13(2), 1)).state;
+    expect(s.version).toBe(14);
+    expect(s.deck.slots).toEqual([{ id: 'P2', star: 1, charge: 7 }, { id: 'C1', star: 1, charge: 3 }, { id: 'S1', star: 1, charge: 0 }]);
+    expect(s.deck.offers).toEqual([['F1', 'F2', 'P1']]);
+    expect(s.deck.targetScale).toBe(85);
+    expect(s.deck.mark).toBe(2);
+    expect(deckSlots(s.moves)).toBe(4);
+    expect(deckFull(s)).toBe(false);
+  });
+  it('새 표로 이미 넘은 문턱은 mark만 채우고 묶음은 더 주지 않는다', () => {
+    const s = parseSave(v13(deck13(2), houseInfo(2).target * 85)).state;
+    expect(s.deck.mark).toBe(DECK_MARKS);
+    expect(s.deck.offers).toHaveLength(1);
+    expect(checkMarks(s)).toBe(s);
+  });
+  it('이미 받은 mark는 새 표가 낮게 세어도 줄지 않는다', () => {
+    const s = parseSave(v13(deck13(6), 1)).state;
+    expect(s.deck.mark).toBe(6);
+    expect(s.deck.offers).toHaveLength(1);
+  });
+  it('문턱을 다 넘고 묶음도 없는데 빈 칸이 있으면 묶음 1개를 준다', () => {
+    const s = parseSave(v13({ ...deck13(DECK_MARKS), offers: [] }, 1)).state;
+    expect(s.deck.offers).toHaveLength(1);
+    expect(s.deck.offers[0]).toHaveLength(3);
+    expect(s.deck.offers[0].some((id) => ['P2', 'C1', 'S1'].includes(id))).toBe(false);
+    const full = parseSave(v13({ ...deck13(DECK_MARKS), offers: [], slots: [...deck13(0).slots, { id: 'F1', star: 1, charge: 0 }] }, 1)).state;
+    expect(full.deck.offers).toHaveLength(0);
+  });
+  it('첫 집은 mark를 건드리지 않는다', () => {
+    const raw = JSON.parse(serialize(defaultState(), 1));
+    expect(parseSave(JSON.stringify({ ...raw, version: 13, moves: 0, earned: 1e30 })).state.deck.mark).toBe(0);
   });
 });
