@@ -833,10 +833,9 @@ function playBursts(i: HeavyHitInput): void {
     return;
   }
   if (reduced) {
-    i.bursts.forEach((b, j) => {
-      const box = boxes[0];
-      if (box) boom(box, b, i.pointsEl, true, { j, n });
-    });
+    skipBursts(i.bursts, 0, n - 1, i.pointsEl, n);
+    const last = boxes[0];
+    if (last) boom(last, i.bursts[n - 1], i.pointsEl, true, { j: n - 1, n });
     startChain();
     chainShow(n, cumGain(i)[n - 1]);
     chainEnd(i.bursts, i.prize, i.pointsEl, true, cumGain(i)[n - 1]);
@@ -918,6 +917,34 @@ function startChain(): void {
   chainJudgePop = !!j;
 }
 
+/** 묶음 안에서 그림 없이 넘기는 칸 중 따로 처리해야 하는 칸: 살림 놓기·방 완성·사은품·단계 상승은 알림·선물이 걸려 있다 */
+const skipNeeds = (b: BoxBurst): boolean => b.slot !== undefined || b.roomDone || b.freeBoxes.length > 0 || !!b.care?.tierUp;
+
+/** 그림 없이 넘기는 칸(bs[from..to))을 한꺼번에 처리한다. 칸마다 상자를 만들고 지우고 위치를 재던 것(연쇄 수에 비례, 7만 연쇄에 7초 멈춤·노드 40만)을
+ * 대기열을 마지막 칸 기준으로 한 번만 다시 짓는 것으로 바꾼다. 알림·선물이 걸린 칸(skipNeeds)만 기존대로 boom을 거친다 */
+function skipBursts(bs: BoxBurst[], from: number, to: number, pointsEl: Element, n: number): void {
+  if (to <= from) return;
+  dropTapNumber();
+  squashAnim?.cancel();
+  shownBar = -1;
+  if (from === 0) vibrate([18, 30, 40]);
+  let big = false;
+  let care = false;
+  for (let j = from; j < to; j++) {
+    const b = bs[j];
+    if (b.kind === 'big') big = true;
+    if (b.care) care = true;
+    if (!skipNeeds(b)) continue;
+    if (boxes[0]?.k !== b.k) rebuild(b.k);
+    const b0 = boxes[0];
+    if (b0) boom(b0, b, pointsEl, true, { j, n, instant: true, skip: true });
+  }
+  if (big) sfx.boxBurst(1);
+  if (care) applyTiers();
+  const next = bs[to - 1].k + 1;
+  if (boxes[0]?.k !== next) rebuild(next);
+}
+
 /** 하나씩 터뜨리는 연쇄의 끝(이 수까지는 한 칸에 한 번씩, 간격 clamp(900/n, 35, 90)ms를 평균으로 뒤로 갈수록 빨라진다) */
 const CHAIN_SOLO = 40;
 const CHAIN_TICK_MS = 35;
@@ -969,10 +996,7 @@ function playChain(i: HeavyHitInput): void {
     try {
       if (at === 0) startChain();
       if (box) {
-        for (let j = at; j < cut - 1; j++) {
-          const b0 = boxes[0];
-          if (b0) boom(b0, bs[j], i.pointsEl, true, { j, n, instant: true, skip: true });
-        }
+        skipBursts(bs, at, cut - 1, i.pointsEl, n);
         const b1 = boxes[0];
         if (b1) boom(b1, bs[cut - 1], i.pointsEl, false, { j: cut - 1, n, sz: cut - at });
       }

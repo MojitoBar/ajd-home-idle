@@ -23,8 +23,14 @@ export function slotLevelMult(level: number): number {
   return level <= 0 ? 0 : 2 ** (level - 1);
 }
 
+/** 도감 객체는 바꾸지 않고 새로 만들어 쓰므로(불변) 같은 객체면 배율·세트 효과를 다시 셀 필요가 없다. 연쇄 한 번에 상자마다 불리는 값이다 */
+const slotMultCache = new WeakMap<object, number>();
+const setEffectsCache = new WeakMap<object, SetEffects>();
+
 /** 칸 기여만의 도감 배율(세트 곱 제외) */
 export function slotMultOf(collection: GameState['collection']): number {
+  const hit = slotMultCache.get(collection);
+  if (hit !== undefined) return hit;
   let bonus = 0;
   for (const c of COLLECTIBLES) {
     const slot = collection[c.id];
@@ -32,6 +38,7 @@ export function slotMultOf(collection: GameState['collection']): number {
     const w = RARITIES.find((r) => r.id === c.rarity)!.weight;
     for (const v of VARIANTS) bonus += w * v.weight * slotLevelMult(slotLevel(slot[v.id]));
   }
+  slotMultCache.set(collection, 1 + bonus);
   return 1 + bonus;
 }
 
@@ -63,12 +70,15 @@ export interface SetEffects {
 
 /** 완성한 세트의 효과 합. 도감 배율은 곱(기본 1), 초·치명 배율 가산은 합(기본 0). */
 export function setEffects(state: Pick<GameState, 'collection'>): SetEffects {
+  const hit = setEffectsCache.get(state.collection);
+  if (hit) return { ...hit };
   const fx: SetEffects = { dexMult: 1, feverSec: 0, critMult: 0 };
   for (const s of setProgress(state.collection)) {
     if (!s.done) continue;
     fx.dexMult *= s.dexMult;
     if (s.effect && s.value !== undefined) fx[s.effect] += s.value;
   }
+  setEffectsCache.set(state.collection, { ...fx });
   return fx;
 }
 
