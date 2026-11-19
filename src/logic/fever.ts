@@ -21,8 +21,9 @@ export const PARCEL_TAPS_PER_SEC = 2.5;
 export const initialFever = (): FeverState => ({ gauge: 0, activeSec: 0, cooldownSec: 0 });
 export const initialParcel = (): ParcelState => ({ nextInSec: 90, remainSec: 0 });
 
-export function feverMultOf(fever: FeverState): number {
-  return fever.activeSec > 0 ? FEVER_MULT : 1;
+/** 피버 중 배율(기본 x3). add는 공구함 카드(F4 불꽃 축제 +1)가 더하는 값 */
+export function feverMultOf(fever: FeverState, add = 0): number {
+  return fever.activeSec > 0 ? FEVER_MULT + add : 1;
 }
 
 /** 피버 게이지 비율(0~1). 피버 중엔 남은 시간 비율. */

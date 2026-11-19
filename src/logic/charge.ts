@@ -1,9 +1,10 @@
 /** 꾹 눌러 강타: 길게 누르면 표시(marker)가 0 -> 1 -> 0을 왕복하고, 손을 뗀 자리가 판정이 된다. 저장하지 않는 실행 중 상태(연속 퍼펙트 streak 포함). */
 import { DECK_PERFECT_HALF_HARD_MAX } from '../data/cards';
-import { chargeOnPerfect, deckChargeResult, deckFeverFires, deckMultFires, deckStrikeMult } from './deck';
+import { deckEffects, chargeOnPerfect, deckBuffAfterStrike, deckChargeResult, deckFeverFires, deckMultFires, deckPerfectFires, deckStrikeMult } from './deck';
+import { feverMultOf } from './fever';
 import { heavyHit, type HeavyResult } from './unpack';
 import type { GameState } from './state';
-import { strikeMult } from './economy';
+import { strikeMult, tapValue } from './economy';
 import { gearEffects } from './gear';
 import { featureOpen } from './guide';
 import { perkEffects } from './perks';
@@ -134,8 +135,16 @@ export function releaseCharge(
   const taps = Math.round(chargeTaps(grade, featureOpen(state, 'streak') ? streak : 0, fx.streakBonus) * mult * strikeMult(state.strikeLevel) * fx.strikeMult * deckMult);
   const h = heavyHit(state, rng, taps, comboMult, reward.fever);
   const fev = deckFeverFires(state, grade);
-  const deckFires = deckMult > 1 || fev.sec > 0 ? [...deckMultFires(state, grade, nextStreak), ...fev.fires, ...h.deckFires] : h.deckFires;
-  const fed = fev.sec > 0 && h.state.fever.activeSec > 0 ? { ...h.state, fever: { ...h.state.fever, activeSec: h.state.fever.activeSec + fev.sec } } : h.state;
-  const out = grade === 'perfect' ? chargeOnPerfect(fed, nextStreak) : fed;
+  const pReward = deckPerfectFires(state, grade, nextStreak);
+  const deckFires = deckMult > 1 || fev.sec > 0 || pReward.length > 0 ? [...deckMultFires(state, grade, nextStreak), ...fev.fires, ...pReward, ...h.deckFires] : h.deckFires;
+  let fed = fev.sec > 0 && h.state.fever.activeSec > 0 ? { ...h.state, fever: { ...h.state.fever, activeSec: h.state.fever.activeSec + fev.sec } } : h.state;
+  if (pReward.length > 0) {
+    const unit = tapValue(state) / feverMultOf(state.fever, deckEffects(state).feverMultAdd);
+    let gain = 0;
+    for (const f of pReward) { f.gain = unit * (f.taps ?? 0); gain += f.gain; }
+    fed = { ...fed, points: fed.points + gain, earned: fed.earned + gain, stats: { ...fed.stats, totalEarned: fed.stats.totalEarned + gain } };
+  }
+  const buffed = deckBuffAfterStrike(fed, grade, h.chain);
+  const out = grade === 'perfect' ? chargeOnPerfect(buffed, nextStreak) : buffed;
   return { ...h, state: out, deckFires, deckCharge: deckChargeResult(state, out), grade, streak: nextStreak, comboAdd: reward.combo, taps };
 }

@@ -1,6 +1,6 @@
 // 공구함 덱 화면(1단계): 카드 줄 · 공구함 창 · 카드 고르기 창 · 발동 연출. 로직은 logic/deck.ts, 설계는 DESIGN-DECK.md 7·8절.
 import { cardDef, type CardDef, type CardTag } from '../data/cards';
-import { cardMult, chooseCard, deckFull, deckMult, deckNextMark, deckPicksLeft, deckSlotViews, deckSlots, type DeckChargeResult, type DeckFire, type DeckSlotView } from '../logic/deck';
+import { chooseCard, deckFull, deckMult, deckNextMark, deckOfferOdds, deckPicksLeft, deckResonance, deckSlotViews, deckSlots, isStarUp, type DeckChargeResult, type DeckFire, type DeckSlotView } from '../logic/deck';
 import { formatNumber } from '../logic/format';
 import type { GameState } from '../logic/state';
 import type { UiCtx } from './collectUi';
@@ -26,12 +26,20 @@ const TAG_NAME: Record<CardTag, string> = { precise: '정밀', chain: '연쇄', 
 const RARITY_NAME = { common: '일반', rare: '레어', legend: '전설' } as const;
 /** 충전 방법(로직 `CHARGE_RULES`의 조건과 같다: 정밀 = 퍼펙트 강타, 연쇄 = 50연쇄마다, 특별 = 터진 특별 상자, 피버 = 피버 중 강타) */
 const HOW: Partial<Record<CardTag, string>> = { precise: '퍼펙트 강타로 충전', chain: '긴 연쇄로 충전', special: '특별 상자를 터뜨려 충전', fever: '피버 중 강타로 충전' };
-const howText = (d: CardDef): string => d.tags.map((t) => HOW[t]).filter(Boolean).join(' · ') || '충전 없음';
+const howText = (d: CardDef): string => d.tags.map((t) => HOW[t]).filter(Boolean).join(' · ') || '어떤 강타로든 충전';
 /** 배수 글자: 10 미만은 소수 한 자리(.0은 뗀다), 그 이상은 정수 */
 const fmtMult = (v: number): string => (v >= 10 ? formatNumber(Math.round(v)) : String(Math.round(v * 10) / 10));
 const pow10 = (v: number): number => (v >= 1 ? Math.floor(Math.log10(v) + 1e-9) : 0);
 const cardIcon = (d: CardDef, size: number, cls?: string): HTMLImageElement => iconImg(d.icon as IconName, { size, alt: '', cls });
-const tagVar = (d: CardDef): string => `var(--tag-${d.tags[0]})`;
+const tagVar = (d: CardDef): string => (d.tags.length > 0 ? `var(--tag-${d.tags[0]})` : 'var(--k3)');
+/** ★ 점 n개(노랑 4x4 사각, k1 외곽). 카드 줄 칸·공구함 패널 이름 옆이 같이 쓴다 */
+const starDots = (n: number, cls = 'stars'): HTMLElement => {
+  const w = el('span', { cls, attrs: { 'aria-label': `별 ${n}개` } }, ...Array.from({ length: n }, () => el('i')));
+  w.dataset.n = String(n);
+  return w;
+};
+const pctText = (v: number): string => `${Math.round(v * 100)}%`;
+const speedText = (v: number): string => `×${v}`;
 /** 태그 칩(이중 태그 카드는 두 개). 칩마다 자기 태그 색 테두리 */
 const chip = (t: CardTag, cls: string): HTMLElement => {
   const c = el('em', { cls, text: TAG_NAME[t] });
@@ -75,6 +83,8 @@ export function sync(state: GameState): void {
     alertBtn.hidden = true;
     rowKey = '';
     heldMult = null;
+    lastRes = null;
+    lastBoxes = 0;
     multRoll.snap(1);
     document.body.classList.remove('has-deck');
     return;
@@ -92,13 +102,14 @@ export function sync(state: GameState): void {
     for (let i = 0; i < n; i++) {
       const slotState = state.deck.slots[i];
       const d = slotState ? cardDef(slotState.id) : undefined;
-      const b = el('button', { cls: `deck-slot${d ? ' on' : ''}`, attrs: { type: 'button', 'aria-label': d ? `${d.name}: ${d.desc}` : '빈 칸' } });
+      const b = el('button', { cls: `deck-slot${d ? ` on r-${d.rarity}` : ''}`, attrs: { type: 'button', 'aria-label': d ? `${d.name}: ${d.desc}` : '빈 칸' } });
       let fill: HTMLElement | null = null;
       let bar: HTMLElement | null = null;
       if (d) {
         b.dataset.card = d.id;
-        b.style.setProperty('--tc', tagVar(d));
-        b.append(cardIcon(d, 32));
+        if (d.tags.length > 0) b.style.setProperty('--tc', tagVar(d));
+        else b.classList.add('notag');
+        b.append(cardIcon(d, 32), starDots(slotState.star, 'stars deck-stars'));
         fill = el('i');
         bar = el('span', { cls: 'deck-bar' }, fill);
       }
@@ -107,13 +118,20 @@ export function sync(state: GameState): void {
     row.replaceChildren(...cells.map((c) => el('div', { cls: 'deck-cell' }, c.slot, ...(c.bar ? [c.bar] : []))), side);
   }
   const views = deckSlotViews(state);
+  const buff = state.deck.buff;
   views.forEach((v, i) => {
     const c = cells[i];
     if (!c?.fill || !c.bar) return;
     c.fill.style.width = `${barPx(v)}px`;
     c.bar.classList.toggle('full', v.full);
+    c.bar.classList.toggle('res', v.resonance > 0);
     c.bar.dataset.charge = `${v.charge}/${v.need}`;
+    c.slot.classList.toggle('armed', (v.id === 'C5' && !!buff?.nextStrike) || (v.id === 'S5' && !!buff?.forceBomb));
+    const stars = c.slot.querySelector<HTMLElement>('.deck-stars');
+    if (stars && stars.dataset.n !== String(v.star)) stars.replaceWith(starDots(v.star, 'stars deck-stars'));
   });
+  watchResonance(state);
+  watchFurnace(state, views);
   const m = heldMult ?? deckMult(state);
   multRoll.set(m);
   multEl.classList.toggle('calm', m <= 1.0001);
@@ -129,6 +147,56 @@ export function sync(state: GameState): void {
 function barPx(v: DeckSlotView): number {
   if (v.full) return 48;
   return v.charge <= 0 ? 0 : Math.max(2, Math.floor((v.charge / v.need) * 24) * 2);
+}
+
+/** 공명 단계가 오른 순간(2·3·4장째): 그 태그 칸들이 함께 튀고 테두리 번쩍 + 효과음. 처음 줄이 생길 때·불러오기는 조용히 기록만 한다 */
+let lastRes: Map<string, number> | null = null;
+function watchResonance(state: GameState): void {
+  const now = new Map(deckResonance(state).map((r) => [r.tag as string, r.level]));
+  const prev = lastRes;
+  lastRes = now;
+  if (!prev || rowHold) return;
+  const up = [...now].filter(([tag, lv]) => lv > (prev.get(tag) ?? 0)).map(([tag]) => tag as CardTag);
+  if (up.length === 0) return;
+  window.setTimeout(() => resonanceFx(up), ms(420));
+}
+
+function resonanceFx(tags: CardTag[]): void {
+  if (!row.isConnected) return;
+  const state = H.ctx.get();
+  sfx.breakthrough();
+  vibrate([10, 20, 10]);
+  if (fx.isReduced()) return;
+  state.deck.slots.forEach((sl, i) => {
+    const d = cardDef(sl.id);
+    if (!d || !d.tags.some((t) => tags.includes(t))) return;
+    const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[i];
+    if (!slot) return;
+    window.setTimeout(() => {
+      fx.pxFrames(slot, [{ translate: '0 -6px' }, { translate: '0 -6px' }, { translate: '0 -2px' }, { translate: '0 0' }], 60);
+      fx.edge(slot, 'or', [1, 0, 1, 0, 1, 1]);
+      const r = slot.getBoundingClientRect();
+      fx.burst(r.left + r.width / 2, r.top + r.height / 2, { n: 6, kind: 'star', colors: ['or', 'g3', 'k5'], speed: 180, size: 4 });
+    }, i * 60);
+  });
+}
+
+/** 용광로(F5): 피버가 끝날 때 보상이 상태에 바로 더해지고 알림 이벤트가 없어서, 피버 종료를 보고 칸만 튕긴다 */
+let lastBoxes = 0;
+function watchFurnace(state: GameState, views: DeckSlotView[]): void {
+  const boxes = state.deck.buff?.boxesInFever ?? 0;
+  const ended = lastBoxes > 0 && boxes === 0 && state.fever.activeSec <= 0;
+  lastBoxes = boxes;
+  if (!ended || rowHold || fx.isReduced()) return;
+  const i = views.findIndex((v) => v.id === 'F5');
+  const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[i];
+  if (!slot) return;
+  fx.pxFrames(slot, [{ translate: '0 -6px' }, { translate: '0 -6px' }, { translate: '0 -2px' }, { translate: '0 0' }], 60);
+  fx.edge(slot, 'or', [1, 0, 1, 0, 1, 1]);
+  const r = slot.getBoundingClientRect();
+  fx.burst(r.left + r.width / 2, r.top + r.height / 2, { n: 8, kind: 'star', colors: ['or', 'g2', 'k5'], speed: 200, size: 4 });
+  sfx.milestone();
+  fx.coinShower(slot, H.pts(), 8);
 }
 
 // ---------- 모달 공통 ----------
@@ -157,18 +225,20 @@ const titleIcon = (): HTMLElement => iconImg('ui-tools', { size: 32, cls: 'title
 
 // ---------- 공구함 창 ----------
 function cardRow(d: CardDef, v?: DeckSlotView): HTMLElement {
-  const main = el('div', { cls: 'pr-main' }, el('div', { cls: 'pr-name' }, el('b', { cls: 'fb', text: d.name }), ...d.tags.map((t) => chip(t, 'tag'))), el('div', { cls: 'pr-desc', text: d.desc }), el('div', { cls: 'pr-how', text: howText(d) }));
+  const how = [d.rarity === 'common' ? '' : RARITY_NAME[d.rarity], howText(d), v && v.speed > 1 ? `충전 ×${v.speed}` : ''].filter(Boolean).join(' · ');
+  const main = el('div', { cls: 'pr-name' }, el('b', { cls: 'fb', text: d.name }), ...(v ? [starDots(v.star, 'stars pr-stars')] : []), ...d.tags.map((t) => chip(t, 'tag')));
+  const body = el('div', { cls: 'pr-main' }, main, el('div', { cls: 'pr-desc', text: d.desc }), el('div', { cls: 'pr-how', text: how }));
   if (v) {
     const fill = el('i');
     fill.style.width = v.full ? '100%' : `${Math.min(100, Math.round(barPx(v) / 0.48))}%`;
-    main.append(el('span', { cls: `deck-bar${v.full ? ' full' : ''}` }, fill));
+    body.append(el('span', { cls: `deck-bar${v.full ? ' full' : ''}${v.resonance > 0 ? ' res' : ''}` }, fill));
   }
   const r = el(
     'div',
-    { cls: 'perk-row deck-card' },
+    { cls: `perk-row deck-card r-${d.rarity}` },
     el('span', { cls: 'pr-emoji' }, cardIcon(d, 32)),
-    main,
-    el('div', { cls: 'pr-lv' }, v ? el('b', { text: `지금 ×${fmtMult(v.mult)}` }) : el('b', { text: RARITY_NAME[d.rarity] }), ...(v ? [el('span', { cls: 'pr-max', text: `최대 ×${fmtMult(cardMult(v.star, v.need, v.need))}` })] : [])),
+    body,
+    el('div', { cls: 'pr-lv' }, v ? el('b', { text: `지금 ×${fmtMult(v.mult)}` }) : el('b', { text: RARITY_NAME[d.rarity] }), ...(v ? [el('span', { cls: 'pr-max', text: `최대 ×${v.cap}${v.capBonus > 0 ? ` (+${v.capBonus})` : ''}` })] : [])),
   );
   r.style.setProperty('--cc', tagVar(d));
   return r;
@@ -189,7 +259,8 @@ export function syncPanel(state: GameState, force = false): void {
   const left = deckPicksLeft(state);
   const n = deckSlots(state.moves);
   const prog = next ? Math.floor(next.progress * 25) * 4 : 0;
-  const key = `${n}|${views.map((v) => `${v.id}${v.star}:${v.full ? 'F' : barPx(v)}:${Math.round(v.mult * 10)}`).join(',')}|${pend}|${left}|${prog}`;
+  const res = deckResonance(state);
+  const key = `${n}|${views.map((v) => `${v.id}${v.star}:${v.full ? 'F' : barPx(v)}:${Math.round(v.mult * 10)}:${v.cap}:${v.speed}`).join(',')}|${res.map((r) => `${r.tag}${r.count}`).join(',')}|${pend}|${left}|${prog}`;
   const m = deckMult(state);
   if (force) panelRoll.snap(m);
   else panelRoll.set(m);
@@ -210,6 +281,13 @@ export function syncPanel(state: GameState, force = false): void {
   } else {
     body.push(el('div', { cls: 'pf dp-next' }, el('div', { cls: 'dp-next-head' }, el('b', { text: '이 집의 카드를 모두 받았어요' }))));
   }
+  const resBox = el('div', { cls: 'pf dp-res' });
+  const live = res.filter((r) => r.level > 0);
+  if (live.length === 0) resBox.append(el('span', { cls: 'dp-res-none', text: '같은 태그를 2장 모으면 충전이 빨라져요' }));
+  for (const r of live) resBox.append(el('div', { cls: 'dp-res-row' }, chip(r.tag, 'tag'), el('b', { text: `${TAG_NAME[r.tag]} ${r.count}장` }), el('span', { text: `충전 ${speedText(r.speed)}` })));
+  const odds = el('button', { cls: 'btn quiet deck-odds-btn', text: '확률 보기', attrs: { type: 'button' } });
+  odds.addEventListener('click', () => openOdds());
+  body.push(resBox, el('div', { cls: 'dp-tools' }, odds));
   const list = el('div', { cls: 'perk-list dp-list' });
   for (const v of views) {
     const d = cardDef(v.id);
@@ -239,7 +317,7 @@ function pickBtn(text: string): HTMLElement {
 }
 
 /** 선택 카드(`pcard`): 칩 = 태그, 이미 낀 카드·고를 수 없는 카드는 `maxed` 모양. 앞면 위에 희귀도 뒷면(`pback`)이 겹쳐 있다 */
-function deckCard(d: CardDef, k: number, o: { lv: string; btn: string; locked?: boolean }): HTMLButtonElement {
+function deckCard(d: CardDef, k: number, o: { lv: string; btn: string; locked?: boolean; up?: boolean }): HTMLButtonElement {
   const front = el(
     'div',
     { cls: 'pface front' },
@@ -248,11 +326,11 @@ function deckCard(d: CardDef, k: number, o: { lv: string; btn: string; locked?: 
     el('span', { cls: 'pc-name', text: d.name }),
     el('span', { cls: 'pc-fx', text: d.desc }),
     el('span', { cls: 'pc-how', text: howText(d) }),
-    el('span', { cls: 'pc-lv', text: o.lv }),
+    el('span', { cls: `pc-lv${o.up ? ' up' : ''}` }, ...o.lv.split('|').flatMap((t, i) => (i === 0 ? [el('span', { text: t })] : [' ', el('span', { text: t })]))),
     pickBtn(o.btn),
   );
   const back = el('div', { cls: 'pback' }, iconImg(`card/back-${d.rarity}` as IconName, { size: 48, alt: '' }));
-  const b = el('button', { cls: `pcard r-${d.rarity}${o.locked ? ' maxed' : ''}`, attrs: { type: 'button', 'data-card': d.id } }, el('div', { cls: 'pcard-inner' }, front, back));
+  const b = el('button', { cls: `pcard r-${d.rarity}${o.locked ? ' maxed' : ''}${o.up ? ' starup' : ''}`, attrs: { type: 'button', 'data-card': d.id } }, el('div', { cls: 'pcard-inner' }, front, back));
   b.style.setProperty('--k', String(k));
   b.style.setProperty('--cc', tagVar(d));
   b.disabled = !!o.locked;
@@ -283,20 +361,28 @@ function revealFx(c: HTMLElement, d: CardDef, k: number): void {
   const fl = el('i', { cls: 'pflash' });
   box.append(fl);
   const col = `var(--${REVEAL_COLOR[d.rarity]})`;
-  const frames: Keyframe[] = d.rarity === 'common' ? [{ visibility: 'visible', background: 'var(--k5)' }, { visibility: 'hidden' }] : [{ visibility: 'visible', background: 'var(--k5)' }, { visibility: 'visible', background: col }, { visibility: 'hidden' }];
-  fx.pxFrames(fl, frames, ms(40)).onfinish = () => fl.remove();
+  const frames: Keyframe[] =
+    d.rarity === 'common' ? [{ visibility: 'visible', background: 'var(--k5)' }, { visibility: 'hidden' }]
+    : d.rarity === 'rare' ? [{ visibility: 'visible', background: 'var(--k5)' }, { visibility: 'visible', background: col }, { visibility: 'hidden' }]
+    : [{ visibility: 'visible', background: 'var(--k5)' }, { visibility: 'visible', background: col }, { visibility: 'visible', background: 'var(--k5)' }, { visibility: 'visible', background: col }, { visibility: 'visible', background: 'var(--g2)' }, { visibility: 'hidden' }];
+  fx.pxFrames(fl, frames, ms(d.rarity === 'legend' ? 50 : 40)).onfinish = () => fl.remove();
   sfx.cardReveal(d.rarity, k);
   if (d.rarity === 'legend') {
-    fx.edge(box, 'g3', [1, 0, 1, 0, 1, 0, 1, 1]);
-    fx.burst(cx, cy, { n: 14, kind: 'star', colors: ['g2', 'g3', 'k5', 'or'], speed: 300, size: 6 });
-    fx.twinkle(r.left + 8, r.top + 8, 'g3', 8);
-    fx.twinkle(r.right - 8, r.bottom - 8, 'g3', 8);
+    // 전설: 카드 노랑 테두리 깜빡임 + 별 입자 링·산개 + 모서리 반짝 + 창·화면 테두리 번쩍 + 창 흔들림(고르기 연출 1.2초 안에서 끝난다)
+    fx.edge(box, 'g3', [1, 0, 1, 0, 1, 0, 1, 0, 1, 1]);
+    fx.burst(cx, cy, { n: 16, kind: 'star', colors: ['g1', 'or', 'g2'], speed: 360, size: 6, ring: true });
+    fx.burst(cx, cy, { n: 14, kind: 'star', colors: ['or', 'g2', 'g1', 'k1'], speed: 300, size: 8 });
+    [[r.left + 8, r.top + 8], [r.right - 8, r.top + 8], [r.left + 8, r.bottom - 8], [r.right - 8, r.bottom - 8]].forEach(([x, y]) => fx.twinkle(x, y, 'g3', 8));
+    const modal = c.closest<HTMLElement>('.modal');
+    const ov = c.closest<HTMLElement>('.overlay');
+    if (ov) fx.edge(ov, 'g3', [1, 0, 1, 0, 1, 1]);
+    if (modal) fx.shake(modal, 4, 240);
     vibrate([15, 20, 30]);
   } else if (d.rarity === 'rare') {
     fx.edge(box, 'b4', [1, 0, 1, 1]);
-    fx.burst(cx, cy, { n: 8, kind: 'star', colors: ['b4', 'k5', 'b3'], speed: 240, size: 6 });
+    fx.burst(cx, cy, { n: 8, kind: 'star', colors: ['b3', 'b2', 'b4'], speed: 240, size: 6 });
   } else {
-    fx.burst(cx, cy, { n: 4, kind: 'star', colors: ['k5', 'b4'], speed: 180, size: 4 });
+    fx.burst(cx, cy, { n: 4, kind: 'star', colors: ['b2', 'b3'], speed: 180, size: 4 });
   }
 }
 
@@ -398,16 +484,21 @@ function renderPick(replay = true): void {
   const defs = offer.map((id) => cardDef(id)).filter((d): d is CardDef => !!d);
   const cards = defs.map((d, k) => {
     const have = owned.has(d.id);
-    const c = deckCard(d, k, { lv: have ? '이미 끼웠어요' : `${RARITY_NAME[d.rarity]} 카드`, btn: '고르기', locked: have });
+    const up = have && isStarUp(state, d.id);
+    const v = deckSlotViews(state).find((x) => x.id === d.id);
+    const c = deckCard(d, k, { lv: up && v ? `칸 안 씀|최대 ×${v.cap} → ×${v.cap + 1}` : have ? '이미 끼웠어요' : `${RARITY_NAME[d.rarity]} 카드`, btn: up ? '★ 올리기' : '고르기', locked: have && !up, up });
     c.addEventListener('click', () => pickCard(d, c, cards));
     return c;
   });
   const play = replay && !fx.isReduced();
   if (play) cards.forEach((c) => c.classList.add('pre', 'back'));
-  const allOwned = defs.every((d) => owned.has(d.id));
+  const allOwned = defs.every((d) => owned.has(d.id) && !isStarUp(state, d.id));
+  const oddsBtn = el('button', { cls: 'btn quiet deck-odds-btn', text: '확률', attrs: { type: 'button', 'aria-label': '카드 확률 보기' } });
+  oddsBtn.addEventListener('click', () => renderOdds());
+  const hint = allOwned ? '전부 이미 끼운 카드예요. 건너뛰어요.' : deckFull(state) ? '3장 중 하나를 고르면 바꿀 칸을 골라요. 이 집에서만 써요.' : '3장 중 하나를 골라 칸에 끼워요. 이 집에서만 써요.';
   setModal(
     `카드 고르기${pend > 1 ? ` (남은 묶음 ${pend})` : ''}`,
-    [el('p', { cls: 'dim', text: allOwned ? '전부 이미 끼운 카드예요. 건너뛰어요.' : deckFull(state) ? '3장 중 하나를 고르면 바꿀 칸을 골라요. 이 집에서만 써요.' : '3장 중 하나를 골라 칸에 끼워요. 이 집에서만 써요.' }), el('div', { cls: 'pcards' }, ...cards)],
+    [el('div', { cls: 'dk-hint' }, el('p', { cls: 'dim', text: hint }), oddsBtn), el('div', { cls: 'pcards' }, ...cards)],
     [
       { label: '나중에 고르기', quiet: true, onClick: H.ctx.dismissModal },
       { label: '건너뛰기', primary: allOwned, onClick: skipOffer },
@@ -440,14 +531,16 @@ function afterChoice(wait: number): void {
 function pickCard(d: CardDef, card: HTMLElement, all: HTMLElement[]): void {
   if (busy || playing) return;
   const state = H.ctx.get();
-  if (deckFull(state)) return renderReplace(d);
+  const up = isStarUp(state, d.id);
+  if (deckFull(state) && !up) return renderReplace(d);
   const next = chooseCard(state, 0, d.id);
   if (!next) return;
-  commit(next, card, all, d, state.deck.slots.length, card.querySelector('.pc-emoji .ico'));
+  const held = state.deck.slots.findIndex((x) => x.id === d.id);
+  commit(next, card, all, d, up ? held : state.deck.slots.length, card.querySelector('.pc-emoji .ico'), up);
 }
 
 /** 카드를 골랐다: 고른 카드 튐·번쩍, 나머지는 뒷면으로 뒤집혀 아래로 빠지고, 창이 닫히며 아이콘이 카드 줄 칸으로 날아가 꽂힌다 */
-function commit(next: GameState, card: HTMLElement, all: HTMLElement[], d: CardDef, slotIdx: number, iconEl: Element | null): void {
+function commit(next: GameState, card: HTMLElement, all: HTMLElement[], d: CardDef, slotIdx: number, iconEl: Element | null, starUp = false): void {
   const reduced = fx.isReduced();
   rowHold = !reduced;
   H.ctx.set(next);
@@ -478,19 +571,19 @@ function commit(next: GameState, card: HTMLElement, all: HTMLElement[], d: CardD
   const from = iconEl?.getBoundingClientRect() ?? r;
   window.setTimeout(() => {
     H.ctx.dismissModal();
-    flyToSlot(d, from, slotIdx);
+    flyToSlot(d, from, slotIdx, starUp);
   }, ms(360));
 }
 
 /** 닫히는 창에서 고른 카드 아이콘이 카드 줄 칸으로 날아간다(6걸음, 위로 솟았다 내려앉는 계단 경로). 도착하면 칸에 꽂힌다 */
-function flyToSlot(d: CardDef, from: DOMRect, idx: number): void {
+function flyToSlot(d: CardDef, from: DOMRect, idx: number, starUp = false): void {
   const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[idx];
   const finish = (): void => {
     rowHold = false;
     busy = false;
     if (!H.ctx.get().deck) return;
     sync(H.ctx.get());
-    landSlot(d);
+    landSlot(d, starUp);
     if (pendingCount(H.ctx.get()) > 0) window.setTimeout(() => openPick(), ms(260));
   };
   if (!slot || !row.isConnected) return finish();
@@ -522,7 +615,7 @@ function flyToSlot(d: CardDef, from: DOMRect, idx: number): void {
 }
 
 /** 칸에 꽂힌 순간: 칸 튐 + 칸 테두리 번쩍 + 입자 + 효과음 */
-function landSlot(d: CardDef): void {
+function landSlot(d: CardDef, starUp = false): void {
   const i = slotIndex(d.id);
   const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[i];
   if (!slot) return;
@@ -535,6 +628,13 @@ function landSlot(d: CardDef): void {
   fx.edge(slot, 'g3', [1, 0, 1, 0, 1, 1]);
   const r = slot.getBoundingClientRect();
   fx.burst(r.left + r.width / 2, r.top + r.height / 2, { n: 8, kind: 'star', colors: ['g2', 'g3', 'k5'], speed: 200, size: 4 });
+  if (!starUp) return;
+  // ★ 올리기: 꽂힌 순간에 ★ 점이 깜빡이고 별 입자가 더 터진다(칸 튐은 위에서)
+  const dots = slot.querySelector<HTMLElement>('.deck-stars');
+  dots?.classList.add('pop');
+  window.setTimeout(() => dots?.classList.remove('pop'), ms(480));
+  fx.burst(r.left + r.width / 2, r.bottom - 8, { n: 12, kind: 'star', colors: ['g3', 'g2', 'k5'], speed: 260, size: 6 });
+  window.setTimeout(() => sfx.milestone(), ms(120));
 }
 
 /** 칸이 차 있을 때: 같은 창 안에서 바꿀 칸을 고른다 */
@@ -560,6 +660,36 @@ function renderReplace(d: CardDef): void {
     [el('p', { cls: 'dim', text: '새 카드를 끼울 칸을 골라요. 고른 칸의 카드는 사라지고, 바꾸면 이 카드의 충전이 사라져요.' }), incoming, el('div', { cls: 'pcards' }, ...cards.filter((c): c is HTMLButtonElement => !!c))],
     [{ label: '돌아가기', quiet: true, onClick: () => renderPick(false) }],
   );
+}
+
+// ---------- 확률 ----------
+const RARITY_BAR: Record<CardDef['rarity'], string> = { common: 'k1', rare: 'b3', legend: 'g2' };
+function oddsBody(): HTMLElement[] {
+  const odds = deckOfferOdds(H.ctx.get());
+  const line = (['common', 'rare', 'legend'] as const).map((r) => `${RARITY_NAME[r]} ${pctText(odds[r])}`).join(' · ');
+  const bars = (['common', 'rare', 'legend'] as const).map((r) => {
+    const fill = el('i');
+    fill.style.width = `${Math.round(odds[r] * 100)}%`;
+    fill.style.background = `var(--${RARITY_BAR[r]})`;
+    return el('div', { cls: 'od-row' }, el('span', { text: RARITY_NAME[r] }), el('span', { cls: 'dp-track' }, fill), el('b', { text: pctText(odds[r]) }));
+  });
+  return [
+    el('p', { cls: 'od-line', text: line }),
+    el('div', { cls: 'od-bars pf' }, ...bars),
+    el('p', { cls: 'dim', text: '카드 3장을 따로 뽑아요. 장마다 위 확률로 희귀도를 정해요.' }),
+    el('p', { cls: 'dim', text: '이미 낀 카드가 나오면 칸을 쓰지 않고 ★이 올라요.' }),
+  ];
+}
+
+/** 고르기 창 안에서 확률 보기(돌아가기로 같은 묶음) */
+function renderOdds(): void {
+  introStop?.();
+  setModal('카드 확률', oddsBody(), [{ label: '돌아가기', quiet: true, onClick: () => renderPick(false) }]);
+}
+
+/** 공구함 탭에서 따로 여는 확률 창 */
+function openOdds(): void {
+  H.ctx.showModal('카드 확률', oddsBody(), [{ label: '닫기', onClick: H.ctx.dismissModal }], { chip: '카드', cls: 'deck-odds', icon: titleIcon() });
 }
 
 // ---------- 발동 연출 ----------

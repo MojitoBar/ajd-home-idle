@@ -5,13 +5,31 @@
 .deck-row { box-sizing: border-box; display: flex; align-items: flex-start; gap: var(--s2); height: 60px; padding: 0 2px; margin: 0 0 var(--s2); cursor: pointer; }
 .deck-cell { flex: none; display: flex; flex-direction: column; width: 48px; }
 .deck-slot { position: relative; flex: none; box-sizing: border-box; width: 48px; height: 48px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; outline: 2px dashed var(--on-bg-dim); outline-offset: -2px; }
-.deck-slot.on { background: var(--p1); outline: 0; box-shadow: 0 0 0 2px var(--tc, var(--k1)), 0 6px 0 0 var(--k1); }
+.deck-slot.on { --rc: var(--k1); background: var(--p1); outline: 0; box-shadow: 0 0 0 2px var(--rc), 0 6px 0 0 var(--k1); }
+.deck-slot.r-rare { --rc: var(--b3); }
+.deck-slot.r-legend { --rc: var(--g2); }
 .deck-slot .ico { display: block; width: 32px; height: 32px; image-rendering: pixelated; pointer-events: none; }
 .deck-slot.on.lit { box-shadow: 0 0 0 2px var(--g3), 0 6px 0 0 var(--k1); }
+/* 태그 색은 칸 왼쪽 위 6x6 점으로만 남기고 테두리는 희귀도(일반 k1·레어 b4·전설 g2) */
+.deck-slot.on:not(.notag)::before { content: ''; position: absolute; left: 4px; top: 4px; width: 6px; height: 6px; background: var(--tc); pointer-events: none; }
+/* 장전됨(C5 다음 강타 x2 · S5 폭탄 예약): 주황 테두리 깜빡임 */
+.deck-slot.armed { animation: armblink 640ms steps(1) infinite; }
+@keyframes armblink { 0% { box-shadow: 0 0 0 4px var(--or), 0 6px 0 0 var(--k1); } 50% { box-shadow: 0 0 0 2px var(--rc), 0 6px 0 0 var(--k1); } }
+body.reduce-motion .deck-slot.armed { animation: none; box-shadow: 0 0 0 4px var(--or), 0 6px 0 0 var(--k1); }
+/* ★ 점: 노랑 4x4 + k1 외곽 2px */
+.stars { display: inline-flex; align-items: center; gap: 6px; padding: 0 2px; }
+.stars i { display: block; width: 4px; height: 4px; background: var(--g2); box-shadow: 0 0 0 2px var(--k1); }
+.deck-stars { position: absolute; right: 4px; top: 6px; flex-direction: column; gap: 4px; padding: 0; pointer-events: none; }
+.deck-stars.pop { animation: starpop 360ms steps(1) both; }
+@keyframes starpop { 0% { visibility: hidden; } 25% { visibility: visible; } 50% { visibility: hidden; } 75% { visibility: visible; } }
+.pr-stars { flex: none; }
 .deck-slot:active { translate: 0 4px; }
 .deck-bar { display: block; box-sizing: border-box; width: 48px; height: 4px; margin-top: 8px; background: var(--k3); }
 .deck-bar i { display: block; height: 4px; width: 0; background: var(--b2); transition: width 240ms steps(6); }
-.deck-bar.full i { background: var(--g3); }
+.deck-bar.res i { animation: resblink 800ms steps(1) infinite; background: var(--or); }
+@keyframes resblink { 0% { background: var(--or); } 50% { background: var(--g3); } }
+body.reduce-motion .deck-bar.res i { animation: none; }
+.deck-bar.full i { background: var(--g3); animation: none; }
 .deck-side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-start; margin-left: var(--s1); }
 .deck-title { display: block; font: 700 var(--fs-s)/16px var(--f-bold); font-synthesis: none; color: var(--on-bg-dim); white-space: nowrap; }
 .deck-mult { display: block; font: 700 var(--fs-l)/28px var(--f-bold); font-synthesis: none; color: var(--or); white-space: nowrap; text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0); }
@@ -49,7 +67,7 @@ body.has-deck .tab-lock[data-lock="dex"] { display: none; }
 .dp-next-head b { font-size: var(--fs-m); line-height: var(--lh-m); color: var(--ink); }
 .dp-track { display: block; box-sizing: border-box; height: 8px; margin-top: var(--s1); background: var(--k3); }
 .dp-track i { display: block; height: 8px; background: var(--b2); }
-.dp-list { margin-top: var(--s1); }
+.dp-list { margin-top: var(--s2); }
 .dp-note { margin: 0; text-align: center; }
 .deck-panel > .note.dim { color: var(--dim); }
 
@@ -61,6 +79,31 @@ body.has-deck .tab-lock[data-lock="dex"] { display: none; }
 .deck-card .pr-lv b { display: block; }
 .deck-card .pr-max { display: block; font-family: var(--f-bold); font-size: var(--fs-s); line-height: var(--lh-s); color: var(--dim); }
 .deck-card { --face: var(--p1); --line: var(--k1); }
+.deck-card.r-rare { --line: var(--b3); }
+.deck-card.r-legend { --line: var(--g2); }
+/* 앞면 테두리도 희귀도 색(일반은 그대로 k1) */
+.deck-pick .pcard.r-rare:not(.maxed):not(.faded):not(.chosen) .pface { box-shadow: 0 -2px 0 0 var(--b3), 0 2px 0 0 var(--b3), -2px 0 0 0 var(--b3), 2px 0 0 0 var(--b3), 0 6px 0 0 var(--k1); }
+.deck-pick .pcard.r-legend:not(.maxed):not(.faded):not(.chosen) .pface { box-shadow: 0 -2px 0 0 var(--g2), 0 2px 0 0 var(--g2), -2px 0 0 0 var(--g2), 2px 0 0 0 var(--g2), 0 6px 0 0 var(--k1); animation: legblink 900ms steps(1) infinite; }
+@keyframes legblink { 0% { box-shadow: 0 -4px 0 0 var(--g3), 0 4px 0 0 var(--g3), -4px 0 0 0 var(--g3), 4px 0 0 0 var(--g3), 0 6px 0 0 var(--k1); } 50% { box-shadow: 0 -2px 0 0 var(--g2), 0 2px 0 0 var(--g2), -2px 0 0 0 var(--g2), 2px 0 0 0 var(--g2), 0 6px 0 0 var(--k1); } }
+body.reduce-motion .deck-pick .pcard.r-legend .pface { animation: none; }
+.deck-pick .pcard.starup .pc-lv.up { color: var(--g0); }
+.deck-pick .pc-lv.up span { display: block; white-space: nowrap; }
+.deck-pick .pcard.starup .pick-btn { --face: var(--g3); --line: var(--g1); --fg: var(--k1); }
+.dk-hint { display: flex; align-items: center; gap: var(--s2); }
+.dk-hint p { flex: 1; min-width: 0; margin: 0; }
+.btn.quiet.deck-odds-btn { flex: none; min-width: 48px; height: 48px; min-height: 48px; padding: 0 var(--s2) 8px; }
+.dp-tools { display: flex; justify-content: flex-end; margin: -8px 2px 0; }
+.dp-res { padding: var(--s2) var(--s3); margin: 0 2px; display: flex; flex-direction: column; gap: var(--s1); font-family: var(--f-bold); font-synthesis: none; font-size: var(--fs-s); line-height: var(--lh-s); --face: var(--p1); --line: var(--k1); }
+.dp-res-none { color: var(--dim); }
+.dp-res-row { display: flex; align-items: center; gap: var(--s2); }
+.dp-res-row b { font-size: var(--fs-m); line-height: var(--lh-m); color: var(--ink); }
+.dp-res-row > span:last-child { margin-left: auto; color: var(--or); font-size: var(--fs-m); line-height: var(--lh-m); }
+.dp-res-row em { font-style: normal; box-shadow: 0 0 0 2px var(--cc) inset; padding: 0 4px; color: var(--ink); }
+.od-line { margin: 0; font: 700 var(--fs-m)/var(--lh-m) var(--f-bold); font-synthesis: none; color: var(--ink); text-align: center; }
+.od-bars { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); --face: var(--p1); --line: var(--k1); }
+.od-row { display: grid; grid-template-columns: 40px 1fr 48px; align-items: center; gap: var(--s2); font-family: var(--f-bold); font-synthesis: none; font-size: var(--fs-s); line-height: var(--lh-s); color: var(--ink); }
+.od-row b { text-align: right; font-size: var(--fs-m); line-height: var(--lh-m); }
+.od-row .dp-track { margin-top: 0; }
 .deck-card .pr-name em { box-shadow: 0 0 0 2px var(--cc) inset; }
 .deck-card-empty { --face: var(--p1); --line: var(--k3); color: var(--k2); box-shadow: none; outline: 2px dashed var(--k3); outline-offset: -2px; }
 .deck-card-empty .pr-emoji { box-sizing: border-box; outline: 2px dashed var(--k3); outline-offset: -2px; }
@@ -112,3 +155,6 @@ body.has-deck .tab-lock[data-lock="dex"] { display: none; }
   .deck-pick .pback .ico { width: 96px; height: 96px; }
 }
 .deck-fly { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; max-width: none; image-rendering: pixelated; }
+
+/* 고르기 창 위에서도 입자가 보이게: 입자 캔버스는 창이 열려 있으면 숨겨지고 창 아래(z 8)에 깔려서, 뒤집힘·고름 입자가 한 번도 안 보였다 */
+body:has(.overlay .deck-pick) .fx-canvas:not(.in-scene) { visibility: visible; z-index: 12; }

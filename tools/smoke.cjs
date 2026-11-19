@@ -228,7 +228,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await page.locator('.modal .btn.primary').click();
       await page.waitForTimeout(400);
       const sv = await save(page);
-      check('안내를 닫으면 notice가 지워지고 현재 version 14로 저장', sv.version === 14 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
+      check('안내를 닫으면 notice가 지워지고 현재 version 15로 저장', sv.version === 15 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
       await page.reload();
       await page.waitForSelector('.phone');
       await page.waitForTimeout(800);
@@ -874,7 +874,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.locator('.deck-alert').click();
         await page.waitForSelector('.modal.deck-pick .pcard');
         await page.waitForTimeout(1500);
-        check('덱: 이미 낀 카드는 고를 수 없게 표시된다', (await page.locator('.deck-pick .pcard.maxed:disabled').count()) === 2);
+        check('덱 5단계: 이미 낀 카드는 막히지 않고 ★ 올리기 버튼이 된다', (await page.locator('.deck-pick .pcard.maxed').count()) === 0 && (await page.locator('.deck-pick .pcard.starup .pick-btn', { hasText: '★ 올리기' }).count()) === 2);
         await page.locator('.pcard[data-card="C3"]').click();
         await page.waitForTimeout(500);
         const stage = await page.evaluate(() => ({ title: document.querySelector('.modal-head h2')?.textContent, modals: document.querySelectorAll('.modal').length, cards: [...document.querySelectorAll('.deck-pick .pcard')].map((c) => c.dataset.card).join() }));
@@ -967,7 +967,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.waitForTimeout(500);
         await deck2Set(page, ['P2', 'C1', 'P3']);
         const clash = await page.evaluate(() => { const own = new Set(window.__ajd.get().deck.slots.map((x) => x.id)); let hit = 0; for (let i = 0; i < 40; i++) { window.__ajd.offer(); } const offers = window.__ajd.get().deck.offers; for (const o of offers) for (const id of o) if (own.has(id)) hit++; return { hit, n: offers.length, uniq: offers.every((o) => new Set(o).size === o.length) }; });
-        check('덱 2단계: 안 낀 카드가 3장 이상이면 묶음에 낀 카드가 없다', clash.hit === 0 && clash.n >= 40 && clash.uniq, JSON.stringify(clash));
+        check('덱 2단계: 묶음 3장은 서로 다르다(낀 카드는 ★ 올리기 후보로 나올 수 있다)', clash.n >= 40 && clash.uniq, JSON.stringify(clash));
         await ctx.close();
       }
       for (const [golds, want] of [[3, ['×3']], [2, []]]) {
@@ -1058,7 +1058,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       {
         const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
         await page.waitForTimeout(500);
-        await charged(page, [['P2', 3], ['C1', 0]]);
+        await charged(page, [['P1', 3], ['C1', 0]]);
         await page.waitForTimeout(400);
         const w0 = await px(page);
         const head0 = await text(page, '.badge');
@@ -1066,7 +1066,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.waitForTimeout(800);
         const w1 = await px(page);
         const sv = await gs(page);
-        check('덱 3단계: 퍼펙트 강타로 정밀 카드의 충전 막대가 오른다(연쇄 카드는 그대로)', w1[0] > w0[0] && w1[1] === w0[1] && sv.deck.slots[0].charge === 4, JSON.stringify([w0, w1]));
+        check('덱 3단계: 퍼펙트 강타로 정밀 카드의 충전 막대가 오른다(연쇄 카드는 그대로)', w1[0] > w0[0] && w1[1] === w0[1] && sv.deck.slots[0].charge === 7, JSON.stringify([w0, w1]));
         check('덱 3단계: 카드 줄 오른쪽에 공구함 ×N 숫자', /^×/.test(await text(page, '.deck-mult')) && (await text(page, '.deck-title')) === '공구함', await text(page, '.deck-mult'));
         check('덱 3단계: 칸 아래 충전 막대는 칸마다 4px', await page.evaluate(() => [...document.querySelectorAll('.deck-row .deck-bar')].every((b) => b.getBoundingClientRect().height === 4)));
         await page.evaluate((n) => window.__ajd.deckCharge(n), NEED);
@@ -1081,7 +1081,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       {
         const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
         await page.waitForTimeout(500);
-        await charged(page, [['P2', NEED - 1], ['C1', 0]]);
+        await charged(page, [['P1', NEED - 1], ['C1', 0]]);
         await page.waitForTimeout(400);
         await watch(page);
         await perfectHit(page);
@@ -1099,7 +1099,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       {
         const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
         await page.waitForTimeout(500);
-        await charged(page, [['P2', NEED - 1], ['P3', NEED], ['F3', NEED], ['C1', NEED]]);
+        await charged(page, [['P1', NEED - 1], ['P3', NEED], ['F3', NEED], ['C1', NEED]]);
         await page.waitForTimeout(400);
         await watch(page);
         await perfectHit(page);
@@ -1111,7 +1111,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       {
         const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
         await page.waitForTimeout(500);
-        await charged(page, [['P2', 9], ['P3', 5], ['C1', 7], ['S3', 3]], [['C3', 'F1', 'S1']]);
+        await charged(page, [['P1', 9], ['P3', 5], ['C1', 7], ['S3', 3]], [['C3', 'F1', 'S1']]);
         await page.waitForTimeout(400);
         await page.locator('.deck-alert').click();
         await page.waitForSelector('.modal.deck-pick .pcard');
@@ -1124,7 +1124,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.locator('.deck-pick .pcard').nth(1).click();
         await page.waitForTimeout(1200);
         const sv = await gs(page);
-        check('덱 3단계: 교체하면 그 칸의 충전은 0, 나머지는 그대로', sv.deck.slots.map((x) => `${x.id}:${x.charge}`).join() === 'P2:9,C3:0,C1:7,S3:3', sv.deck.slots.map((x) => `${x.id}:${x.charge}`).join());
+        check('덱 3단계: 교체하면 그 칸의 충전은 0, 나머지는 그대로', sv.deck.slots.map((x) => `${x.id}:${x.charge}`).join() === 'P1:9,C3:0,C1:7,S3:3', sv.deck.slots.map((x) => `${x.id}:${x.charge}`).join());
         await ctx.close();
       }
     }
@@ -1168,6 +1168,138 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       check('특별 상자: 두 번째로 터질 때는 토스트가 없다', !t2.includes('황금 상자 ·'), t2);
       check('특별 상자: 본 종류는 별도 키에 적히고 게임 저장은 그대로', await page.evaluate(() => JSON.parse(localStorage.getItem('ajd-home-idle:seen-special')).join() === 'gold' && !('seenSpecial' in JSON.parse(localStorage.getItem('ajd-home-idle:save')))));
       await ctx.close();
+    }
+
+
+    // ---- 덱 5단계 화면: 확률 · ★ 올리기 · 공명 · 전설 · P4 · S2 · 겹침 ----
+    {
+      const d5 = ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck', 'fever', 'special'];
+      const d5Set = (page, slots, offers = [], buff = {}) => page.evaluate(([sl, of, bf]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck', 'fever', 'special'], deck: { ...s.deck, slots: sl.map((x) => ({ id: x[0], charge: x[1] || 0, star: x[2] || 1 })), offers: of, buff: { ...s.deck.buff, ...bf } } }); }, [slots, offers, buff]);
+      {
+        const { ctx, page } = await newPage(browser, { version: 15, unlocked: d5, moves: 1, guide: { step: 18, n: 0, done: true } });
+        await page.waitForTimeout(500);
+        const e0 = errors.length;
+        await d5Set(page, [], [['P2', 'C1', 'P3']]);
+        await page.waitForTimeout(400);
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(1500);
+        const ob = await page.locator('.deck-pick .deck-odds-btn').boundingBox();
+        check('덱 5단계: 고르기 창에 확률 버튼(누르는 영역 48px)', !!ob && ob.width >= 48 && ob.height >= 48, JSON.stringify(ob));
+        await page.locator('.deck-pick .deck-odds-btn').click();
+        await page.waitForTimeout(300);
+        const ot = await text(page, '.modal');
+        check('덱 5단계: 확률 창에 일반 60% · 레어 32% · 전설 8%', ot.includes('일반 60% · 레어 32% · 전설 8%') && ot.includes('카드 3장을 따로 뽑아요'), ot.replace(/\n/g, '|'));
+        await page.locator('.modal .modal-actions .btn', { hasText: '돌아가기' }).click();
+        await page.waitForTimeout(300);
+        check('덱 5단계: 확률 창에서 돌아가면 같은 묶음 3장', (await page.locator('.deck-pick .pcard').count()) === 3);
+        await d5Set(page, [['P2', 0], ['C1', 0], ['P3', 0], ['S3', 0]], [['P2', 'C4', 'C3']]);
+        await page.waitForTimeout(300);
+        await page.locator('.modal .modal-actions .btn', { hasText: '나중에 고르기' }).click().catch(() => {});
+        await page.waitForTimeout(300);
+        await page.locator('.dock [data-ux="deck"]').click();
+        await page.waitForTimeout(500);
+        await page.locator('.deck-odds-btn', { hasText: '확률 보기' }).click();
+        await page.waitForTimeout(300);
+        const ot2 = await text(page, '.modal');
+        check('덱 5단계: 공구함 패널의 확률 보기도 같은 창(60·32·8%)', ot2.includes('60%') && ot2.includes('32%') && ot2.includes('8%') && (await page.locator('.modal .modal-actions .btn', { hasText: '닫기' }).count()) === 1);
+        await page.locator('.modal .modal-actions .btn', { hasText: '닫기' }).click();
+        await page.waitForTimeout(300);
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(1500);
+        const up = await page.evaluate(() => { const c = document.querySelector('.pcard[data-card="P2"]'); return { btn: c.querySelector('.pick-btn').textContent, lv: c.querySelector('.pc-lv').textContent, disabled: c.disabled, other: document.querySelector('.pcard[data-card="C4"] .pick-btn').textContent }; });
+        check('덱 5단계: 낀 카드 후보는 "★ 올리기"와 "칸 안 씀 / 최대 ×4 → ×5"', up.btn === '★ 올리기' && up.lv.includes('칸 안 씀') && up.lv.includes('최대 ×4 → ×5') && !up.disabled && up.other === '고르기', JSON.stringify(up));
+        const vp0 = page.viewportSize();
+        for (const w of [390, 360]) {
+          await page.setViewportSize({ width: w, height: vp0.height });
+          await page.waitForTimeout(400);
+          const fit = await page.evaluate(() => { const g = document.querySelector('.deck-pick .pcards'); const m = document.querySelector('.deck-pick .modal-body') || document.querySelector('.deck-pick'); const mr = m.getBoundingClientRect(); const cs = [...document.querySelectorAll('.deck-pick .pcard')].map((c) => c.getBoundingClientRect().right); return { sw: g.scrollWidth, cw: g.clientWidth, msw: m.scrollWidth, mcw: m.clientWidth, n: cs.length, over: cs.some((r) => r > mr.right + 0.5), vw: window.innerWidth }; });
+          check(`덱 5단계: ★ 올리기 후보가 든 고르기가 ${w}폭 창 안에 들어간다(가로 스크롤 없음)`, fit.n === 3 && fit.sw <= fit.cw && fit.msw <= fit.mcw && !fit.over, JSON.stringify(fit));
+        }
+        await page.setViewportSize(vp0);
+        await page.waitForTimeout(300);
+        await page.locator('.pcard[data-card="P2"]').click();
+        await page.waitForTimeout(2200);
+        const sv = await gs(page);
+        check('덱 5단계: ★ 올리기는 칸이 다 차 있어도 교체 화면 없이 칸 수 그대로·★2', sv.deck.slots.length === 4 && sv.deck.slots[0].star === 2 && (await page.locator('.modal').count()) === 0, JSON.stringify(sv.deck.slots));
+        check('덱 5단계: 카드 줄 첫 칸에 ★ 점 2개', (await page.locator('.deck-slot').first().locator('.deck-stars i').count()) === 2);
+        await page.locator('.deck-row').click();
+        await page.waitForTimeout(500);
+        const pt = await text(page, '.deck-panel');
+        check('덱 5단계: 패널에 "최대 ×5"와 공명 줄', pt.includes('최대 ×5') && pt.includes('정밀 2장') && pt.includes('충전 ×1.5'), pt.replace(/\n/g, '|').slice(0, 300));
+        check('덱 5단계: 공명 걸린 카드의 막대는 res(주황 깜빡임) 표시', (await page.locator('.deck-row .deck-bar.res').count()) >= 2);
+        await d5Set(page, [['P2', 0]]);
+        await page.waitForTimeout(500);
+        check('덱 5단계: 공명이 없으면 안내 한 줄', (await text(page, '.deck-panel')).includes('같은 태그를 2장 모으면 충전이 빨라져요'));
+        // 전설이 든 고르기
+        await d5Set(page, [['P2', 0]], [['P5', 'A1', 'F5']]);
+        await page.waitForTimeout(400);
+        await page.evaluate(() => { window.__deckSlow = 1; });
+        await page.locator('.dock [data-ux="deck"]').click().catch(() => {});
+        await page.locator('.deck-alert, .dp-pick').first().click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(2200);
+        check('덱 5단계: 전설 카드가 든 고르기가 오류 없이 열린다', errors.length === e0 && (await page.locator('.deck-pick .pcard.r-legend').count()) === 3, errors.slice(e0).join('|'));
+        const lg = await page.evaluate(() => { const c = document.querySelector('.pcard[data-card="P5"] .pface'); return getComputedStyle(c).animationName; });
+        check('덱 5단계: 전설 앞면은 노랑 테두리 깜빡임 애니메이션', lg === 'legblink', lg);
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 15, unlocked: d5, moves: 1, guide: { step: 18, n: 0, done: true } });
+        await page.waitForTimeout(500);
+        await d5Set(page, [['P4', 0]]);
+        await page.waitForTimeout(500);
+        await page.evaluate(() => window.__ajd.shield(0, 6));
+        const n = () => page.locator('.shield .sh-cell.on').count();
+        for (let i = 0; i < 5; i++) { await page.evaluate(() => { window.__ajd.zone(0.5); window.__ajd.charge(0.5); }); await page.waitForTimeout(250); }
+        const n5 = await n();
+        await page.evaluate(() => { window.__ajd.zone(0.5); window.__ajd.charge(0.5); });
+        await page.waitForTimeout(500);
+        const n6 = await n();
+        check('덱 5단계: P4를 끼면 퍼펙트 6번째에 실드가 찬다(5번째까지는 안 참)', n5 === 0 && n6 === 1, `${n5} -> ${n6}`);
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 15, unlocked: d5, moves: 1, guide: { step: 18, n: 0, done: true } });
+        await setS(page, { points: 1e6, earned: 1e5, tapLevel: 80, unpack: { box: 30, damage: 1e15 } });
+        await page.waitForTimeout(500);
+        await d5Set(page, [['S2', 0]]);
+        await page.waitForTimeout(2800);
+        await page.locator('.gear-loupe').scrollIntoViewIfNeeded();
+        await page.locator('.gear-loupe .gear-info').click();
+        await page.waitForSelector('.modal');
+        const sp = await text(page, '.modal');
+        check('덱 5단계: S2를 끼면 특별 상자 창의 폭탄 문구가 "상자 8개"', sp.includes('상자 8개') && !sp.includes('상자 5개'), sp.replace(/\n/g, '|').slice(0, 200));
+        await ctx.close();
+      }
+      for (const [w, h] of [[390, 844], [360, 800]]) {
+        const { ctx, page } = await newPage(browser, { version: 15, unlocked: d5, moves: 1, guide: { step: 18, n: 0, done: true } }, '?debug', { viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+        await page.waitForTimeout(500);
+        await d5Set(page, [['C5', 20, 3], ['P3', 30, 2], ['P4', 12, 3], ['A1', 8, 3]], [], { nextStrike: true });
+        await page.waitForTimeout(700);
+        const g = await page.evaluate(() => {
+          const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+          const side = document.querySelector('.deck-side').getBoundingClientRect();
+          const cells = [...document.querySelectorAll('.deck-cell')];
+          let bad = [];
+          cells.forEach((c, i) => {
+            const slot = c.querySelector('.deck-slot').getBoundingClientRect();
+            const bar = c.querySelector('.deck-bar')?.getBoundingClientRect();
+            const st = c.querySelector('.deck-stars')?.getBoundingClientRect();
+            if (st && (st.left < slot.left || st.right > slot.right || st.top < slot.top || st.bottom > slot.bottom)) bad.push('stars-out' + i);
+            if (st && bar && hit(st, bar)) bad.push('stars-bar' + i);
+            if (st && hit(st, side)) bad.push('stars-side' + i);
+            if (bar && hit(bar, side)) bad.push('bar-side' + i);
+            if (hit(slot, side)) bad.push('slot-side' + i);
+          });
+          const row = document.querySelector('.deck-row');
+          return { bad, over: document.documentElement.scrollWidth > document.documentElement.clientWidth, rowOver: row.scrollWidth > row.clientWidth + 1, armed: document.querySelectorAll('.deck-slot.armed').length, stars: [...document.querySelectorAll('.deck-stars')].map((x) => x.querySelectorAll('i').length).join() };
+        });
+        check(`덱 5단계 ${w}폭: 카드 줄 ★ 점·충전 막대·"공구함 ×N"이 겹치지 않고 넘치지 않는다`, g.bad.length === 0 && !g.over && !g.rowOver && g.stars === '3,2,3,3', JSON.stringify(g));
+        check(`덱 5단계 ${w}폭: 장전된 C5 칸에 주황 깜빡임(armed)`, g.armed === 1);
+        await ctx.close();
+      }
     }
 
     check('콘솔 오류 0건', errors.length === 0, errors.slice(0, 3).join(' | '));

@@ -23,13 +23,14 @@ describe('공구함 덱: 칸·효과', () => {
   it('1단계는 3칸', () => {
     expect([0, 1, 4, 9].map(deckSlots)).toEqual([4, 4, 4, 4]);
   });
-  it('카드 12장과 자료 구조 필드', () => {
-    expect(CARDS.map((c) => c.id)).toEqual(['P2', 'C1', 'P3', 'C3', 'P1', 'C4', 'S1', 'S3', 'S4', 'F1', 'F2', 'F3']);
-    for (const c of CARDS) expect(c.tags.length).toBeGreaterThan(0);
+  it('카드 22장: 증폭 전설 2장만 태그가 없다', () => {
+    expect(CARDS).toHaveLength(22);
+    expect(new Set(CARDS.map((c) => c.id)).size).toBe(22);
+    expect(CARDS.filter((c) => c.tags.length === 0).map((c) => c.id)).toEqual(['A1', 'A2']);
   });
   it('덱이 비면 효과가 0이고 특전·공구 값과 같다', () => {
     const s = defaultState();
-    expect(deckEffects(s)).toEqual({ streakBonus: 0, chainCapAdd: 0, perfectHalfAdd: 0, weakTapsMult: 1, weakDelayMult: 1, goldMultAdd: 0, specialRateMult: 1, feverChargeAdd: 0, feverSecAdd: 0 });
+    expect(deckEffects(s)).toEqual({ streakBonus: 0, chainCapAdd: 0, perfectHalfAdd: 0, weakTapsMult: 1, weakDelayMult: 1, goldMultAdd: 0, specialRateMult: 1, feverChargeAdd: 0, feverSecAdd: 0, shieldAdd: 0, shieldChargePerfects: 8, chainStep: 0.1, bombBlast: 5, feverMultAdd: 0 });
     expect(perkEffects(s).streakBonus).toBe(0);
     expect(gearEffects(s).chainCap).toBe(20);
   });
@@ -138,23 +139,14 @@ describe('공구함 덱: 문턱·묶음', () => {
     expect(o).not.toContain('P2');
     expect(o).not.toContain('C1');
   });
-  it('안 낀 카드가 3장 이상 남아 있으면 낀 카드는 묶음에 나오지 않고 서로 다르다', () => {
-    const held = [slot('P2'), slot('C1'), slot('F3')];
+  it('묶음은 서로 다른 3장이고 ★3 카드는 나오지 않는다', () => {
+    const held = [{ ...slot('P2'), star: 3 }, slot('C1'), slot('F3')];
     for (let seed = 0; seed < 300; seed++) {
       const o = rollCardOffer(held, seed);
       expect(o).toHaveLength(CARD_OFFER_SIZE);
       expect(new Set(o).size).toBe(CARD_OFFER_SIZE);
-      for (const id of o) expect(held.map((h) => h.id)).not.toContain(id);
+      expect(o).not.toContain('P2');
     }
-    const nine = CARDS.slice(0, 9).map((c) => slot(c.id));
-    for (let seed = 0; seed < 50; seed++) expect(rollCardOffer(nine, seed).sort()).toEqual(['F1', 'F2', 'F3']);
-  });
-  it('안 낀 카드가 3장 미만이면 낀 카드로 채우되 안 낀 카드는 전부 담긴다', () => {
-    const held = CARDS.slice(0, 10).map((c) => slot(c.id));
-    const o = rollCardOffer(held, 9);
-    expect(new Set(o).size).toBe(3);
-    expect(o).toContain('F2');
-    expect(o).toContain('F3');
   });
   it('tapAndHit·heavyHit 안에서도 문턱이 처리된다', () => {
     const s = withDeck({ mark: 1 }, { earned: mt(1, 1) });
@@ -172,10 +164,10 @@ describe('공구함 덱: 고르기·교체·건너뛰기', () => {
     expect(r.deck.slots).toEqual([slot('C1')]);
     expect(r.deck.offers).toEqual([]);
   });
-  it('묶음에 없는 카드·없는 묶음·이미 낀 카드는 null', () => {
+  it('묶음에 없는 카드·없는 묶음·★3 카드는 null', () => {
     expect(chooseCard(offer(['P2', 'C1', 'P3']), 0, 'C3')).toBeNull();
     expect(chooseCard(offer(['P2', 'C1', 'P3']), 1, 'P2')).toBeNull();
-    expect(chooseCard(offer(['P2', 'C1', 'P3'], [slot('P2')]), 0, 'P2')).toBeNull();
+    expect(chooseCard(offer(['P2', 'C1', 'P3'], [{ ...slot('P2'), star: 3 }]), 0, 'P2')).toBeNull();
   });
   it('칸이 차면 바꿀 칸을 줘야 하고 원래 카드는 버려진다', () => {
     const full = offer(['C3', 'C1', 'P3'], [slot('P2'), slot('C1'), slot('P3'), slot('S1')]);

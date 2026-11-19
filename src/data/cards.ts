@@ -37,12 +37,32 @@ export interface CardDef {
   goldEvery?: { min: number; taps: number };
   /** [발동] 피버 중 퍼펙트 강타마다 피버 시간 +sec초 */
   feverPerfectSec?: number;
+  /** 상시: 안전모 실드 칸 수에 더하는 값 */
+  shieldAdd?: number;
+  /** 상시: 실드가 한 칸 차는 데 필요한 퍼펙트 수(기본 8)를 이 값으로 줄인다 */
+  shieldChargePerfects?: number;
+  /** 상시: 연쇄 보너스 계수(기본 0.1)를 이 값으로 바꾼다 */
+  chainStep?: number;
+  /** 상시: 폭탄이 함께 터뜨리는 수(기본 5)를 이 값으로 바꾼다 */
+  bombBlast?: number;
+  /** 상시: 피버 배율(기본 x3)에 더하는 값 */
+  feverMultAdd?: number;
+  /** [발동] 퍼펙트 강타마다 탭 1회 x (연속 퍼펙트 수 x perStreak)를 보상으로 준다 */
+  perfectReward?: { perStreak: number };
+  /** [발동] 한 강타가 min연쇄 이상이면 다음 강타 탭 수 x mult(1회, 쌓이지 않음) */
+  bigChainNext?: { min: number; mult: number };
+  /** [발동] 퍼펙트 강타 every번마다 다음 일반 상자 1개를 폭탄으로 바꾼다 */
+  bombEvery?: number;
+  /** [발동] 피버가 끝날 때 피버 동안 터진 상자 수 x 탭 1회 x taps */
+  feverEndTaps?: number;
+  /** 증폭 전설: 태그가 없고, 이 카드의 상한을 올린다. tool = 꽉 찬 다른 카드 1장마다 +1, dex = 완성한 도감 세트 1개마다 +1(최대 `AMP_DEX_MAX`) */
+  amp?: 'tool' | 'dex';
 }
 
 /** 퍼펙트 구간 반폭의 고정 상한(수평계·P1·뒤 단계의 ★·공명과 상관없이. 굿 반폭 0.13보다 작다) */
 export const DECK_PERFECT_HALF_HARD_MAX = 0.125;
 
-/** 2단계까지의 카드 12장(DESIGN-DECK.md 5절). 뒤 단계 카드는 그 단계에서 더한다 */
+/** 5단계까지의 카드 22장(DESIGN-DECK.md 5절 + 증폭 전설 2장). 러시·양날 카드는 6단계에서 더한다 */
 export const CARDS: readonly CardDef[] = [
   { id: 'P2', name: '먹줄 튕기기', rarity: 'rare', tags: ['precise'], desc: '연속 퍼펙트 계수 +0.3', icon: 'perk-streak_coef', streakBonus: 0.3 },
   { id: 'C1', name: '긴 빠루', rarity: 'common', tags: ['chain'], desc: '연쇄 보너스 상한 +30', icon: 'tool/crowbar', chainCapAdd: 30 },
@@ -50,11 +70,21 @@ export const CARDS: readonly CardDef[] = [
   { id: 'C3', name: '줄줄이 짐', rarity: 'common', tags: ['chain'], desc: '한 강타의 100연쇄마다 탭 1회 x30', icon: 'bundle', chainEvery: { per: 100, taps: 30 } },
   { id: 'P1', name: '수평 맞추기', rarity: 'common', tags: ['precise'], desc: '퍼펙트 반폭 +0.01(상한 0.125)', icon: 'tool/level', perfectHalfAdd: 0.01 },
   { id: 'C4', name: '뚫어뻥', rarity: 'rare', tags: ['chain'], desc: '급소 탭 수 +50%, 급소 간격 x0.85', icon: 'tool/awl', weakTapsMult: 1.5, weakDelayMult: 0.85 },
-  { id: 'S1', name: '금박 포장지', rarity: 'common', tags: ['special'], desc: '황금 배율 10 -> 25', icon: 'box/gold-small-1', goldMultAdd: 15 },
+  { id: 'S1', name: '금박 포장지', rarity: 'common', tags: ['special'], desc: '황금 배율 10 → 25', icon: 'box/gold-small-1', goldMultAdd: 15 },
   { id: 'S3', name: '눈썰미', rarity: 'common', tags: ['special'], desc: '특별 상자 확률 x1.7', icon: 'tool/magnifier', specialRateMult: 1.7 },
   { id: 'S4', name: '황금 손잡이', rarity: 'rare', tags: ['special'], desc: '한 강타에서 황금 상자 3개 이상이면 황금 수 x 탭 1회 x150', icon: 'coin-pile', goldEvery: { min: 3, taps: 150 } },
   { id: 'F1', name: '불쏘시개', rarity: 'common', tags: ['fever'], desc: '피버 게이지 충전 +50%', icon: 'perk-fever_charge', feverChargeAdd: 0.5 },
   { id: 'F2', name: '숯불 유지', rarity: 'common', tags: ['fever'], desc: '피버 +8초', icon: 'fever', feverSecAdd: 8 },
+  { id: 'P4', name: '여분 안전모', rarity: 'rare', tags: ['precise'], desc: '실드 +1칸, 실드 충전 8 → 6퍼펙트', icon: 'tool/hardhat', shieldAdd: 1, shieldChargePerfects: 6 },
+  { id: 'P5', name: '장인의 호흡', rarity: 'legend', tags: ['precise'], desc: '퍼펙트 강타마다 탭 1회 x (연속 수 x 2)', icon: 'perk-tap_crit_power', perfectReward: { perStreak: 2 } },
+  { id: 'C2', name: '도미노 쌓기', rarity: 'rare', tags: ['chain'], desc: '연쇄 보너스 계수 0.1 → 0.15', icon: 'box/normal-1', chainStep: 0.15 },
+  { id: 'C5', name: '이삿짐 행렬', rarity: 'legend', tags: ['chain'], desc: '1,000연쇄 이상이면 다음 강타 탭 수 x2(1회)', icon: 'tool/sledge', bigChainNext: { min: 1000, mult: 2 } },
+  { id: 'S2', name: '큰 폭죽', rarity: 'rare', tags: ['special', 'chain'], desc: '폭탄이 터뜨리는 상자 5개 → 8개', icon: 'box/bomb-small-1', bombBlast: 8 },
+  { id: 'S5', name: '폭탄 공장', rarity: 'legend', tags: ['special', 'chain'], desc: '퍼펙트 강타 5번마다 다음 일반 상자 1개를 폭탄으로 바꿈', icon: 'box/bomb-normal-1', bombEvery: 5 },
+  { id: 'F4', name: '불꽃 축제', rarity: 'rare', tags: ['fever'], desc: '피버 배율 x3 → x4', icon: 'perk-tap_power', feverMultAdd: 1 },
+  { id: 'F5', name: '용광로', rarity: 'legend', tags: ['fever', 'chain'], desc: '피버가 끝날 때 피버 동안 터진 상자 수 x 탭 1회 x2', icon: 'crit', feverEndTaps: 2 },
+  { id: 'A1', name: '공구 장인', rarity: 'legend', tags: [], desc: '꽉 찬 다른 카드 1장마다 이 카드 상한 +1', icon: 'tool/robot-arm', amp: 'tool' },
+  { id: 'A2', name: '수집 노트', rarity: 'legend', tags: [], desc: '완성한 도감 세트 1개마다 이 카드 상한 +1(최대 +3)', icon: 'perk', amp: 'dex' },
   { id: 'F3', name: '풀무질', rarity: 'rare', tags: ['fever', 'precise'], desc: '피버 중 퍼펙트 강타마다 피버 +2초', icon: 'tool/hammer', feverPerfectSec: 2 },
 ];
 
@@ -77,23 +107,32 @@ export const DECK_MARK_DIGITS: readonly (readonly number[])[] = [
 
 /** 카드 배수 상한(★1 x4, ★ 하나당 +1) = 이 값 + ★ */
 export const CARD_MULT_CAP_BASE = 3;
-/** 충전 필요 눈금(희귀도별 첫 값). 지금 카드는 전부 일반으로 본다(`cardChargeNeed`) */
+/** 충전 필요 눈금(희귀도별 첫 값, `cardChargeNeed`) */
 export const CARD_CHARGE_NEED: Record<CardRarity, number> = { common: 40, rare: 50, legend: 60 };
 /** 집 길이 보정: 행은 이사 횟수 0~5(6 이상은 마지막 행). 필요 눈금 = `CARD_CHARGE_NEED` x 이 값. 시뮬로 맞춘 값(DESIGN-DECK.md 13.6·13.7) */
-export const CHARGE_NEED_SCALE: readonly number[] = [1, 0.35, 1.1, 1.5, 4.5, 2.6];
+export const CHARGE_NEED_SCALE: readonly number[] = [1, 0.35, 1.27, 1.5, 4.5, 2.6];
 /** 이사할 때 `deck.targetScale`에 고정하는 집 목표 배수: 행은 새 이사 횟수 0~5(6 이상은 마지막 행). 시뮬로 집 2부터 하나씩 맞춘 값 */
-export const DECK_TARGET_SCALE: readonly number[] = [1, 240, 370, 330, 340, 170];
+export const DECK_TARGET_SCALE: readonly number[] = [1, 270, 390, 330, 450, 200];
+/** 뽑기 희귀도 가중치(고르기 3장 모두 따로 굴린다. 합 1). 화면에 그대로 보인다(`deckOfferOdds`) */
+export const RARITY_ODDS: Record<CardRarity, number> = { common: 0.6, rare: 0.32, legend: 0.08 };
+/** ★ 최대 */
+export const CARD_STAR_MAX = 3;
+/** 공명: 같은 태그 카드 N장일 때 그 태그 카드들의 충전 속도 배율(인덱스 = 장수, 4 이상은 마지막) */
+export const RESONANCE_SPEED: readonly number[] = [1, 1, 1.5, 2, 3];
+/** 수집 노트(A2)의 상한 보너스 최대 */
+export const AMP_DEX_MAX = 3;
 /** 충전 조건 상수(DESIGN-DECK.md 13.3) */
 export const CHARGE_RULES = {
-  /** 정밀: 퍼펙트 강타 +1, 연속이 10의 배수면 +3 */
-  precise: 1,
-  preciseTen: 3,
-  /** 연쇄: 한 강타의 per연쇄마다 +1, 강타당 최대 max */
-  chainPer: 50,
-  chainMax: 6,
-  /** 특별: 터진 특별 상자 1개 +2 */
-  special: 2,
-  /** 피버: 피버 중 강타 +1, 피버가 켜질 때 +4 */
+  /** 정밀: 퍼펙트 강타 +4, 연속 퍼펙트가 10의 배수면 +9 */
+  precise: 4,
+  preciseTen: 9,
+  /** 연쇄: 한 강타의 연쇄 chainPer(150)마다 +1, 강타당 최대 chainMax(2) */
+  chainPer: 150,
+  chainMax: 2,
+  /** 특별: 터진 특별 상자 1개 +special, 강타당 최대 specialMax */
+  special: 1,
+  specialMax: 1,
+  /** 피버: 피버 중 강타 +1, 피버가 켜지는 강타에 +4 */
   feverStrike: 1,
   feverOn: 4,
 } as const;

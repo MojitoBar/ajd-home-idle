@@ -1,7 +1,7 @@
 import { GEARS } from '../data/gear';
 import { PERKS, PERK_OFFER_SIZE } from '../data/perks';
 import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, cardDef } from '../data/cards';
-import { cardChargeNeed, deckSlots, emptyDeck, marksPassed, rollCardOffer, type DeckSlot, type DeckState } from './deck';
+import { cardChargeNeed, deckSlots, emptyBuff, emptyDeck, marksPassed, rollCardOffer, type DeckSlot, type DeckState } from './deck';
 import { rollPerkOffer, seededRng } from './perks';
 import { BOX_PATTERN, ROOM_BOXES } from '../data/unpack';
 import { boxHp, endlessHp } from './unpack';
@@ -30,7 +30,10 @@ const V9_POINTS_CAP_RATIO = 0.3;
 const V11_GUIDE_INSERT_AT = 12;
 
 // 키 N: 버전 N 저장을 N+1로 올린다.
-export const MIGRATIONS: Migrations = {
+export /** 14 -> 15 이전용: v14까지의 집 길이 필요 눈금 보정표(옛 값을 코드에 고정해 둔다) */
+const V14_NEED_SCALE = [1, 0.35, 1.1, 1.5, 4.5, 2.6];
+
+const MIGRATIONS: Migrations = {
   0: (s) => ({ ...s, version: 1, stats: s.stats ?? {}, settings: s.settings ?? {} }),
   // 1 -> 2: 이벤트 진행 상태(배너·문제·결과) 추가. 1차 저장 데이터는 대기 상태로 시작
   1: (s) => ({
@@ -146,6 +149,20 @@ export const MIGRATIONS: Migrations = {
     if (slots.length < deckSlots(moves) && DECK_MARKS - mark + offers.length === 0) return { ...s, version: 14, deck: { ...d, mark, offers: [rollCardOffer(slots as unknown as DeckSlot[], moves * 7919 + 31)] } };
     return { ...s, version: 14, deck: { ...d, mark } };
   },
+  // 14 -> 15: 희귀도별 필요 눈금·★·공명·증폭 카드·발동 진행 값(buff). 낀 카드(모두 ★1)의 눈금은 "옛 필요(일반 40 x 옛 보정표) 대비 비율"을 새 필요(희귀도별)에 그대로 옮겨 공구함 배율이 줄지 않는다. 이미 들어간 집의 targetScale·목표·묶음은 그대로
+  14: (s) => {
+    const d = isObj(s.deck) ? s.deck : {};
+    const moves = num(s.moves, 0, true);
+    const oldNeed = 40 * V14_NEED_SCALE[Math.min(Math.max(moves, 0), V14_NEED_SCALE.length - 1)];
+    const slots = Array.isArray(d.slots)
+      ? d.slots.map((o) => {
+          if (!isObj(o)) return o;
+          const ratio = Math.min(1, Math.max(0, num(o.charge, 0)) / oldNeed);
+          return { ...o, star: Math.min(3, Math.max(1, num(o.star, 1, true))), charge: ratio * cardChargeNeed(moves, cardDef(typeof o.id === 'string' ? o.id : '')?.rarity) };
+        })
+      : [];
+    return { ...s, version: 15, deck: { ...d, slots, buff: emptyBuff() } };
+  },
 };
 
 export type LoadResult =
@@ -221,7 +238,7 @@ export function sanitize(raw: Raw): GameState {
   if (Array.isArray(rawDeck.slots)) {
     for (const o of rawDeck.slots) {
       if (!isObj(o) || typeof o.id !== 'string' || !cardDef(o.id) || slots.some((s) => s.id === o.id) || slots.length >= deckSlotsMax) continue;
-      slots.push({ id: o.id, star: Math.min(3, Math.max(1, num(o.star, 1, true))), charge: Math.min(cardChargeNeed(moves), num(o.charge, 0)) });
+      slots.push({ id: o.id, star: Math.min(3, Math.max(1, num(o.star, 1, true))), charge: Math.min(cardChargeNeed(moves, cardDef(o.id)?.rarity), num(o.charge, 0)) });
     }
   }
   const cardOffers: string[][] = [];
@@ -238,6 +255,9 @@ export function sanitize(raw: Raw): GameState {
     rerolls: Math.min(9, num(rawDeck.rerolls, d.deck.rerolls, true)),
     mark: Math.min(DECK_MARKS, num(rawDeck.mark, 0, true)),
     targetScale: Math.max(1e-6, num(rawDeck.targetScale, 1)),
+    buff: isObj(rawDeck.buff)
+      ? { nextStrike: rawDeck.buff.nextStrike === true, forceBomb: rawDeck.buff.forceBomb === true, perfects: Math.min(99, num(rawDeck.buff.perfects, 0, true)), boxesInFever: num(rawDeck.buff.boxesInFever, 0, true) }
+      : emptyBuff(),
     seen: Array.isArray(rawDeck.seen) ? [...new Set(rawDeck.seen.filter((id): id is string => typeof id === 'string' && !!cardDef(id)))] : [],
   };
   const rawUnpack = isObj(raw.unpack) ? raw.unpack : {};

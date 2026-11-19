@@ -492,7 +492,7 @@ function cellFlash(c: HTMLElement, steps = 2): void {
 }
 
 /** 연속 배수 칩 오른쪽 가로 한 줄의 작은 안전모 칸: 찬 칸은 그림, 빈 칸은 외곽선, 다음 칸까지의 퍼펙트는 줄 아래 얇은 막대(8칸). 안전모 Lv0이면 아무것도 안 보인다. 칸이 같은데 수가 늘면 작게 반짝 */
-export function syncShield(max: number, sh: { n: number; toNext: number }): void {
+export function syncShield(max: number, sh: { n: number; toNext: number }, chargePerfects = 8): void {
   if (!shieldEl) return;
   if (cells.length !== max) {
     cells = Array.from({ length: max }, makeCell);
@@ -514,7 +514,7 @@ export function syncShield(max: number, sh: { n: number; toNext: number }): void
   shieldEl.hidden = max === 0;
   const full = sh.n >= max;
   shieldBar.hidden = full;
-  shieldFill.style.width = `${Math.max(0, Math.min(8, 8 - sh.toNext)) * 12.5}%`;
+  shieldFill.style.width = `${Math.max(0, Math.min(chargePerfects, chargePerfects - sh.toNext)) * (100 / chargePerfects)}%`;
 }
 
 /** 수평계·안전모를 산 순간: 새로 생긴 안전모 칸이 번쩍 */

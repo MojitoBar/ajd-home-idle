@@ -10,6 +10,7 @@
 // 환경변수: POLICY=현실,고수,가볍게 · SEED_N=시드 수(최대 20) · SEED_FROM=시작 번호(기본 0, 시드를 나눠 돌릴 때) · MAX_MOVES · MAX_SEC · TARGETS
 // 공구함 덱 정책: DECK=없음,정밀,연쇄,특별,피버 (쉼표로 여럿). 문턱마다 그 원형 태그 카드를 우선 고르고(없으면 칸이 비었을 때만 아무 카드), 칸이 차면 원형 밖 카드부터 바꾼다.
 //   3단계: 덱 정책이 충전·deckMult·houseTarget을 그대로 쓴다. 출력에 집별 공구함 배율(떠날 때)과 카드 완성 시점(집 시간 %)이 붙는다. 시험용 덮어쓰기: DTS=1,58,... (DECK_TARGET_SCALE) · CNS=1,0.35,... (CHARGE_NEED_SCALE) · DIG='[[6개]x5행]' (DECK_MARK_DIGITS) · DQ=0.1,0.22,... (문턱 d 후보 시점 6개). 4단계: 4칸·고르기 7번(문턱 6곳), 출력에 한 행동에 문턱 2개 이상 넘은 빈도가 붙는다. 시드를 나눠 병렬로 돌릴 때는 DECK=원형 하나씩 + DECK_DUMP.
+//   5단계: 카드 22장·★·공명·희귀도 추첨. 정책은 원형 카드를 우선 끼고 칸이 차면 낀 원형 카드를 ★로 올린다. 증폭 덱은 DECK=고정:A1+A2+P3+C3 처럼 천장 사례로 잰다. CR='{"precise":4,"preciseTen":9}' 로 충전 상수를 덮어쓴다.
 //   출력은 원형별 이사 시각 표와 문턱 k별 통과 시점(집 시간 대비 %)뿐이다. DECK_DUMP=파일.json이면 결과를 저장하고, DECK_LOAD=a.json,b.json이면 돌리지 않고 합쳐서 표만 낸다(원형별로 나눠 병렬로 돌릴 때). DECK을 안 주면 위의 기본 출력 그대로다.
 import { createServer } from 'vite';
 
@@ -30,9 +31,11 @@ const { move, canMove } = await ld('/src/logic/prestige.ts');
 const { tierOf } = await ld('/src/logic/unpack.ts');
 const guide = await ld('/src/logic/guide.ts');
 const { HOUSES, MOON_STAGE } = await ld('/src/data/houses.ts');
-const { chooseCard, deckFull, deckMult, cardChargeNeed } = await ld('/src/logic/deck.ts');
+const { chooseCard, deckFull, deckMult, slotNeed } = await ld('/src/logic/deck.ts');
 const { houseTarget } = await ld('/src/logic/house.ts');
-const { CARDS, DECK_TARGET_SCALE, CHARGE_NEED_SCALE, DECK_MARK_DIGITS } = await ld('/src/data/cards.ts');
+const { CARDS, DECK_TARGET_SCALE, CHARGE_NEED_SCALE, DECK_MARK_DIGITS, CHARGE_RULES } = await ld('/src/data/cards.ts');
+// 시험용: CR='{"precise":2,"preciseTen":5}' 충전 조건 상수를 메모리에서만 덮어쓴다
+if (process.env.CR) Object.assign(CHARGE_RULES, JSON.parse(process.env.CR));
 // 시험용: DTS=1,8,9,... 집 목표 배수 표 / CNS=1,0.3,... 필요 눈금 보정 표를 메모리에서만 덮어쓴다(길이는 그대로 6)
 if (process.env.DTS) process.env.DTS.split(',').forEach((v, i) => { DECK_TARGET_SCALE[i] = Number(v); });
 // DIG='[[..5개..],[..]]' (행 5개) 문턱 자릿수 표를 덮어쓴다
@@ -44,7 +47,7 @@ const DIG_Q = process.env.DQ ? process.env.DQ.split(',').map(Number) : [0.1, 0.2
 const DECKS = process.env.DECK ? process.env.DECK.split(',') : process.env.DECK_LOAD ? [] : undefined;
 const ARCH = { 정밀: 'precise', 연쇄: 'chain', 특별: 'special', 피버: 'fever' };
 /** 같은 원형 카드끼리는 이 순서로 고른다(레어·효과가 큰 것 먼저) */
-const DECK_PRIO = ['P2', 'P3', 'C3', 'C4', 'S4', 'F3', 'S1', 'F1', 'F2', 'C1', 'S3', 'P1'];
+const DECK_PRIO = ['P5', 'C5', 'F5', 'S5', 'P2', 'P3', 'C3', 'C4', 'S4', 'F3', 'C2', 'S2', 'F4', 'P4', 'S1', 'F1', 'F2', 'C1', 'S3', 'P1'];
 const inArch = (id, tag) => CARDS.find((c) => c.id === id)?.tags.includes(tag);
 /** 대기 중인 카드 묶음을 전부 처리한다: 원형 카드가 있으면 낀다(칸이 차면 원형 밖 카드를 바꾸고, 바꿀 칸이 없으면 건너뜀), 없으면 빈 칸일 때만 아무 카드 */
 function takeCards(s, name) {
@@ -54,10 +57,14 @@ function takeCards(s, name) {
   const tag = ARCH[name];
   while (s.deck.offers.length > 0) {
     const offer = s.deck.offers[0];
-    const mine = offer.filter((id) => inArch(id, tag)).sort((a, b) => DECK_PRIO.indexOf(a) - DECK_PRIO.indexOf(b))[0];
+    const mine = offer.filter((id) => inArch(id, tag) && !s.deck.slots.some((x) => x.id === id)).sort((a, b) => DECK_PRIO.indexOf(a) - DECK_PRIO.indexOf(b))[0];
+    const held = (id) => s.deck.slots.find((x) => x.id === id);
+    const up = offer.find((id) => inArch(id, tag) && held(id) && held(id).star < 3);
+    const off = s.deck.slots.findIndex((x) => !inArch(x.id, tag));
     let n = null;
-    if (mine) n = deckFull(s) ? (s.deck.slots.findIndex((x) => !inArch(x.id, tag)) >= 0 ? chooseCard(s, 0, mine, s.deck.slots.findIndex((x) => !inArch(x.id, tag))) : null) : chooseCard(s, 0, mine);
-    else if (!deckFull(s)) n = chooseCard(s, 0, offer[0]);
+    if (mine && !held(mine)) n = deckFull(s) ? (off >= 0 ? chooseCard(s, 0, mine, off) : null) : chooseCard(s, 0, mine);
+    if (!n && up) n = chooseCard(s, 0, up);
+    if (!n && !mine && !up && !deckFull(s)) n = chooseCard(s, 0, offer.find((id) => !held(id)) ?? offer[0]);
     s = n ?? chooseCard(s, 0, null);
   }
   return s;
@@ -157,9 +164,9 @@ function run(pol, seed, dk) {
       const dm = s.deck.mark - 1 - markSeen;
       if (dm > 0) { markActs++; if (dm >= 2) markMulti++; }
       while (markSeen < s.deck.mark - 1) { markT.push(t); markSeen++; }
-      const need = cardChargeNeed(s.moves), held = new Set(s.deck.slots.map((x) => x.id));
+      const held = new Set(s.deck.slots.map((x) => x.id));
       for (const id of Object.keys(fullAt)) if (!held.has(id)) delete fullAt[id];
-      for (const sl of s.deck.slots) if (sl.charge >= need && fullAt[sl.id] === undefined) fullAt[sl.id] = t;
+      for (const sl of s.deck.slots) if (sl.charge >= slotNeed(sl, s.moves) && fullAt[sl.id] === undefined) fullAt[sl.id] = t;
       trT.push(t); trV.push(Math.log10(Math.max(1, s.earned)));
     }
     if (acted === 'strike' && pol.sSec) { t += pol.sSec; s = eco.tick(s, pol.sSec, rng); }

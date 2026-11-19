@@ -1,5 +1,6 @@
 // 피버 게이지(방 아래 가로 한 줄)·발동 연출·발동 중 분위기. 상태는 읽기만 한다.
 import { FEVER_MULT, feverRatio } from '../logic/fever';
+import { deckEffects } from '../logic/deck';
 import { perkEffects } from '../logic/perks';
 import type { GameState } from '../logic/state';
 import { el, setText, toggleClass } from './dom';
@@ -58,7 +59,7 @@ export function syncFever(state: GameState): void {
   toggleClass(document.body, 'reduce-motion', fx.isReduced());
 
   if (tagFire.hidden === active) tagFire.hidden = !active;
-  if (active) setText(tagTxt, `피버 x${FEVER_MULT} · ${Math.ceil(f.activeSec)}초`);
+  if (active) setText(tagTxt, `피버 x${FEVER_MULT + deckEffects(state).feverMultAdd} · ${Math.ceil(f.activeSec)}초`);
   else if (lock) setText(tagTxt, `재충전 ${f.cooldownSec.toFixed(1)}초`);
   else if (now < tagHoldUntil && Math.floor(ratio * 100) > 0) setText(tagTxt, `피버 ${Math.floor(ratio * 100)}%`);
   else setText(tagTxt, '');
@@ -67,6 +68,7 @@ export function syncFever(state: GameState): void {
   toggleClass(tag, 'active', active);
   toggleClass(tag, 'lock', lock);
   if (badge.hidden === active) badge.hidden = !active;
+  if (active) setText(badge, `x${FEVER_MULT + deckEffects(state).feverMultAdd}`);
 
   if (active && !wasActive) start();
   else if (!active && wasActive) end();

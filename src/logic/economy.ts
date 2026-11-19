@@ -17,7 +17,7 @@ import { advanceFever, advanceParcel, feverMultOf } from './fever';
 import { dexBoostMult, homeBoostMult, perkEffects } from './perks';
 import { featureOpen } from './guide';
 import type { GameState } from './state';
-import { deckMult } from './deck';
+import { deckFeverEnd, deckMult, deckEffects } from './deck';
 import { tierOf } from './unpack';
 
 export function milestoneMult(level: number, milestones: readonly number[]): number {
@@ -43,7 +43,7 @@ export function homeMult(state: GameState): number {
 }
 
 export function globalMult(state: GameState): number {
-  return permMult(state.moves) * collectionMult(state) * homeMult(state) * feverMultOf(state.fever);
+  return permMult(state.moves) * collectionMult(state) * homeMult(state) * feverMultOf(state.fever, deckEffects(state).feverMultAdd);
 }
 
 export interface MultBreakdown {
@@ -67,7 +67,7 @@ export function multBreakdown(state: GameState, _target: 'tap'): MultBreakdown {
     permanent: permMult(state.moves),
     collection: collectionMult(state) / setM,
     home: homeMult(state),
-    fever: feverMultOf(state.fever),
+    fever: feverMultOf(state.fever, deckEffects(state).feverMultAdd),
     perk: perkEffects(state).tapMult,
     set: setM,
   };
@@ -110,12 +110,12 @@ export interface TapBreakdown {
 
 export function tapBreakdown(state: GameState): TapBreakdown {
   const flat = tapStable(state);
-  return { flat, total: flat * feverMultOf(state.fever) };
+  return { flat, total: flat * feverMultOf(state.fever, deckEffects(state).feverMultAdd) };
 }
 
 /** 탭 1회 수익(치명타 제외). damped(초당 6회 초과 탭)면 x0.3 */
 export function tapValue(state: GameState, damped = false): number {
-  return tapStable(state) * feverMultOf(state.fever) * (damped ? DAMPED_RATIO : 1);
+  return tapStable(state) * feverMultOf(state.fever, deckEffects(state).feverMultAdd) * (damped ? DAMPED_RATIO : 1);
 }
 
 export function buyTapUpgrade(state: GameState): GameState | null {
@@ -144,9 +144,17 @@ export function applyTap(state: GameState, damped = false): GameState {
 /** rng는 택배 상자(60~120초) 타이머 재설정에만 쓰인다. 없으면 중간값 고정. */
 export function tick(state: GameState, dt: number, rng?: () => number): GameState {
   if (!(dt > 0)) return state;
+  const fever = advanceFever(state.fever, dt);
+  if (state.fever.activeSec > 0 && fever.activeSec <= 0 && state.deck.buff.boxesInFever > 0) {
+    const end = deckFeverEnd(state);
+    if (end) {
+      const gain = tapStable(state) * end.taps;
+      state = { ...end.state, points: state.points + gain, earned: state.earned + gain, stats: { ...state.stats, totalEarned: state.stats.totalEarned + gain } };
+    }
+  }
   return {
     ...state,
-    fever: advanceFever(state.fever, dt),
+    fever,
     parcel: advanceParcel(state.parcel, dt, rng, perkEffects(state).parcelDelayScale),
     unpack: state.unpack.rushSec > 0 ? { ...state.unpack, rushSec: Math.max(0, state.unpack.rushSec - dt) } : state.unpack,
     stats: { ...state.stats, playSec: state.stats.playSec + dt },

@@ -6,7 +6,6 @@ import {
   TIER_BASE,
   TIER_STEP,
   BOX_PATTERN,
-  BOMB_BLAST,
   GOLD_GAIN_MULT,
   RUSH_SEC,
   SPECIAL_FREE_BOXES,
@@ -30,7 +29,7 @@ import type { BoxResult } from './gacha';
 import { tapBase, tapValue } from './economy';
 import { gearEffects } from './gear';
 import { featureOpen } from './guide';
-import { checkMarks, chargeOnStrike, deckChargeResult, deckEffects, deckEvent, type DeckChargeResult, type DeckFire } from './deck';
+import { checkMarks, chargeOnStrike, deckChargeResult, deckCountFeverBoxes, deckEffects, deckEvent, type DeckChargeResult, type DeckFire } from './deck';
 import { chargeFever, feverMultOf } from './fever';
 import { perkEffects, seededRng, tapPowerMult } from './perks';
 import { HOME_SLOTS, type GameState } from './state';
@@ -210,15 +209,18 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
   }
 
   const kind = boxKind(k);
-  const special = boxSpecial(state);
+  const natural = boxSpecial(state);
+  const forced = natural === null && state.deck.buff.forceBomb;
+  const special = forced ? 'bomb' : natural;
   const gain =
-    (tapValue(state) / feverMultOf(state.fever)) * BOX_KINDS[kind].k * (k < ROOM_BOXES ? 1 : ENDLESS_K_MULT) * (o.gainMult ?? 1) * (special === 'gold' ? GOLD_GAIN_MULT + deckEffects(state).goldMultAdd : 1);
+    (tapValue(state) / feverMultOf(state.fever, deckEffects(state).feverMultAdd)) * BOX_KINDS[kind].k * (k < ROOM_BOXES ? 1 : ENDLESS_K_MULT) * (o.gainMult ?? 1) * (special === 'gold' ? GOLD_GAIN_MULT + deckEffects(state).goldMultAdd : 1);
   const inRoom = k < ROOM_BOXES;
   const slot = inRoom ? Math.floor(k / BOX_PATTERN.length) : undefined;
   const within = k % BOX_PATTERN.length;
   const completes = inRoom && k === ROOM_BOXES - 1 && !state.unpack.roomDone;
   let next: GameState = {
     ...state,
+    deck: forced ? { ...state.deck, buff: { ...state.deck.buff, forceBomb: false } } : state.deck,
     points: state.points + gain,
     earned: state.earned + gain,
     stats: { ...state.stats, totalEarned: state.stats.totalEarned + gain },
@@ -275,19 +277,20 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
  * 폭탄이 터지면 뒤따르는 BOMB_BLAST개가 내구도와 상관없이 함께 터지고, 휩쓸린 폭탄은 거기서 다시 BOMB_BLAST개를 터뜨린다.
  */
 function hitChained(state: GameState, base: HitOptions, bursts: BoxBurst[]): GameState {
-  const opts = (extra: Partial<HitOptions>): HitOptions => ({ ...base, gainMult: featureOpen(state, 'chain') ? chainBonus(bursts.length, gearEffects(state).chainCap) : 1, chain: bursts.length + 1, ...extra });
+  const opts = (extra: Partial<HitOptions>): HitOptions => ({ ...base, gainMult: featureOpen(state, 'chain') ? chainBonus(bursts.length, gearEffects(state).chainCap, deckEffects(state).chainStep) : 1, chain: bursts.length + 1, ...extra });
   const h = hitBox(state, opts({}));
   if (!h.burst) return h.state;
   bursts.push(h.burst);
   let next = h.state;
-  let pending = h.burst.special === 'bomb' ? BOMB_BLAST : 0;
+  const blast = deckEffects(state).bombBlast;
+  let pending = h.burst.special === 'bomb' ? blast : 0;
   while (pending > 0) {
     pending--;
     const b = hitBox(next, opts({ force: true, blast: true }));
     next = b.state;
     if (!b.burst) continue;
     bursts.push(b.burst);
-    if (b.burst.special === 'bomb') pending += BOMB_BLAST;
+    if (b.burst.special === 'bomb') pending += blast;
   }
   return next;
 }
@@ -297,7 +300,7 @@ function chainPrize(start: GameState, state: GameState, chain: number): { state:
   if (!featureOpen(start, 'chain')) return { state, prize: null };
   for (let t = CHAIN_PRIZES.length - 1; t >= 0; t--) {
     if (chain < CHAIN_PRIZES[t].n) continue;
-    const gain = (tapValue(start) / feverMultOf(start.fever)) * CHAIN_PRIZES[t].taps;
+    const gain = (tapValue(start) / feverMultOf(start.fever, deckEffects(start).feverMultAdd)) * CHAIN_PRIZES[t].taps;
     return {
       prize: { tier: t as 0 | 1 | 2, n: chain, gain },
       state: { ...state, points: state.points + gain, earned: state.earned + gain, stats: { ...state.stats, totalEarned: state.stats.totalEarned + gain } },
@@ -307,7 +310,7 @@ function chainPrize(start: GameState, state: GameState, chain: number): { state:
 }
 
 function tapCore(state: GameState, rng: () => number, damped: boolean, comboMult: number, charge: boolean): HeavyResult {
-  const feverMult = feverMultOf(state.fever);
+  const feverMult = feverMultOf(state.fever, deckEffects(state).feverMultAdd);
   const r = tapWithRng(state, rng, damped, comboMult);
   const bursts: BoxBurst[] = [];
   const start = charge ? r.state : { ...r.state, fever: state.fever };
@@ -351,10 +354,10 @@ export interface HeavyResult extends TapResult {
 
 /** 공구함 정산: 강타 사건의 보상 카드(탭 1회 수익 x taps, 연쇄 상금과 같은 방식)를 P·누적에 더하고, 진행 문턱을 판정한다. 일반 탭은 chain을 0으로 넘겨 문턱만 본다 */
 function settleDeck(start: GameState, state: GameState, chain: number, bursts: readonly BoxBurst[], strike: boolean): { state: GameState; fires: DeckFire[]; offered: boolean; charge: DeckChargeResult } {
-  let out = state;
+  let out = deckCountFeverBoxes(state, bursts.length);
   const fires = chain > 0 ? deckEvent(out, { chain, gold: out.deck.slots.length > 0 ? bursts.reduce((n, b) => n + (b.special === 'gold' ? 1 : 0), 0) : 0 }) : [];
   if (fires.length > 0) {
-    const unit = tapValue(start) / feverMultOf(start.fever);
+    const unit = tapValue(start) / feverMultOf(start.fever, deckEffects(start).feverMultAdd);
     let gain = 0;
     for (const f of fires) {
       if (f.taps === undefined) continue;
@@ -369,8 +372,8 @@ function settleDeck(start: GameState, state: GameState, chain: number, bursts: r
 }
 
 /** i번째(0부터) 터진 상자의 연쇄 보너스 배율 */
-export function chainBonus(i: number, cap = CHAIN_BONUS_CAP): number {
-  return 1 + CHAIN_BONUS_STEP * Math.min(i, cap);
+export function chainBonus(i: number, cap = CHAIN_BONUS_CAP, step = CHAIN_BONUS_STEP): number {
+  return 1 + step * Math.min(i, cap);
 }
 
 /**
@@ -380,7 +383,7 @@ export function chainBonus(i: number, cap = CHAIN_BONUS_CAP): number {
  * 피버는 feverCharge만 채우고 피버 피해 배율은 시작 상태 기준 하나로 쓴다. 감쇠 없음.
  */
 export function heavyHit(state: GameState, rng: () => number, taps: number, comboMult = 1, feverCharge = taps): HeavyResult {
-  const feverMult = feverMultOf(state.fever);
+  const feverMult = feverMultOf(state.fever, deckEffects(state).feverMultAdd);
   const critMult = perkEffects(state).critMult;
   const r = tapWithRng(state, rng, false, comboMult * taps);
   const fx = perkEffects(state);

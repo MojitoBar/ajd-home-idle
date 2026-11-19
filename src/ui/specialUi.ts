@@ -1,5 +1,5 @@
 // 특별 상자 설명 창 본문과 처음 만날 때 알림 문구. 수치는 모두 logic/data 의 실제 값을 읽는다(화면에서 따로 계산하지 않는다).
-import { GOLD_GAIN_MULT, BOMB_BLAST, RUSH_SEC, SPECIAL_FREE_BOXES, type SpecialBox } from '../data/unpack';
+import { GOLD_GAIN_MULT, RUSH_SEC, SPECIAL_FREE_BOXES, type SpecialBox } from '../data/unpack';
 import { deckEffects } from '../logic/deck';
 import { gearEffects } from '../logic/gear';
 import type { GameState } from '../logic/state';
@@ -14,7 +14,7 @@ const pct = (v: number): string => `${Number((v * 100).toFixed(1))}%`;
 
 function effect(state: GameState, sp: SpecialBox): string {
   if (sp === 'gold') return `보상 x${GOLD_GAIN_MULT + deckEffects(state).goldMultAdd}`;
-  if (sp === 'bomb') return `상자 ${BOMB_BLAST}개 연쇄`;
+  if (sp === 'bomb') return `상자 ${deckEffects(state).bombBlast}개 연쇄`;
   return `자동 +${RUSH_SEC}초`;
 }
 
@@ -23,7 +23,7 @@ export function specialBody(state: GameState): HTMLElement[] {
   const rows = SPECIAL_KINDS.map((sp) => {
     const text =
       sp === 'gold' ? `이 상자의 보상이 ${effect(state, sp).replace('보상 x', '')}배가 돼요.`
-      : sp === 'bomb' ? `터지면 뒤따르는 상자 ${BOMB_BLAST}개가 함께 터져요.`
+      : sp === 'bomb' ? `터지면 뒤따르는 상자 ${deckEffects(state).bombBlast}개가 함께 터져요.`
       : `터지면 자동 연타 시간이 ${RUSH_SEC}초 늘어요. 쌓이는 데 상한이 없어요.`;
     return el('div', { cls: 'sp-row pf' }, pxImg(`box/${sp}-small-1`, 'sp-img'), el('div', { cls: 'sp-main' }, el('b', { text: NAME[sp] }), el('span', { text })));
   });

@@ -73,7 +73,7 @@ export function gearEffects(state: GameState): GearEffects {
   const dk = deckEffects(state);
   return {
     perfectHalf: Math.min(DECK_PERFECT_HALF_HARD_MAX, Math.min(GEAR_PERFECT_HALF_MAX, GEAR_PERFECT_HALF_BASE + GEAR_PERFECT_HALF_STEP * lv('level')) + dk.perfectHalfAdd),
-    shieldMax: lv('helmet'),
+    shieldMax: lv('helmet') + dk.shieldAdd,
     chainCap: GEAR_CHAIN_CAP_BASE + GEAR_CHAIN_CAP_STEP * lv('crowbar') + dk.chainCapAdd,
     weakTaps: Math.round((GEAR_WEAK_TAPS_BASE + GEAR_WEAK_TAPS_STEP * lv('awl')) * dk.weakTapsMult),
     weakDelayMult: (1 - GEAR_WEAK_DELAY_STEP * lv('awl')) * dk.weakDelayMult,
@@ -89,8 +89,8 @@ export interface ShieldState {
 }
 
 /** 불러오기·이사 때 가득 찬 실드 */
-export function initialShield(max: number): ShieldState {
-  return { n: max, toNext: SHIELD_CHARGE_PERFECTS };
+export function initialShield(max: number, chargePerfects = SHIELD_CHARGE_PERFECTS): ShieldState {
+  return { n: max, toNext: chargePerfects };
 }
 
 export interface StreakResolve {
@@ -101,13 +101,13 @@ export interface StreakResolve {
 }
 
 /** 판정 뒤의 연속 퍼펙트와 실드. 퍼펙트는 +1하고 8번마다 칸을 채운다. 굿·미스는 칸이 있고 연속이 있으면 연속을 유지(+1 없음)하고 칸을 쓴다. 보상은 실제 판정대로(여기서 안 다룸) */
-export function resolveStreak(prev: number, grade: ChargeGrade, shield: ShieldState, max: number): StreakResolve {
+export function resolveStreak(prev: number, grade: ChargeGrade, shield: ShieldState, max: number, chargePerfects = SHIELD_CHARGE_PERFECTS): StreakResolve {
   if (grade === 'perfect') {
     let { n, toNext } = shield;
     toNext -= 1;
     if (toNext <= 0) {
       n = Math.min(max, n + 1);
-      toNext = SHIELD_CHARGE_PERFECTS;
+      toNext = chargePerfects;
     }
     return { streak: prev + 1, shield: { n, toNext }, saved: false };
   }
