@@ -855,9 +855,15 @@ interface ChainMeta {
   n: number;
   /** 러시 중 한꺼번에 터뜨리는 연쇄: 걸음 소리·흔들림을 겹쳐 내지 않는다 */
   instant?: boolean;
+  /** 묶음 연쇄에서 그림 없이 상태만 넘기는 칸: 날아가는 점수 같은 부수 효과도 뺀다 */
+  skip?: boolean;
+  /** 묶음 연쇄에서 이 틱에 묶인 칸 수(점수 날림 개수를 늘린다) */
+  sz?: number;
 }
 let chainRun: { timer: number } | null = null;
 let chainN = 0;
+/** 연쇄가 끝난 시각: 사은품 장면이 합계·상금 표시를 바로 덮지 않게 1.6초 기다린다 */
+let chainEndAt = -1e9;
 let chainTotal = 0;
 let chainBox: HTMLElement | null = null;
 let chainJudge: { text: string; tone: string; power: string } | null = null;
@@ -887,34 +893,80 @@ function startChain(): void {
   chainJudgePop = !!j;
 }
 
-/** 하나씩 이어 터뜨린다: 간격 clamp(900/n, 35, 90)ms를 평균으로 뒤로 갈수록 빨라진다. 끝나면 보상 표시 */
+/** 하나씩 터뜨리는 연쇄의 끝(이 수까지는 한 칸에 한 번씩, 간격 clamp(900/n, 35, 90)ms를 평균으로 뒤로 갈수록 빨라진다) */
+const CHAIN_SOLO = 40;
+const CHAIN_TICK_MS = 35;
+/** 눈에 띄어야 하는 칸의 순위(묶음 안에서 이 칸까지 끊어 제대로 보여 준다). 0이면 평범 */
+function chainWeight(b: BoxBurst): number {
+  if (b.special === 'gold') return 5;
+  if (b.special === 'clock') return 4;
+  if (b.special === 'bomb' || b.roomDone) return 3;
+  if (b.care?.tierUp) return 2;
+  return 0;
+}
+/** 긴 연쇄(CHAIN_SOLO 초과)의 전체 시간: 40연쇄 1.3초에서 시작해 10배마다 0.4초씩만 늘고 2.4초에서 멈춘다 */
+const chainTotalMs = (n: number): number => Math.min(2400, 1300 + 400 * Math.log10(n / CHAIN_SOLO));
+
+/** 연쇄 연출: 40연쇄까지는 하나씩(간격 평균 clamp(900/n, 35, 90)ms, 뒤로 갈수록 빨라짐). 그보다 길면 전체 시간(chainTotalMs)에 맞춰 35ms 틱마다 여러 칸을 묶어 넘기고 뒤로 갈수록 묶음이 커진다(누적 칸 수 ∝ 제곱).
+ * 묶음 안 앞 칸들은 그림 없이 상태만 처리(boom reduced + skip)하고, 마지막 칸만 제대로 터뜨린다. 묶음에 특별 상자·방 완성 같은 칸이 있으면 그 칸까지로 묶음을 끊어 그 칸을 보여 준다(끊김은 마지막 틱에서만 시간을 늘리므로 최대 T/8틱까지). 끝나면 보상 표시 */
 function playChain(i: HeavyHitInput): void {
   const bs = i.bursts;
   const n = bs.length;
   chainClock = bs.some((b) => b.special === 'clock');
+  const grouped = n > CHAIN_SOLO;
   const base = Math.max(35, Math.min(90, 900 / n));
+  const ticks = grouped ? Math.max(2, Math.round(chainTotalMs(n) / CHAIN_TICK_MS)) : n;
   const cum = cumGain(i);
-  const step = (j: number): void => {
+  let at = 0;
+  let t = 0;
+  const step = (): void => {
     const box = boxes[0];
+    let cut = at + 1;
+    if (grouped) {
+      const last = t >= ticks - 1;
+      cut = last ? n : Math.min(n, Math.max(at + 1, Math.round(n * ((t + 1) / ticks) ** 2)));
+      if (cut - at > 1 && (!last || t - (ticks - 1) < Math.ceil(ticks / 8))) {
+        let best = 0;
+        let at2 = cut;
+        for (let q = at; q < cut - 1; q++) {
+          const w = chainWeight(bs[q]);
+          if (w > best) {
+            best = w;
+            at2 = q + 1;
+          }
+        }
+        cut = at2;
+      }
+    }
     try {
-      if (j === 0) startChain();
-      if (box) boom(box, bs[j], i.pointsEl, false, { j, n });
-      chainShow(j + 1, cum[j], cum[n - 1], n);
+      if (at === 0) startChain();
+      if (box) {
+        for (let j = at; j < cut - 1; j++) {
+          const b0 = boxes[0];
+          if (b0) boom(b0, bs[j], i.pointsEl, true, { j, n, instant: true, skip: true });
+        }
+        const b1 = boxes[0];
+        if (b1) boom(b1, bs[cut - 1], i.pointsEl, false, { j: cut - 1, n, sz: cut - at });
+      }
+      chainShow(cut, cum[cut - 1], cum[n - 1], n);
     } catch (e) {
       chainRun = null;
       fx.headHold(false);
       throw e;
     }
-    if (j < n - 1) {
-      chainRun = { timer: window.setTimeout(() => step(j + 1), Math.max(35, base * (1.3 - (0.6 * (j + 1)) / n))) };
+    at = cut;
+    t++;
+    if (at < n) {
+      chainRun = { timer: window.setTimeout(step, grouped ? CHAIN_TICK_MS : Math.max(35, base * (1.3 - (0.6 * at) / n))) };
       return;
     }
     chainRun = null;
+    chainEndAt = performance.now();
     if (lastState) syncUnpack(lastState);
     chainEnd(bs, i.prize, i.pointsEl, false, cum[n - 1]);
   };
   chainRun = { timer: 0 };
-  step(0);
+  step();
 }
 
 /** 방 안 연쇄 표시 칸: 숫자 / 합계 / 상금 칩이 위에서 아래로 쌓인다. 판정 글자 아래 */
@@ -1429,7 +1481,7 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean, ch
   if (!chain && burst.special === 'clock' && !reduced) goldHead('자동 연타!');
   if (!chain) gainText(burst, s, reduced);
   if (burst.special && !reduced) specialBurst(burst.special, c, s, !!chain, burst.blast);
-  fx.absorb({ x: c.x, y: c.y }, pointsEl, burst.special === 'gold' ? (chain ? 4 : 10) : chain ? 1 : 3, { delay: 0.04, offset: { x: 0, y: 0 } });
+  if (!chain?.skip) fx.absorb({ x: c.x, y: c.y }, pointsEl, burst.special === 'gold' ? (chain ? 4 : 10) : chain ? 1 + Math.min(3, Math.floor((chain.sz ?? 1) / 12)) : 3, { delay: 0.04, offset: { x: 0, y: 0 } });
   if (!chain || chain.j === 0) vibrate([18, 30, 40]);
   if (chain && !reduced && !chain.instant && chain.j % 3 === 2) fx.shake(document.getElementById('app') ?? room, 4, 160);
   if (chain && !reduced && !chain.instant) swing(1);
@@ -1653,9 +1705,11 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean, ch
   };
 }
 
-/** 사은품 장면이 떠 있으면 1초 뒤 다시 시도(최대 20번). 끝내 못 띄우면 닫힘 뒤 할 일을 바로 한다 */
+/** 사은품 장면이 떠 있으면 1초 뒤 다시 시도(최대 20번, 연쇄 중 기다림은 세지 않음). 끝내 못 띄우면 닫힘 뒤 할 일을 바로 한다 */
 function giftSoon(f: Parameters<typeof playFree>[0], ms: number, o: Parameters<typeof playFree>[1], tries: number): void {
   window.setTimeout(() => {
+    // 연쇄가 도는 동안과 끝난 직후엔 장면을 띄우지 않고 기다린다(압축된 긴 연쇄에서 사은품 장면이 연쇄 숫자·합계를 덮지 않게)
+    if (chainRun || performance.now() - chainEndAt < 1600) return giftSoon(f, 300, o, tries);
     if (playFree(f, o)) return;
     if (tries >= 20) o?.onClose?.();
     else giftSoon(f, 1000, o, tries + 1);

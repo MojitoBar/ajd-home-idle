@@ -308,6 +308,17 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       const chainTxt = await page.evaluate(() => document.querySelector('.un-chain')?.textContent ?? '');
       check('연쇄: 6연쇄를 쓰면 상자 번호가 6 이상 오른다', (await gs(page)).unpack.box >= b0 + 6, `${b0} -> ${(await gs(page)).unpack.box} ${chainTxt}`);
       await page.waitForTimeout(1500);
+      await setS(page, { unlocked: ALL, points: 1e6, earned: 1e5, tapLevel: 200, unpack: { box: 30, damage: 0, hp: 1 } });
+      await page.waitForTimeout(600);
+      const long = await page.evaluate(async () => {
+        window.__ajd.chain(1700);
+        const t0 = performance.now();
+        while (window.__ajd.getChain().playing && performance.now() - t0 < 20000) await new Promise((r) => requestAnimationFrame(r));
+        return { ms: Math.round(performance.now() - t0), n: window.__ajd.getChain().n, txt: document.querySelector('.un-chain b')?.textContent ?? '' };
+      });
+      check('긴 연쇄: 연쇄 1,700이 3.5초 안에 끝난다', long.ms <= 3500 && long.n === 1700, `${long.ms}ms n=${long.n}`);
+      check('긴 연쇄: 끝난 뒤 표시가 1700연쇄다', long.txt === '1700연쇄!', long.txt);
+      await page.waitForTimeout(1500);
       await page.evaluate(() => window.__ajd.fever());
       await page.waitForTimeout(500);
       check('피버: 켜면 피버 표시가 뜬다', (await page.evaluate(() => document.body.classList.contains('fever'))) && (await page.locator('.fever-tag.active').count()) === 1);
