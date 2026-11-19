@@ -214,3 +214,16 @@ body:has(.box-scene) .dock, body:has(.move-scene) .dock { display: none; }
 .pk-got-lv { color: var(--g0); background: var(--g2); padding: 0 var(--s2); box-shadow: 0 0 0 2px var(--g1); }
 .pc-lv.got { font-size: var(--fs-l); line-height: var(--lh-l); color: var(--g0); }
 .pr-inf { font: 400 var(--fs-s)/var(--lh-s) var(--f-bold); color: var(--k2); }
+
+/* 특별 상자 설명 창 */
+.sp-rate { margin: 0; font: 400 var(--fs-m)/var(--lh-m) var(--f-body); }
+.sp-rate b { color: var(--b2); text-shadow: 1px 0 0 currentColor; }
+.sp-list { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s3); }
+.sp-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: var(--s3); align-items: center; min-height: 64px; padding: var(--s1) var(--s3); --face: var(--p1); --line: var(--k1); }
+.sp-row .px-img { image-rendering: pixelated; justify-self: center; }
+.sp-main { display: flex; flex-direction: column; min-width: 0; }
+.sp-main b { font: 400 var(--fs-m)/var(--lh-m) var(--f-body); }
+.sp-main span { font: 700 var(--fs-s)/var(--lh-s) var(--f-bold); color: var(--k2); word-break: keep-all; }
+/* 돋보기 카드의 i 칩(공구 강화 카드의 i 칩과 같은 12px). 보이는 칩은 작아도 누르는 영역은 44px */
+button.gear-info { position: relative; padding: 0; border: 0; cursor: pointer; }
+.gear-info::after { content: ''; position: absolute; inset: -16px; }

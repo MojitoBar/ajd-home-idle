@@ -4,7 +4,7 @@ import { chainBonus } from '../logic/unpack';
 import { formatNumber } from '../logic/format';
 import { gearCost, gearEffects, gearLevel, gearUnlocked } from '../logic/gear';
 import type { GameState } from '../logic/state';
-import { el, setDisabled, setText, toggleClass } from './dom';
+import { el, glyph, setDisabled, setText, toggleClass } from './dom';
 import { iconImg, type IconName } from './icons';
 
 export const GEAR_ICON: Record<GearId, IconName> = { level: 'tool/level', helmet: 'tool/hardhat', crowbar: 'tool/crowbar', awl: 'tool/awl', loupe: 'tool/magnifier' };
@@ -18,6 +18,7 @@ export interface GearCard {
   buyHead: HTMLElement;
   buyPrice: HTMLElement;
   max: HTMLElement;
+  help?: HTMLButtonElement;
 }
 
 const pct = (v: number): string => `${Number((v * 100).toFixed(1))}%`;
@@ -49,15 +50,16 @@ export function createGearCards(attach: (c: GearCard) => void): GearCard[] {
     const buyPrice = el('span', { cls: 'buy-p fb' });
     const btn = el('button', { cls: 'btn buy fb', attrs: { type: 'button' } }, buyHead, buyPrice);
     const max = el('span', { cls: 'tag gold gear-max', text: '최대' });
+    const help = g.id === 'loupe' ? el('button', { cls: 'i-chip gear-info', attrs: { type: 'button', 'aria-label': '특별 상자 설명 보기', title: '특별 상자 설명 보기' } }, glyph('i', 8)) : undefined;
     const card = el(
       'div',
       { cls: `card tap-card gear-card gear-${g.id}` },
       el('div', { cls: 'card-icon' }, iconImg(GEAR_ICON[g.id], { size: 48 })),
-      el('div', { cls: 'card-main' }, el('div', { cls: 'card-title' }, el('span', { cls: 'card-name', text: g.name }), lv), info),
+      el('div', { cls: 'card-main' }, el('div', { cls: 'card-title' }, el('span', { cls: 'card-name', text: g.name }), lv), help ? el('div', { cls: 'tap-info-row' }, info, help) : info),
       btn,
       max,
     );
-    const c: GearCard = { id: g.id, card, lv, info, btn, buyHead, buyPrice, max };
+    const c: GearCard = { id: g.id, card, lv, info, btn, buyHead, buyPrice, max, help };
     attach(c);
     return c;
   });

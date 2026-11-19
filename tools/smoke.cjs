@@ -1093,6 +1093,47 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       }
     }
 
+
+    // ---- 특별 상자 설명 창 + 처음 만날 때 토스트 ----
+    {
+      const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
+      await setS(page, { points: 1e6, earned: 1e5, tapLevel: 80, unpack: { box: 30, damage: 1e15 } });
+      await page.waitForTimeout(500);
+      await page.waitForTimeout(2800);
+      await page.locator('.gear-loupe').scrollIntoViewIfNeeded();
+      const ib = await page.locator('.gear-loupe .gear-info').boundingBox();
+      check('특별 상자: 돋보기 카드에 i 버튼(누르는 영역 44px 이상)', !!ib && ib.width + 32 >= 44 && ib.height + 32 >= 44, JSON.stringify(ib));
+      check('특별 상자: 돋보기 카드가 잘리거나 강화 버튼과 겹치지 않는다', await page.evaluate(() => { const c = document.querySelector('.gear-loupe'); const i = c.querySelector('.gear-info').getBoundingClientRect(); const b = c.querySelector('.btn.buy').getBoundingClientRect(); const cr = c.getBoundingClientRect(); const ok = i.right <= b.left && i.left >= cr.left && i.right <= cr.right && i.width > 0; const info = c.querySelector('.card-info'); return ok && info.scrollWidth <= info.clientWidth + 1; }));
+      await page.screenshot({ path: path.join(SHOTS, 'special', '390-1-card.png') });
+      await page.locator('.gear-loupe .gear-info').click();
+      await page.waitForSelector('.modal');
+      const mt = await text(page, '.modal');
+      check('특별 상자: 창 제목·확률·3종 줄이 보인다', mt.includes('특별 상자') && /지금 확률 \d/.test(mt) && mt.includes('집마다 처음 20개에는 안 나와요') && ['황금 상자', '폭탄 상자', '시계 상자'].every((n) => mt.includes(n)) && (await page.locator('.modal .sp-row img').count()) === 3, mt.replace(/\n/g, ' '));
+      check('특별 상자: 창에 ✕ 없고 닫기 버튼 하나', (await page.locator('.modal .modal-actions .btn').count()) === 1 && (await text(page, '.modal .modal-actions .btn')) === '닫기');
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: path.join(SHOTS, 'special', '390-2-modal.png') });
+      await page.locator('.modal .modal-actions .btn').click();
+      await page.waitForTimeout(300);
+      check('특별 상자: 닫기를 누르면 창이 닫힌다', (await page.locator('.modal').count()) === 0);
+      await page.evaluate(() => { window.scrollTo(0, 0); window.__ajd.special('gold', 0); });
+      await page.waitForTimeout(600);
+      const mm = await mid(page);
+      await page.mouse.click(mm.x, mm.y);
+      await page.waitForFunction(() => Array.from(document.querySelectorAll('.toast')).some((e) => e.textContent.includes('황금 상자 ·')), null, { timeout: 4000 }).catch(() => {});
+      const t1 = await page.evaluate(() => Array.from(document.querySelectorAll('.toast')).map((e) => e.textContent).join('|'));
+      check('특별 상자: 처음 터질 때 토스트 "황금 상자 · 보상 x10"', t1.includes('황금 상자 · 보상 x10'), t1);
+      await page.screenshot({ path: path.join(SHOTS, 'special', '390-3-toast.png') });
+      await page.waitForTimeout(3200);
+      await page.evaluate(() => window.__ajd.special('gold', 0));
+      await page.waitForTimeout(600);
+      await page.mouse.click(mm.x, mm.y);
+      await page.waitForTimeout(2500);
+      const t2 = await page.evaluate(() => Array.from(document.querySelectorAll('.toast')).map((e) => e.textContent).join('|'));
+      check('특별 상자: 두 번째로 터질 때는 토스트가 없다', !t2.includes('황금 상자 ·'), t2);
+      check('특별 상자: 본 종류는 별도 키에 적히고 게임 저장은 그대로', await page.evaluate(() => JSON.parse(localStorage.getItem('ajd-home-idle:seen-special')).join() === 'gold' && !('seenSpecial' in JSON.parse(localStorage.getItem('ajd-home-idle:save')))));
+      await ctx.close();
+    }
+
     check('콘솔 오류 0건', errors.length === 0, errors.slice(0, 3).join(' | '));
   } catch (e) {
     check('스모크 실행 예외 없음', false, e.message);

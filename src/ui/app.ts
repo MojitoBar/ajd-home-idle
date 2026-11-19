@@ -46,6 +46,7 @@ import * as weakUi from './weakUi';
 import { movePerkBoxes, perkEffects } from '../logic/perks';
 import { buyGear, gearEffects, gearLevel, initialShield, resolveStreak, type ShieldState } from '../logic/gear';
 import { streakMult } from '../logic/charge';
+import { newSpecialToasts, specialBody } from './specialUi';
 import { createGearCards, GEAR_ICON, syncGearCards, type GearCard } from './gearUi';
 import { gearDef, type GearId } from '../data/gear';
 import { advanceWeak, hitWeak, initialWeak, weakVisible, type WeakState } from '../logic/weak';
@@ -512,7 +513,8 @@ function buildTapPanel(): void {
   tapRow.setAttribute('role', 'button');
   tapRow.setAttribute('aria-label', '탭 수익 내역 보기');
   tapRow.addEventListener('click', () => strat.toggleMult(tapRefs.info));
-  gearCards = createGearCards((c) =>
+  gearCards = createGearCards((c) => {
+    c.help?.addEventListener('click', openSpecialInfo);
     onBuy(c.btn, (repeat) => {
       const before = state;
       const next = buyGear(state, c.id);
@@ -530,8 +532,8 @@ function buildTapPanel(): void {
       }
       if (c.id === 'level' || c.id === 'helmet') chargeUi.gearBuy(c.id, gearLevel(before, c.id) + 1);
       return true;
-    }),
-  );
+    });
+  });
   tapPanel.append(
     card,
     strikeCard,
@@ -683,6 +685,7 @@ function applyCharge(pos: number, x: number, y: number, only?: number): void {
     c.streak = chargeStreak;
     return c;
   });
+  noteSpecials(r.bursts);
   guideHit(before, r.bursts, [...(r.grade !== 'miss' ? [{ type: 'strike' } as const] : []), { type: 'perfect', value: r.streak }]);
   heat = ventHeat(heat);
   if (zoneAuto) {
@@ -738,6 +741,7 @@ function applyWeak(x: number, y: number): void {
     return h;
   });
   weakPin = false;
+  noteSpecials(r.bursts);
   guideHit(before, r.bursts, [{ type: 'weak' }]);
   if (heatAuto) setHeat(heatAdd(heat, HEAT_WEAK));
   weakUi.hitFx(x, y, r.gain, document.getElementById('app')!, r.bursts.length);
@@ -878,6 +882,7 @@ function doTap(x: number, y: number, via: HTMLElement = refs.phone): void {
   unpackHit({ x, y, crit: r.crit, damped: r.damped, burst: r.burst, bursts: r.bursts, gain: r.gain, prize: r.prize, fever: wasFever, pointsEl: ptsTarget() });
   deckUi.hit(r.deckFires, r.deckOffered);
   if (h.tierUp >= 2 && comboOpen) dropTapNumber();
+  noteSpecials(r.bursts);
   guideHit(before, r.bursts, [{ type: 'tap' }, { type: 'combo', value: combo.n }]);
   update();
 }
@@ -1263,6 +1268,16 @@ function dismissModal(): void {
   closeModal = null;
 }
 
+function openSpecialInfo(): void {
+  showModal('특별 상자', specialBody(state), [{ label: '닫기', onClick: dismissModal }], { icon: iconImg('tool/magnifier', { size: 32, cls: 'title-ico' }) });
+}
+
+/** 방에서 특별 상자가 터지면 종류별로 평생 한 번 알린다. 가이드 중에는 가이드 안내와 겹치지 않게 띄우지도 적지도 않는다 */
+function noteSpecials(bursts: BoxBurst[]): void {
+  if (!guideEnded(state) || !bursts.some((b) => b.special)) return;
+  for (const msg of newSpecialToasts(state, bursts.flatMap((b) => (b.special ? [b.special] : [])))) showToast(msg);
+}
+
 function showModal(title: string, body: Node[], actions: Parameters<typeof openModal>[2], opts?: Parameters<typeof openModal>[3]): void {
   dismissModal();
   closeModal = openModal(title, body, actions, opts);
@@ -1517,6 +1532,7 @@ function rushFrame(dt: number): void {
     const wasFever = state.fever.activeSec > 0;
     const r = rushTap(state, () => Math.random(), comboMultOf(state, combo.n));
     state = r.state;
+    noteSpecials(r.bursts);
     const c = boxCenter();
     unpackRush({ x: c.x, y: c.y, crit: false, damped: false, burst: r.burst, bursts: r.bursts, gain: r.gain, prize: r.prize, fever: wasFever, pointsEl: ptsTarget() });
     deckUi.hit(r.deckFires, r.deckOffered);

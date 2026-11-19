@@ -1,5 +1,6 @@
 // PC 스모크(1440x900). 전제: vite preview 4173, 격리 Aside(헤드리스) CDP 9333.
 const { chromium } = require('playwright');
+const path = require('path');
 
 const URL = 'http://localhost:4173';
 const KEY = 'ajd-home-idle:save';
@@ -333,6 +334,36 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
       check(`덱(PC ${size.width}x${size.height}): 알림 2개가 한 줄에 떠도 세로 스크롤이 없고 이사 줄·게이지와 안 겹친다`, a.both && a.sh <= a.ih && !a.hs && a.apart && a.aboveMove && a.belowCharge, JSON.stringify(a));
       await ctx.close();
     }
+  }
+
+  // ---- 특별 상자 설명 창 + 처음 만날 때 토스트(PC) ----
+  {
+    const { ctx, page } = await open();
+    await page.evaluate(() => window.__ajd.guide('done'));
+    await setS(page, { unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, points: 1e6, earned: 1e5, tapLevel: 80, unpack: { box: 30, damage: 1e15 } });
+    await page.waitForTimeout(600);
+    await page.waitForTimeout(2800);
+    await page.locator('.gear-loupe').scrollIntoViewIfNeeded();
+    const ib = await page.locator('.gear-loupe .gear-info').boundingBox();
+    check('특별 상자(PC): 돋보기 카드에 i 버튼(누르는 영역 44px 이상)', !!ib && ib.width + 32 >= 44 && ib.height + 32 >= 44, JSON.stringify(ib));
+    check('특별 상자(PC): 돋보기 카드가 잘리거나 강화 버튼과 겹치지 않는다', await page.evaluate(() => { const c = document.querySelector('.gear-loupe'); const i = c.querySelector('.gear-info').getBoundingClientRect(); const b = c.querySelector('.btn.buy').getBoundingClientRect(); const cr = c.getBoundingClientRect(); const info = c.querySelector('.card-info'); return i.right <= b.left && i.left >= cr.left && i.right <= cr.right && info.scrollWidth <= info.clientWidth + 1; }));
+    await page.locator('.gear-loupe .gear-info').click();
+    await page.waitForSelector('.modal');
+    const mt = await text(page, '.modal');
+    check('특별 상자(PC): 창 제목·확률·3종 줄이 보인다', mt.includes('특별 상자') && /지금 확률 \d/.test(mt) && ['황금 상자', '폭탄 상자', '시계 상자'].every((n) => mt.includes(n)), mt.replace(/\n/g, ' '));
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(__dirname, '..', 'screenshots', 'special', '1440-2-modal.png') });
+    await page.locator('.modal .modal-actions .btn').click();
+    await page.waitForTimeout(300);
+    check('특별 상자(PC): 닫기를 누르면 창이 닫힌다', (await page.locator('.modal').count()) === 0);
+    await page.evaluate(() => { window.scrollTo(0, 0); window.__ajd.special('bomb', 0); });
+    await page.waitForTimeout(600);
+    const pb = await page.locator('.phone').boundingBox();
+    await page.mouse.click(pb.x + pb.width / 2, pb.y + pb.height / 2);
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('.toast')).some((e) => e.textContent.includes('폭탄 상자 ·')), null, { timeout: 4000 }).catch(() => {});
+    const t1 = await page.evaluate(() => Array.from(document.querySelectorAll('.toast')).map((e) => e.textContent).join('|'));
+    check('특별 상자(PC): 처음 터질 때 토스트 "폭탄 상자 · 상자 5개 연쇄"', t1.includes('폭탄 상자 · 상자 5개 연쇄'), t1);
+    await ctx.close();
   }
 
   check('콘솔 오류 0건', errors.length === 0, errors.slice(0, 3).join(' | '));
