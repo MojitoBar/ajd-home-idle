@@ -1,3 +1,4 @@
+import type { GameState } from './state';
 import { HOUSES, MOVE_TARGET_GROWTH_AFTER } from '../data/houses';
 
 export interface HouseInfo {
@@ -17,4 +18,9 @@ export function houseInfo(stage: number): HouseInfo {
     target: HOUSES[last].target * MOVE_TARGET_GROWTH_AFTER ** n,
     theme: HOUSES[last].theme,
   };
+}
+
+/** 이 집의 실제 목표: 표 값 x 이사할 때 고정한 `deck.targetScale`(첫 집은 1). 목표를 쓰는 곳은 전부 이 함수를 쓴다 */
+export function houseTarget(state: Pick<GameState, 'moves' | 'deck'>): number {
+  return houseInfo(state.moves).target * (state.deck?.targetScale ?? 1);
 }

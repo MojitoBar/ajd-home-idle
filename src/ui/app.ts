@@ -56,6 +56,8 @@ import * as guideFx from './guideFx';
 import { formatNumber } from '../logic/format';
 import { applyOffline } from '../logic/offline';
 import { houseInfo, move, moveProgress, moveStatus, permMultAfterMove } from '../logic/prestige';
+import { houseTarget } from '../logic/house';
+import { deckTargetScale } from '../logic/deck';
 import { exportString, importString, parseSave, serialize } from '../logic/save';
 import type { GameState } from '../logic/state';
 import { defaultState } from '../logic/state';
@@ -407,12 +409,12 @@ function build(): void {
   initParcel(refs.room, ptsTarget, uiCtx);
   strat.initStrategy({ ctx: uiCtx });
   strat.moveExtra.append(deckUi.alertBtn);
-  deckUi.initDeck({ ctx: uiCtx, pts: ptsTarget, host: moveBlock });
+  deckUi.initDeck({ ctx: uiCtx, pts: ptsTarget, host: moveBlock, room: () => refs.room });
   refs.speed.append(el('span', { cls: 'speed-pre', text: '탭 1회 ' }), refs.speedVal);
   refs.badge.append(refs.badgeVal);
   refs.badge.addEventListener('click', () => strat.toggleMult(refs.points));
   for (const n of [refs.speed, refs.ptsRate, multBtn]) n.addEventListener('click', () => strat.toggleMult(refs.points));
-  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { v9: showV9Notice, returnToast: () => { returnRush = true; announceReturn(); }, textBoxes, special: debugSpecial, rush: (sec: number) => { state = { ...state, unpack: { ...state.unpack, rushSec: sec } }; update(); }, say: (g: 'perfect' | 'good' | 'miss', streak = 0, gain = 1234, power = 1, chain = 0) => chargeUi.say(g, streak, gain, power, chain), fever: () => { state = { ...state, fever: { gauge: 0, activeSec: 10, cooldownSec: 0 } }; update(); }, particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = asDebug(s); }, guideEv: (ev: GuideEvent) => guideSay(ev), guide: (step: number | 'done') => { guideDebug = true; state = { ...state, guide: step === 'done' ? finishedGuide() : { step: step - 1, n: 0, done: false } }; update(); }, combo: (n: number) => { combo = { n, lastMs: performance.now(), earned: n * 100 }; comboBest0 = state.bestCombo; }, getCombo: () => combo, chain: (n: number) => { const r = refs.room.getBoundingClientRect(); applyCharge(0.5, r.left + r.width / 2, r.top + r.height / 2, n); }, getChain: chainInfo, holdAt: chargeUi.holdAt, release: chargeUi.releaseHeld, charge: (pos: number) => { chargeUi.holdAt(pos); chargeUi.releaseHeld(); }, streak: (n: number) => { chargeStreak = n; }, tip: chargeUi.showTip, keep: () => { if (combo.n) combo = { ...combo, lastMs: performance.now() }; }, weak: showWeakAt, weakHit: () => { const r = document.querySelector('.weak:not([hidden])')?.getBoundingClientRect(); if (r) applyWeak(r.left + r.width / 2, r.top + r.height / 2); }, weakAuto: (on: boolean) => { weakAuto = on; }, weakTip: () => weakUi.showTip(), getWeak: () => weak, heatAuto: (on: boolean) => { heatAuto = on; }, zoneAuto: (on: boolean) => { zoneAuto = on; }, heat: (v: number) => setHeat(v >= 100 ? heatAdd(initialHeat(), 100) : { heat: { v, overMs: 0 }, overheated: false }), getHeat: () => heat, zone: (center: number) => { chargeZone = chargeZoneAt(center, zoneHalf); chargeUi.setZone(chargeZone); }, home: (id: string | number, lv: number) => { const i = typeof id === 'number' ? id : ROOM_ITEMS.findIndex((x) => x.id === id); state = { ...state, homeLv: state.homeLv.map((x, j) => (j === i ? lv : x)) }; update(); }, gear: (id: GearId, lv: number) => { state = { ...state, gear: { ...state.gear, [id]: lv } }; update(); }, shield: (n: number, toNext = shield.toNext) => { shield = { n, toNext }; chargeUi.syncShield(shieldMax, shield); }, save: () => chargeUi.shieldSave(Math.max(0, shield.n - 1), streakMult(chargeStreak, perkEffects(state).streakBonus), refs.room, true), getZone: () => chargeZone, deck: (ids: string[]) => { state = { ...state, deck: { ...state.deck, slots: ids.map((id) => ({ id, star: 1 })) } }; update(); }, offer: () => { state = { ...state, deck: { ...state.deck, offers: [...state.deck.offers, rollCardOffer(state.deck.slots, Date.now())] } }; update(); } };
+  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { v9: showV9Notice, returnToast: () => { returnRush = true; announceReturn(); }, textBoxes, special: debugSpecial, rush: (sec: number) => { state = { ...state, unpack: { ...state.unpack, rushSec: sec } }; update(); }, say: (g: 'perfect' | 'good' | 'miss', streak = 0, gain = 1234, power = 1, chain = 0) => chargeUi.say(g, streak, gain, power, chain), fever: () => { state = { ...state, fever: { gauge: 0, activeSec: 10, cooldownSec: 0 } }; update(); }, particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = asDebug(s); }, guideEv: (ev: GuideEvent) => guideSay(ev), guide: (step: number | 'done') => { guideDebug = true; state = { ...state, guide: step === 'done' ? finishedGuide() : { step: step - 1, n: 0, done: false } }; update(); }, combo: (n: number) => { combo = { n, lastMs: performance.now(), earned: n * 100 }; comboBest0 = state.bestCombo; }, getCombo: () => combo, chain: (n: number) => { const r = refs.room.getBoundingClientRect(); applyCharge(0.5, r.left + r.width / 2, r.top + r.height / 2, n); }, getChain: chainInfo, holdAt: chargeUi.holdAt, release: chargeUi.releaseHeld, charge: (pos: number) => { chargeUi.holdAt(pos); chargeUi.releaseHeld(); }, streak: (n: number) => { chargeStreak = n; }, tip: chargeUi.showTip, keep: () => { if (combo.n) combo = { ...combo, lastMs: performance.now() }; }, weak: showWeakAt, weakHit: () => { const r = document.querySelector('.weak:not([hidden])')?.getBoundingClientRect(); if (r) applyWeak(r.left + r.width / 2, r.top + r.height / 2); }, weakAuto: (on: boolean) => { weakAuto = on; }, weakTip: () => weakUi.showTip(), getWeak: () => weak, heatAuto: (on: boolean) => { heatAuto = on; }, zoneAuto: (on: boolean) => { zoneAuto = on; }, heat: (v: number) => setHeat(v >= 100 ? heatAdd(initialHeat(), 100) : { heat: { v, overMs: 0 }, overheated: false }), getHeat: () => heat, zone: (center: number) => { chargeZone = chargeZoneAt(center, zoneHalf); chargeUi.setZone(chargeZone); }, home: (id: string | number, lv: number) => { const i = typeof id === 'number' ? id : ROOM_ITEMS.findIndex((x) => x.id === id); state = { ...state, homeLv: state.homeLv.map((x, j) => (j === i ? lv : x)) }; update(); }, gear: (id: GearId, lv: number) => { state = { ...state, gear: { ...state.gear, [id]: lv } }; update(); }, shield: (n: number, toNext = shield.toNext) => { shield = { n, toNext }; chargeUi.syncShield(shieldMax, shield); }, save: () => chargeUi.shieldSave(Math.max(0, shield.n - 1), streakMult(chargeStreak, perkEffects(state).streakBonus), refs.room, true), getZone: () => chargeZone, deckCharge: (n: number) => { state = { ...state, deck: { ...state.deck, slots: state.deck.slots.map((sl) => ({ ...sl, charge: n })) } }; update(); }, deck: (ids: string[]) => { state = { ...state, deck: { ...state.deck, slots: ids.map((id) => ({ id, star: 1, charge: 0 })) } }; update(); }, offer: () => { state = { ...state, deck: { ...state.deck, offers: [...state.deck.offers, rollCardOffer(state.deck.slots, Date.now())] } }; update(); } };
 
   const keyHint = el('p', { cls: 'key-hint' });
   for (const [keys, label] of [[['Space'], '상자 치기 · 꾹 강타'], [['1~4'], '탭 전환'], [['Esc'], '닫기']] as [string[], string][]) {
@@ -691,7 +693,7 @@ function applyCharge(pos: number, x: number, y: number, only?: number): void {
   chargeUi.strikeFx(r.grade, r.streak, document.getElementById('app')!, refs.room, power, r.bursts.length);
   if (saved) chargeUi.shieldSave(savedAt - 1, streakMult(chargeStreak, perkEffects(state).streakBonus), refs.room);
   unpackHeavy({ x, y, grade: r.grade, streak: r.streak, gain: r.gain, bursts: r.bursts, prize: r.prize, pointsEl: ptsTarget(), fever: wasFever });
-  deckUi.hit(r.deckFires, r.deckOffered);
+  deckUi.hit(r.deckFires, r.deckOffered, r.deckCharge);
   const c = boxCenter();
   const r2 = ptsTarget().getBoundingClientRect();
   fx.absorb({ x: c.x, y: c.y }, ptsTarget(), r.grade === 'perfect' ? 6 : r.grade === 'good' ? 3 : 1, { offset: { x: 0, y: r2.height / 2 + 12 } });
@@ -740,7 +742,7 @@ function applyWeak(x: number, y: number): void {
   if (heatAuto) setHeat(heatAdd(heat, HEAT_WEAK));
   weakUi.hitFx(x, y, r.gain, document.getElementById('app')!, r.bursts.length);
   unpackHeavy({ x, y, grade: 'perfect', streak: 0, gain: r.gain, bursts: r.bursts, prize: r.prize, pointsEl: ptsTarget(), fever: wasFever });
-  deckUi.hit(r.deckFires, r.deckOffered);
+  deckUi.hit(r.deckFires, r.deckOffered, r.deckCharge);
   const c = boxCenter();
   const r2 = ptsTarget().getBoundingClientRect();
   fx.absorb({ x: c.x, y: c.y }, ptsTarget(), 6, { offset: { x: 0, y: r2.height / 2 + 12 } });
@@ -1122,10 +1124,10 @@ function update(): void {
   refs.barFill.style.width = `${(prog * 100).toFixed(1)}%`;
   toggleClass(refs.barFill, 'full', prog >= 1);
   const pct = Math.floor(prog * 100);
-  const goal = `이사 목표 ${pct}% · ${formatNumber(house.target)} P`;
+  const goal = `이사 목표 ${pct}% · ${formatNumber(houseTarget(state))} P`;
   // 가장 넓은 문구에는 다음 집 이름을 넣어 처음 온 사람도 다음 집이 있다는 걸 알게 한다(마지막 집이면 넣지 않는다)
   const nextName = state.moves < HOUSES.length - 1 ? houseInfo(state.moves + 1).name : '';
-  const wide = nextName ? [`${nextName}${withRo(nextName)} 이사 ${pct}% · ${formatNumber(house.target)} P`, `${nextName}${withRo(nextName)} 이사 ${pct}%`] : [];
+  const wide = nextName ? [`${nextName}${withRo(nextName)} 이사 ${pct}% · ${formatNumber(houseTarget(state))} P`, `${nextName}${withRo(nextName)} 이사 ${pct}%`] : [];
   setBarOptions(ready ? ['이사할 수 있어요'] : [...wide, goal, `이사 목표 ${pct}%`, `이사 ${pct}%`]);
   setDisabled(refs.moveBtn, !ready);
   toggleClass(refs.moveBtn, 'ready', ready);
@@ -1371,7 +1373,7 @@ function openHouseTable(): void {
         'div',
         { cls },
         iconImg(houseIcon(h.theme), { size: 48, alt: '' }),
-        el('div', { cls: 'hr-main' }, name, el('span', { cls: 'hr-goal' }, '이사 목표 ', el('b', { text: `${formatNumber(h.target)} P` }))),
+        el('div', { cls: 'hr-main' }, name, el('span', { cls: 'hr-goal' }, '이사 목표 ', el('b', { text: `${formatNumber(s === state.moves ? houseTarget(state) : s > state.moves ? h.target * deckTargetScale(s) : h.target)} P` }))),
         el('div', { cls: 'hr-mult' }, el('b', { text: `x${formatNumber(permMult(s))}` }), el('span', { text: '영구 배율' })),
       ),
     );

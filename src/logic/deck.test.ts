@@ -15,7 +15,8 @@ const withDeck = (over: Partial<DeckState>, extra: Partial<GameState> = {}): Gam
   const s = defaultState();
   return { ...s, moves: 1, ...extra, deck: { ...s.deck, ...over } };
 };
-const slot = (id: string) => ({ id, star: 1 });
+const mt = (moves: number, k: number) => markThreshold({ moves, deck: emptyDeck() }, k);
+const slot = (id: string) => ({ id, star: 1, charge: 0 });
 
 describe('공구함 덱: 칸·효과', () => {
   it('1단계는 3칸', () => {
@@ -88,17 +89,17 @@ describe('공구함 덱: 강타 사건', () => {
 
 describe('공구함 덱: 문턱·묶음', () => {
   it('문턱은 목표 쪽 자릿수 표이고 커진다', () => {
-    const t = [1, 2, 3, 4, 5].map((k) => markThreshold(1, k));
+    const t = [1, 2, 3, 4, 5].map((k) => mt(1, k));
     for (let i = 1; i < t.length; i++) expect(t[i]).toBeGreaterThan(t[i - 1]);
-    expect(t[4]).toBeCloseTo(houseInfo(1).target * 10 ** -0.27, -3);
-    expect(markThreshold(9, 1)).toBeCloseTo(houseInfo(9).target * 10 ** -1.52, -3);
+    expect(t[4]).toBeCloseTo(houseInfo(1).target * 10 ** -0.35, -3);
+    expect(mt(9, 1)).toBeCloseTo(houseInfo(9).target * 10 ** -2.87, -3);
   });
   it('첫 집은 문턱을 보지 않고 같은 상태를 돌려준다', () => {
     const s = { ...defaultState(), earned: 1e30 };
     expect(checkMarks(s)).toBe(s);
   });
   it('문턱을 넘으면 묶음 1개(서로 다른 3장), mark+1', () => {
-    const s = withDeck({ mark: 1 }, { earned: markThreshold(1, 1) });
+    const s = withDeck({ mark: 1 }, { earned: mt(1, 1) });
     const r = checkMarks(s);
     expect(r.deck.mark).toBe(2);
     expect(r.deck.offers).toHaveLength(1);
@@ -106,7 +107,7 @@ describe('공구함 덱: 문턱·묶음', () => {
     expect(checkMarks(r)).toBe(r);
   });
   it('한 번에 문턱 여러 개를 넘어도 묶음은 1개', () => {
-    const s = withDeck({ mark: 1 }, { earned: markThreshold(1, 5) * 2 });
+    const s = withDeck({ mark: 1 }, { earned: mt(1, 5) * 2 });
     const r = checkMarks(s);
     expect(r.deck.mark).toBe(DECK_MARKS);
     expect(r.deck.offers).toHaveLength(1);
@@ -137,7 +138,7 @@ describe('공구함 덱: 문턱·묶음', () => {
     expect(o).toContain('F3');
   });
   it('tapAndHit·heavyHit 안에서도 문턱이 처리된다', () => {
-    const s = withDeck({ mark: 1 }, { earned: markThreshold(1, 1) });
+    const s = withDeck({ mark: 1 }, { earned: mt(1, 1) });
     const r = tapAndHit(s, never);
     expect(r.deckOffered).toBe(true);
     expect(r.state.deck.offers).toHaveLength(1);
@@ -195,7 +196,7 @@ describe('공구함 덱: 이사', () => {
   });
   it('이사 직후 문턱은 아직 안 넘은 상태', () => {
     const r = deckAfterMove({ ...ready(), moves: 0 });
-    expect(marksPassed(1, 0)).toBe(1);
+    expect(marksPassed({ moves: 1, deck: emptyDeck() }, 0)).toBe(1);
     expect(r.mark).toBe(1);
   });
 });

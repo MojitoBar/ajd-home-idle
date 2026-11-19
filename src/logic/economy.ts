@@ -17,6 +17,7 @@ import { advanceFever, advanceParcel, feverMultOf } from './fever';
 import { dexBoostMult, homeBoostMult, perkEffects } from './perks';
 import { featureOpen } from './guide';
 import type { GameState } from './state';
+import { deckMult } from './deck';
 import { tierOf } from './unpack';
 
 export function milestoneMult(level: number, milestones: readonly number[]): number {
@@ -95,9 +96,9 @@ export function tapBase(level: number): number {
   return (1 + level) * milestoneMult(level, TAP_MILESTONES);
 }
 
-/** 피버를 뺀 탭 1회 값 = tapBase x 영구 x 도감 x 살림 x 탭 특전 x 0.6. 상자 가격·택배의 기준 */
+/** 피버를 뺀 탭 1회 값 = tapBase x 영구 x 도감 x 살림 x 탭 특전 x 0.6 x 공구함 배율(`deckMult`, 머리 총 배율에는 안 넣는다). 상자 가격·택배의 기준 */
 export function tapStable(state: GameState): number {
-  return tapBase(state.tapLevel) * permMult(state.moves) * collectionMult(state) * homeMult(state) * perkEffects(state).tapMult * TAP_BOX_SCALE;
+  return tapBase(state.tapLevel) * permMult(state.moves) * collectionMult(state) * homeMult(state) * perkEffects(state).tapMult * TAP_BOX_SCALE * deckMult(state);
 }
 
 export interface TapBreakdown {

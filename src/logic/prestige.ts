@@ -1,6 +1,6 @@
 import { permMult } from './economy';
 import { deckAfterMove } from './deck';
-import { houseInfo } from './house';
+import { houseTarget } from './house';
 import { initialFever } from './fever';
 import { movePerkBoxes, rollPerkOffer, seededRng } from './perks';
 import { initialUnpack, type GameState } from './state';
@@ -19,7 +19,7 @@ export interface MoveStatus {
 }
 
 export function moveStatus(state: GameState): MoveStatus {
-  const targetReached = state.earned >= houseInfo(state.moves).target;
+  const targetReached = state.earned >= houseTarget(state);
   return { ok: targetReached, reason: targetReached ? null : 'target', targetReached };
 }
 
@@ -29,7 +29,7 @@ export function canMove(state: GameState): boolean {
 }
 
 export function moveProgress(state: GameState): number {
-  return Math.min(1, state.earned / houseInfo(state.moves).target);
+  return Math.min(1, state.earned / houseTarget(state));
 }
 
 /** 이사 보상으로 특전 상자 `movePerkBoxes(moves)`개(3택 묶음)를 준다. rng는 특전 3택 추첨용. 생략하면 이사 횟수 기반 결정적 시드. */

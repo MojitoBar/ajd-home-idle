@@ -1,14 +1,22 @@
 /* 공구함 덱 1단계: 카드 줄(이사 줄 위) · 공구함 창 · 카드 고르기 창 · 발동 연출. 설계 DESIGN-DECK.md 7·8절 */
 :root { --tag-precise: var(--b2); --tag-chain: var(--or); --tag-special: var(--pu); --tag-rush: var(--b4); --tag-fever: var(--pk); }
 
-/* 카드 줄: 칸 40x40(아이콘 32), 간격 8, 줄 높이 48. 받침 아래 6px이 레이아웃에 안 잡히므로 아래 간격 8 */
-.deck-row { box-sizing: border-box; display: flex; align-items: center; gap: var(--s2); height: 48px; padding: 0 2px; margin: 0 0 var(--s2); cursor: pointer; }
-.deck-slot { position: relative; flex: none; box-sizing: border-box; width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; outline: 2px dashed var(--on-bg-dim); outline-offset: -2px; }
+/* 카드 줄: 칸 48x48(아이콘 32), 간격 8. 칸 아래 받침 6px 밑에 충전 막대 4px(칸 8 + 막대 4 = 줄 높이 60). 오른쪽에 "공구함 ×N"(24px)과 12px 빈 칸 글 */
+.deck-row { box-sizing: border-box; display: flex; align-items: flex-start; gap: var(--s2); height: 60px; padding: 0 2px; margin: 0 0 var(--s2); cursor: pointer; }
+.deck-cell { flex: none; display: flex; flex-direction: column; width: 48px; }
+.deck-slot { position: relative; flex: none; box-sizing: border-box; width: 48px; height: 48px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; outline: 2px dashed var(--on-bg-dim); outline-offset: -2px; }
 .deck-slot.on { background: var(--p1); outline: 0; box-shadow: 0 0 0 2px var(--tc, var(--k1)), 0 6px 0 0 var(--k1); }
 .deck-slot .ico { display: block; width: 32px; height: 32px; image-rendering: pixelated; pointer-events: none; }
 .deck-slot.on.lit { box-shadow: 0 0 0 2px var(--g3), 0 6px 0 0 var(--k1); }
 .deck-slot:active { translate: 0 4px; }
-.deck-label { flex: 1; min-width: 0; margin-left: var(--s1); font: 700 var(--fs-s)/16px var(--f-bold); font-synthesis: none; color: var(--on-bg-dim); white-space: nowrap; overflow: hidden; }
+.deck-bar { display: block; box-sizing: border-box; width: 48px; height: 4px; margin-top: 8px; background: var(--k3); }
+.deck-bar i { display: block; height: 4px; width: 0; background: var(--b2); transition: width 240ms steps(6); }
+.deck-bar.full i { background: var(--g3); }
+.deck-side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-start; margin-left: var(--s1); }
+.deck-mult { display: block; font: 700 var(--fs-l)/28px var(--f-bold); font-synthesis: none; color: var(--or); white-space: nowrap; text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0); }
+.deck-mult.calm { color: var(--on-bg-dim); text-shadow: none; }
+.deck-mult.pop { color: var(--g3); }
+.deck-label { display: block; font: 700 var(--fs-s)/16px var(--f-bold); font-synthesis: none; color: var(--on-bg-dim); white-space: nowrap; overflow: hidden; }
 
 /* 발동: ×N 글자(24px, k0 4방향 2px 외곽선). 칸 한가운데에서 위로 8px 뜬다(칸 위 띠의 글자와 안 섞이게 칸 위에 겹친다) */
 .deck-x { position: absolute; left: 50%; top: 50%; margin-top: -14px; translate: -50% 0; z-index: 30; pointer-events: none; font: 700 var(--fs-l)/28px var(--f-bold); font-synthesis: none; color: var(--g3); white-space: nowrap; text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0), 2px 2px 0 var(--k0), -2px -2px 0 var(--k0), 2px -2px 0 var(--k0), -2px 2px 0 var(--k0); }
@@ -19,6 +27,15 @@
 .deck-alert { width: 100%; }
 
 /* 공구함 창 · 카드 고르기 창 */
+.tb-total { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--s2); font-family: var(--f-bold); font-synthesis: none; }
+.tb-total span { font-size: var(--fs-m); color: var(--dim); }
+.tb-total b { font-size: var(--fs-xl); line-height: 40px; color: var(--or); }
+.deck-card .pr-how, .deck-pick .pc-how { font-family: var(--f-bold); font-size: var(--fs-s); line-height: var(--lh-s); color: var(--b1); }
+.deck-pick .pc-how { display: block; padding-bottom: var(--s1); }
+.deck-card .deck-bar { width: 100%; margin-top: var(--s1); }
+.deck-card .pr-lv { min-width: 96px; }
+.deck-card .pr-lv b { display: block; }
+.deck-card .pr-max { display: block; font-family: var(--f-bold); font-size: var(--fs-s); line-height: var(--lh-s); color: var(--dim); }
 .deck-card { --face: var(--p1); --line: var(--k1); }
 .deck-card .pr-name em { box-shadow: 0 0 0 2px var(--cc) inset; }
 .deck-card-empty { --face: var(--p1); --line: var(--k3); color: var(--k2); box-shadow: none; outline: 2px dashed var(--k3); outline-offset: -2px; }
@@ -45,10 +62,13 @@
 /* 방 2배인데 높이 900~943(예: 1440x900): 힌트 줄·바닥 여백을 접고, 특전·카드 고르기 버튼은 카드 줄 오른쪽에 한 줄로 나란히 올려 높이를 맞춘다 */
 @media (min-width: 1280px) and (min-height: 900px) and (max-height: 943px) {
   body.has-deck .col-play .key-hint { display: none; }
+  /* 카드 줄이 60으로 커진 12px는 피버 띠 위·아래 여백에서 되찾는다 */
+  html:root body.un-mode.has-deck .col-play .fever-gauge { margin-top: 4px; margin-bottom: 12px; }
   body.has-deck .col-play { padding-bottom: 0; }
   body.has-deck .col-play .move-extra { margin-top: 0; }
   body.has-deck .col-play .deck-alert { position: absolute; top: 4px; right: 2px; width: auto; min-width: 180px; height: 40px; min-height: 40px; z-index: 2; }
   body.has-deck .col-play .perk-alert:not(.deck-alert):not([hidden]) { position: absolute; top: 4px; right: 2px; width: auto; min-width: 180px; height: 40px; min-height: 40px; z-index: 2; }
   body.has-deck .col-play:has(.perk-alert:not(.deck-alert):not([hidden])) .deck-alert { right: 190px; }
-  body.has-deck .col-play:has(.deck-alert:not([hidden])) .deck-label, body.has-deck .col-play:has(.perk-alert:not(.deck-alert):not([hidden])) .deck-label { visibility: hidden; }
+  body.has-deck .col-play:has(.deck-alert:not([hidden])) .deck-side, body.has-deck .col-play:has(.perk-alert:not(.deck-alert):not([hidden])) .deck-side { visibility: hidden; }
 }
+.mp-row.deck { grid-column: 1 / -1; }

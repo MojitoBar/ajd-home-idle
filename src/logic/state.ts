@@ -3,7 +3,7 @@ import type { GearId } from '../data/gear';
 import { emptyDeck, type DeckState } from './deck';
 import { initialFever, initialParcel } from './fever';
 
-export const CURRENT_VERSION = 12;
+export const CURRENT_VERSION = 13;
 
 export interface CollectionSlot {
   base: number;

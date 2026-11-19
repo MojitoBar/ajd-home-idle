@@ -9,6 +9,7 @@
 // 출력: 가이드 단계별 완료 시각, 첫 집에서 누적 P가 1e3·1e6·1e9·1e12·1e15를 넘는 시각, J 커브(초반 1/3 vs 마지막 1/3 자릿수 증가 속도), 1분 최대 배수(누적 P 1e3 이후 시작하는 1분 창).
 // 환경변수: POLICY=현실,고수,가볍게 · SEED_N=시드 수(최대 20) · SEED_FROM=시작 번호(기본 0, 시드를 나눠 돌릴 때) · MAX_MOVES · MAX_SEC · TARGETS
 // 공구함 덱 정책: DECK=없음,정밀,연쇄,특별,피버 (쉼표로 여럿). 문턱마다 그 원형 태그 카드를 우선 고르고(없으면 칸이 비었을 때만 아무 카드), 칸이 차면 원형 밖 카드부터 바꾼다.
+//   3단계: 덱 정책이 충전·deckMult·houseTarget을 그대로 쓴다. 출력에 집별 공구함 배율(떠날 때)과 카드 완성 시점(집 시간 %)이 붙는다. 시험용 덮어쓰기: DTS=1,58,... (DECK_TARGET_SCALE) · CNS=1,0.35,... (CHARGE_NEED_SCALE) · DIG='[[5개]x5행]' (DECK_MARK_DIGITS). 시드를 나눠 병렬로 돌릴 때는 DECK=원형 하나씩 + DECK_DUMP.
 //   출력은 원형별 이사 시각 표와 문턱 k별 통과 시점(집 시간 대비 %)뿐이다. DECK_DUMP=파일.json이면 결과를 저장하고, DECK_LOAD=a.json,b.json이면 돌리지 않고 합쳐서 표만 낸다(원형별로 나눠 병렬로 돌릴 때). DECK을 안 주면 위의 기본 출력 그대로다.
 import { createServer } from 'vite';
 
@@ -29,9 +30,14 @@ const { move, canMove } = await ld('/src/logic/prestige.ts');
 const { tierOf } = await ld('/src/logic/unpack.ts');
 const guide = await ld('/src/logic/guide.ts');
 const { HOUSES, MOON_STAGE } = await ld('/src/data/houses.ts');
-const { chooseCard, deckFull } = await ld('/src/logic/deck.ts');
-const { houseInfo } = await ld('/src/logic/house.ts');
-const { CARDS } = await ld('/src/data/cards.ts');
+const { chooseCard, deckFull, deckMult, cardChargeNeed } = await ld('/src/logic/deck.ts');
+const { houseTarget } = await ld('/src/logic/house.ts');
+const { CARDS, DECK_TARGET_SCALE, CHARGE_NEED_SCALE, DECK_MARK_DIGITS } = await ld('/src/data/cards.ts');
+// 시험용: DTS=1,8,9,... 집 목표 배수 표 / CNS=1,0.3,... 필요 눈금 보정 표를 메모리에서만 덮어쓴다(길이는 그대로 6)
+if (process.env.DTS) process.env.DTS.split(',').forEach((v, i) => { DECK_TARGET_SCALE[i] = Number(v); });
+// DIG='[[..5개..],[..]]' (행 5개) 문턱 자릿수 표를 덮어쓴다
+if (process.env.DIG) JSON.parse(process.env.DIG).forEach((row, i) => row.forEach((v, k) => { DECK_MARK_DIGITS[i][k] = v; }));
+if (process.env.CNS) process.env.CNS.split(',').forEach((v, i) => { CHARGE_NEED_SCALE[i] = Number(v); });
 
 const DECKS = process.env.DECK ? process.env.DECK.split(',') : process.env.DECK_LOAD ? [] : undefined;
 const ARCH = { 정밀: 'precise', 연쇄: 'chain', 특별: 'special', 피버: 'fever' };
@@ -41,7 +47,7 @@ const inArch = (id, tag) => CARDS.find((c) => c.id === id)?.tags.includes(tag);
 /** 대기 중인 카드 묶음을 전부 처리한다: 원형 카드가 있으면 낀다(칸이 차면 원형 밖 카드를 바꾸고, 바꿀 칸이 없으면 건너뜀), 없으면 빈 칸일 때만 아무 카드 */
 function takeCards(s, name) {
   if (name.startsWith('고정:')) { // 시험용: DECK=고정:P2+P3 이면 이사마다 그 카드들을 낀 채 시작한다(묶음은 무시)
-    return s.deck.slots.length === 0 || s.deck.offers.length > 0 ? { ...s, deck: { ...s.deck, slots: name.slice(3).split('+').map((id) => ({ id, star: 1 })), offers: [] } } : s;
+    return s.deck.slots.length === 0 || s.deck.offers.length > 0 ? { ...s, deck: { ...s.deck, slots: name.slice(3).split('+').map((id) => ({ id, star: 1, charge: 0 })), offers: [] } } : s;
   }
   const tag = ARCH[name];
   while (s.deck.offers.length > 0) {
@@ -96,6 +102,7 @@ function run(pol, seed, dk) {
   const crossAt = {}; // 첫 집에서 누적 P가 10^k를 넘은 시각(초)
   let firstPerkAt, boxesInHouse = 0;
   let trT = [], trV = []; // 이 집의 (시각, log10 이 집에서 번 P): 문턱 자릿수 d를 구할 때 쓴다
+  let fullAt = {}; // 이 집에서 카드가 꽉 찬 시각(낀 채로)
   let markT = [], markSeen = 0; // 이 집에서 진행 문턱 k(1~5)를 넘은 시각(DECK 시험 때만)
   const logT = [], logV = []; // 첫 집 행동마다 (시각, log10(누적 P))
   const ev = (e) => {
@@ -146,6 +153,9 @@ function run(pol, seed, dk) {
     if (dk !== undefined && rows.length > 0) {
       if (dk) s = takeCards(s, dk);
       while (markSeen < s.deck.mark - 1) { markT.push(t); markSeen++; }
+      const need = cardChargeNeed(s.moves), held = new Set(s.deck.slots.map((x) => x.id));
+      for (const id of Object.keys(fullAt)) if (!held.has(id)) delete fullAt[id];
+      for (const sl of s.deck.slots) if (sl.charge >= need && fullAt[sl.id] === undefined) fullAt[sl.id] = t;
       trT.push(t); trV.push(Math.log10(Math.max(1, s.earned)));
     }
     if (acted === 'strike' && pol.sSec) { t += pol.sSec; s = eco.tick(s, pol.sSec, rng); }
@@ -220,6 +230,8 @@ function run(pol, seed, dk) {
         row.jMid = (lg((2 * T) / 3) - lg(T / 3)) / (T / 3 / 60);
         row.jLate = (Math.log10(s.earned) - lg((2 * T) / 3)) / (T / 3 / 60);
       }
+      row.mult = deckMult(s); row.tgt = houseTarget(s); row.cards = s.deck.slots.map((sl) => ({ id: sl.id, at: fullAt[sl.id] === undefined ? null : (fullAt[sl.id] - last) / row.sec }));
+      fullAt = {};
       last = t;
       row.perkBoxes = boxesInHouse; boxesInHouse = 0; row.firstPerkAt = firstPerkAt;
       s = move(s, rng);
@@ -229,7 +241,7 @@ function run(pol, seed, dk) {
       s = takePerks(s);
       if (dk !== undefined) {
         row.marks = markT.map((x) => (x - (t - row.sec)) / row.sec);
-        const t0 = t - row.sec, lgt = Math.log10(houseInfo(s.moves - 1).target);
+        const t0 = t - row.sec, lgt = Math.log10(row.tgt);
         row.dig = [0.15, 0.3, 0.5, 0.7, 0.85].map((q) => { const x = t0 + q * row.sec; let lo = 0, hi = trT.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (trT[m] <= x) lo = m; else hi = m - 1; } return lgt - trV[lo]; });
         markT = []; markSeen = 0; trT = []; trV = [];
         if (dk) s = takeCards(s, dk);
@@ -332,7 +344,7 @@ if (DECKS !== undefined) {
   /** { 정책: { 덱: [시드별 rows([{sec, marks}])] } } */
   const data = {};
   for (const f of (process.env.DECK_LOAD ?? '').split(',').filter(Boolean)) for (const [pn, byDeck] of Object.entries(JSON.parse(fs.readFileSync(f, 'utf8')))) for (const [dn, runs] of Object.entries(byDeck)) ((data[pn] ??= {})[dn] ??= []).push(...runs);
-  for (const pol of POLICIES) for (const name of DECKS) (data[pol.name] ??= {})[name] = SEEDS.map((sd) => run(pol, sd, name === '없음' ? null : name).map((r) => ({ sec: r.sec, total: r.total, marks: r.marks, dig: r.dig })));
+  for (const pol of POLICIES) for (const name of DECKS) (data[pol.name] ??= {})[name] = SEEDS.map((sd) => run(pol, sd, name === '없음' ? null : name).map((r) => ({ sec: r.sec, total: r.total, marks: r.marks, dig: r.dig, mult: r.mult, cards: r.cards })));
   if (process.env.DECK_DUMP) fs.writeFileSync(process.env.DECK_DUMP, JSON.stringify(data));
   const allNames = [...new Set(POLICIES.flatMap((p) => Object.keys(data[p.name] ?? {})))];
   const names = ['없음', ...Object.keys(ARCH), ...allNames.filter((n) => n !== '없음' && !ARCH[n])].filter((n) => allNames.includes(n));
@@ -354,6 +366,19 @@ if (DECKS !== undefined) {
     // 집별 시간은 앞 집 결과에 끌려가므로, 첫 이사(덱이 열리기 전, 모든 정책에서 같음) 뒤부터 센 누적 분을 따로 낸다
     const post = (n, i) => (d[n] ?? []).map((r) => (r[i] && r[0] ? r[i].total - r[0].total : undefined)).filter((v) => v !== undefined);
     console.log(`첫 이사 뒤 누적 분 중앙(없음 대비 %): ${Array.from({ length: maxI - 1 }, (_, q) => q + 1).map((i) => { const b = post('없음', i); return `${i + 1}회까지 ${names.map((n) => { const v = post(n, i); return v.length && b.length ? (n === '없음' ? min(med(v)) : `${((med(v) / med(b) - 1) * 100).toFixed(0)}%`) : '-'; }).join('/')}`; }).join(' | ')}`);
+    console.log(`\n[${pol.name}] 집별 공구함 배율(떠날 때, 원형별 시드 중앙) | 카드 완성 시점(집 시간 %, 그 원형 태그 카드 x 시드의 중앙. 못 찬 카드는 100 초과로 셈 / 찬 비율) | 원형 밖 카드 완성 중앙`);
+    for (let i = 1; i < maxI; i++) {
+      const parts = archs.map((n) => {
+        const runs = (d[n] ?? []).map((r) => r[i]).filter((x) => x && x.cards);
+        if (!runs.length) return `${n} -`;
+        const mine = runs.flatMap((r) => r.cards.filter((c) => CARDS.find((cd) => cd.id === c.id)?.tags.includes(ARCH[n])));
+        const other = runs.flatMap((r) => r.cards.filter((c) => !CARDS.find((cd) => cd.id === c.id)?.tags.includes(ARCH[n])));
+        const at = (v) => (v.length ? med(v.map((c) => (c.at === null ? 999 : c.at * 100))) : NaN);
+        const f = (x) => (x >= 999 ? '>100' : Number.isNaN(x) ? '-' : x.toFixed(0));
+        return `${n} x${med(runs.map((r) => r.mult)).toFixed(1)} | ${f(at(mine))}(${mine.filter((c) => c.at !== null).length}/${mine.length}) | ${f(at(other))}(${other.filter((c) => c.at !== null).length}/${other.length})`;
+      });
+      console.log(`${i + 1}회: ${parts.join('  //  ')}`);
+    }
     console.log(`\n[${pol.name}] 문턱 자릿수 d 후보(원형 4개 x 시드 중앙값. 집 시간 15·30·50·70·85% 시점의 log10(목표) - log10(번 P))`);
     for (let i = 1; i < maxI; i++) {
       const v = archs.flatMap((n) => (d[n] ?? []).map((r) => r[i]?.dig)).filter(Boolean);

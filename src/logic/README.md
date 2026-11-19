@@ -16,7 +16,7 @@
 | `guide.ts` | 첫 가이드(손맛 요소가 하나씩 열리는 순서, `state.guide`) |
 | `unlock.ts` | 단계적 공개(`UNLOCK_IDS`) |
 | `offline.ts` | 복귀 러시 판정 |
-| `save.ts` · `state.ts` | 저장·불러오기·`MIGRATIONS`, 상태 정의(`CURRENT_VERSION = 11`) |
+| `save.ts` · `state.ts` | 저장·불러오기·`MIGRATIONS`, 상태 정의(`CURRENT_VERSION = 13`) |
 | `format.ts` | 한국식 큰 수 표기 |
 
 ## 상자·도감 (`gacha.ts`, 데이터 `data/collectibles.ts`)
@@ -86,7 +86,7 @@
 
 ## 특전 상자·특전 3택 (`perkBox.ts`·`perks.ts`, 데이터 `data/perks.ts`)
 특전은 이사 보상과 특전 상자 구매로 얻는다. 둘 다 3택 묶음(`perkOffers`)을 쌓고, 고르는 건 `choosePerk`다.
-- 특전 상자(`perkBox.ts`): `perkBoxCost(state)` = `houseInfo(moves).target x PERK_BOX_FRAC(0.0025) x PERK_BOX_GROWTH(2) ^ perkBoxBought`(영구 공구와 같은 방식). `perkBoxUnlocked(state)` = `featureOpen(state, 'perkBox')`(가이드 18단계 중 13번째 "특전 상자를 뽑아 보세요"에 닿았거나 가이드가 끝남/이사). `canBuyPerkBox(state)` = 열려 있고 `points >= 가격`. `buyPerkBox(state, rng?)` -> 포인트를 깎고 `perkBoxBought + 1`, `perkOffers` 끝에 3택 묶음 1개를 넣은 새 state, 잠겼거나 모자라면 `null`(rng 생략하면 이사 횟수·구매 수·탭 수 기반 결정적). 사고 나면 화면이 `guideEvent(state, {type:'perkBoxBuy'})`를 알린다.
+- 특전 상자(`perkBox.ts`): `perkBoxCost(state)` = `houseTarget(state) x PERK_BOX_FRAC(0.0025) x PERK_BOX_GROWTH(2) ^ perkBoxBought`(영구 공구와 같은 방식). `perkBoxUnlocked(state)` = `featureOpen(state, 'perkBox')`(가이드 18단계 중 13번째 "특전 상자를 뽑아 보세요"에 닿았거나 가이드가 끝남/이사). `canBuyPerkBox(state)` = 열려 있고 `points >= 가격`. `buyPerkBox(state, rng?)` -> 포인트를 깎고 `perkBoxBought + 1`, `perkOffers` 끝에 3택 묶음 1개를 넣은 새 state, 잠겼거나 모자라면 `null`(rng 생략하면 이사 횟수·구매 수·탭 수 기반 결정적). 사고 나면 화면이 `guideEvent(state, {type:'perkBoxBuy'})`를 알린다.
 - `movePerkBoxes(moves)` = `min(2 + moves, 5)`(moves = 이사 전 횟수. `move`가 이 개수만큼 묶음을 쌓는다. 화면이 "특전 상자 N개" 문구에 읽는다).
 - 상한 없는 특전: 손목 단련·살림 장인·도감 수집가·강타 단련은 `maxLevel = Infinity`(`maxed`는 항상 false, `PerkOptionView.unlimited = true`). 화면은 `maxLevel`을 숫자로 찍거나 `for (k < maxLevel)`로 도는 코드를 쓰면 안 된다(`unlimited`로 가른다).
 - `perkOfferViews(state)` -> `PerkOptionView[][]` 대기 묶음별 옵션 `{id,name,emoji,category('tap'|'idle'|'luck'|'strategy'),desc(레벨당 효과),level,maxLevel,unlimited,maxed}`. `pendingPerkCount(state)`는 대기 묶음 수(배지용).
@@ -142,6 +142,12 @@
 - 호출 자리: `unpack.heavyHit`(강타·급소)이 끝에서 `deckEvent`로 보상 P를 더하고, `tapAndHit`·`rushTap`·`heavyHit` 모두 `checkMarks`로 진행 문턱을 본다. 결과에 `deckFires`(터진 카드. 보상은 `gain`, P3의 `mult`·F3의 `sec`는 `releaseCharge`가 앞에 붙임. 뗀 순간 터지는 것은 P3·F3, 강타 끝에 터지는 것은 C3·S4)와 `deckOffered`(새 묶음이 생겼나)가 붙는다. 화면이 따로 부를 필요 없다.
 - 문턱: `markThreshold(moves, k)` = 목표 x 10^(-d), k=1..5. d는 `DECK_MARK_DIGITS[이사 횟수 1~5][k]`(6 이상은 마지막 행)로 집 시간의 대략 15·30·50·70·85%에 오게 시뮬(현실 정책, 원형 4개 덱 x 시드 20개의 중앙값)으로 잡은 표. 한 번에 여러 개를 넘어도 묶음 1개(`checkMarks`). 묶음 추첨은 호출자의 rng를 쓰지 않는 시드 추첨(`offerSeed`, 시뮬 난수열 보호): 서로 다른 3장이고, 안 낀 카드가 3장 이상 남아 있으면 낀 카드는 나오지 않는다(희귀도 추첨·다시 받기는 3단계).
 - 고르기: `chooseCard(state, offerIndex, cardId | null, replaceSlot?)`(null = 건너뛰기, 칸이 차면 `deckFull(state)`가 true라 `replaceSlot` 필수, 실패는 null).
+- **공구함 배율(3단계 로직, v13)**: 낀 카드 칸은 `{id, star, charge}`, `deck.targetScale`(이 집 목표 배수, 이사할 때 `DECK_TARGET_SCALE[새 이사 횟수]`로 고정, 6 이상은 마지막 값, 첫 집 1). 값표는 `data/cards.ts`(`CARD_CHARGE_NEED` 일반 40 = 지금 카드 전부, `CHARGE_NEED_SCALE[이사 횟수]`, `DECK_TARGET_SCALE`, `CHARGE_RULES`). 저장 v12 -> v13(`MIGRATIONS[12]`)은 낀 카드 `charge 0`, `targetScale 1`(지금 집의 목표·진행 그대로).
+  - `deckMult(state)` -> number: 낀 카드 배수의 곱(카드 배수 = 1 + (3 + star - 1) x min(1, charge / need), ★1 상한 x4, 3칸 꽉 차면 x64). `state.deck` 키 WeakMap 캐시. **`tapStable`에 곱해진다**(탭·강타·연쇄 상금·상자 가격·보상 카드 P). `multBreakdown`·머리 총 배율(`totalMult`, `checkTier`, 가이드 17단계)에는 **안 들어간다**: 화면이 "공구함 x`deckMult`"를 따로 보여 준다.
+  - `houseTarget(state)`(`house.ts`) -> number: `houseInfo(moves).target x deck.targetScale`. 이사 조건·진행 막대(`moveStatus`·`moveProgress`)·특전 상자 가격·영구 공구 가격·덱 문턱(`markThreshold(state, k)`·`marksPassed(state, earned)`)·화면의 목표 표시는 전부 이것을 쓴다. `deckTargetScale(moves)`는 표 값(미리 보기용).
+  - `deckSlotViews(state)` -> `{ id, star, charge, need, mult, full }[]`(낀 순서). `cardChargeNeed(moves)` -> 필요 눈금. `deckAllFull(state)` -> 칸이 다 차고 전부 꽉 찼는가.
+  - 충전(강타 정산 때만. 일반 탭·`rushTap`·방치는 안 찬다): 정밀 퍼펙트 강타 +1(연속 10의 배수 +3), 연쇄 한 강타의 50연쇄마다 +1(최대 +6), 특별 터진 특별 상자 1개 +2, 피버 피버 중 강타 +1·피버가 켜질 때 +4, 이중 태그(F3)는 두 조건 모두. 러시 조건은 러시 태그 카드가 4단계라 아직 없다. 눈금은 필요 눈금에서 멈추고, 카드를 바꾸면(`chooseCard`) 그 칸은 0, 이사하면 덱과 함께 사라진다.
+  - 결과: `heavyHit`·`hitWeak`·`releaseCharge`(와 `tapAndHit`·`rushTap`, 이쪽은 변화 없음)의 결과에 `deckCharge: { full: string[], before: number, after: number, allFull: boolean }`가 붙는다(`full` = 이번에 꽉 찬 카드 id, `before`·`after` = 강타 전·후 `deckMult`, `allFull` = 덱 전체가 이번에 처음 꽉 참). `deckFires`와 같은 시점이다: 호출이 돌아올 때 `state`에는 이미 충전이 들어 있다. 연쇄 재생 끝에 정산되는 것(C3·S4와 연쇄·특별·피버 충전)과 뗀 순간 정산되는 것(P3·F3, 정밀 충전)이 한 호출 결과에 같이 담기니, 화면은 연쇄 재생이 끝날 때 `deckFires`·`deckCharge`를 함께 보여 주면 된다(재생 중에 막대를 올리고 싶으면 `before`·`after`를 보간한다). `releaseCharge`의 `deckCharge`는 정밀 충전까지 합친 값이다.
 - 덱 시뮬: `DECK=없음,정밀,연쇄,특별,피버`(쉼표로 여럿)는 원형별 이사 시각 표·첫 이사 뒤 누적·문턱 통과 시점·문턱 자릿수 d 후보만 출력한다(`DECK`을 안 주면 기본 출력 그대로). 문턱마다 원형 태그 카드를 우선 고르고 칸이 차면 원형 밖 카드부터 바꾼다. `DECK=고정:P2+P3`은 이사마다 그 카드들을 끼고 시작하는 시험용. `SEED_N`(최대 20)·`SEED_FROM`·`DECK_DUMP=파일`·`DECK_LOAD=a.json,b.json`(나눠 돌린 결과 합치기). 시뮬은 추정이다: 집별 시간은 앞 집 결과에 끌려가 잡음이 크고(P3는 퍼펙트 25%라 연속 10이 거의 안 나와 효과가 안 보인다), 같은 카드가 집에 따라 -20%~+30%로 흔들린다.
 
 ## 시뮬 도구

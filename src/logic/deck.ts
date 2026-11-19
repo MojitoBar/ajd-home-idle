@@ -1,6 +1,6 @@
 /** 공구함 덱(설계 DESIGN-DECK.md): 이 집에서만 쓰는 카드. 칸 수는 이사 횟수, 카드는 진행 문턱마다 무료 3택. 이사하면 초기화(prestige.ts). 2단계는 카드 12장·3칸 */
-import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, DECK_MARK_DIGITS, cardDef } from '../data/cards';
-import { houseInfo } from './house';
+import { CARDS, CARD_CHARGE_NEED, CARD_MULT_CAP_BASE, CARD_OFFER_SIZE, CHARGE_NEED_SCALE, CHARGE_RULES, DECK_MARKS, DECK_MARK_DIGITS, DECK_TARGET_SCALE, cardDef, type CardTag } from '../data/cards';
+import { houseTarget } from './house';
 import type { ChargeGrade } from './charge';
 import type { GameState } from './state';
 
@@ -8,6 +8,8 @@ export interface DeckSlot {
   id: string;
   /** 1~3. 1단계는 항상 1(★ 강화는 3단계) */
   star: number;
+  /** 충전 눈금(0~필요 눈금). 강타 정산 때만 찬다. 카드를 바꾸면 0. 저장됨 */
+  charge: number;
 }
 
 export interface DeckState {
@@ -21,9 +23,112 @@ export interface DeckState {
   mark: number;
   /** 카드 도감(본 카드, 영구). 5단계에서 채운다. 저장됨 */
   seen: string[];
+  /** 이 집의 목표 배수(이사할 때 `DECK_TARGET_SCALE`에서 고정. `houseTarget`이 곱한다). 저장됨 */
+  targetScale: number;
 }
 
-export const emptyDeck = (): DeckState => ({ slots: [], offers: [], rerolls: 2, mark: 0, seen: [] });
+export const emptyDeck = (): DeckState => ({ slots: [], offers: [], rerolls: 2, mark: 0, seen: [], targetScale: 1 });
+
+/** 이사 횟수 moves인 집에 적용할 목표 배수(표 값. 첫 집은 1) */
+export function deckTargetScale(moves: number): number {
+  return DECK_TARGET_SCALE[Math.min(Math.max(moves, 0), DECK_TARGET_SCALE.length - 1)];
+}
+
+/** 카드의 필요 눈금. 지금 카드는 전부 일반으로 본다(희귀도별 값은 `CARD_CHARGE_NEED`) */
+export function cardChargeNeed(moves: number): number {
+  return CARD_CHARGE_NEED.common * CHARGE_NEED_SCALE[Math.min(Math.max(moves, 0), CHARGE_NEED_SCALE.length - 1)];
+}
+
+/** 카드 하나의 배수 = 1 + (상한 - 1) x min(1, 눈금/필요). 상한은 ★1 x4, ★ 하나당 +1 */
+export function cardMult(star: number, charge: number, need: number): number {
+  return 1 + (CARD_MULT_CAP_BASE + star - 1) * Math.min(1, charge / need);
+}
+
+const multCache = new WeakMap<DeckState, number>();
+
+/** 공구함 배율 = 낀 카드 배수의 곱(`tapStable`에 곱한다. 머리 총 배율·`multBreakdown`에는 안 들어간다). `state.deck` 키 WeakMap 캐시 */
+export function deckMult(state: Pick<GameState, 'deck' | 'moves'>): number {
+  const deck = state.deck;
+  if (!deck || deck.slots.length === 0) return 1;
+  let m = multCache.get(deck);
+  if (m === undefined) {
+    const need = cardChargeNeed(state.moves);
+    m = 1;
+    for (const sl of deck.slots) m *= cardMult(sl.star, sl.charge, need);
+    multCache.set(deck, m);
+  }
+  return m;
+}
+
+export interface DeckSlotView {
+  id: string;
+  star: number;
+  charge: number;
+  need: number;
+  /** 이 카드의 배수 */
+  mult: number;
+  /** 눈금이 꽉 찼는가 */
+  full: boolean;
+}
+
+/** 칸별 보기(낀 순서) */
+export function deckSlotViews(state: Pick<GameState, 'deck' | 'moves'>): DeckSlotView[] {
+  const need = cardChargeNeed(state.moves);
+  return state.deck.slots.map((sl) => ({ id: sl.id, star: sl.star, charge: sl.charge, need, mult: cardMult(sl.star, sl.charge, need), full: sl.charge >= need }));
+}
+
+/** 덱이 칸까지 다 차고 모든 카드가 꽉 찼는가 */
+export function deckAllFull(state: Pick<GameState, 'deck' | 'moves'>): boolean {
+  const need = cardChargeNeed(state.moves);
+  return state.deck.slots.length >= deckSlots(state.moves) && state.deck.slots.every((sl) => sl.charge >= need);
+}
+
+/** 강타 정산의 충전 결과(`HeavyResult.deckCharge`) */
+export interface DeckChargeResult {
+  /** 이번 강타로 꽉 찬 카드 id */
+  full: string[];
+  /** 강타 전·후 공구함 배율 */
+  before: number;
+  after: number;
+  /** 덱 전체가 이번에 처음 꽉 찼는가 */
+  allFull: boolean;
+}
+
+/** 정산 전·후 state를 비교해 충전 결과를 만든다 */
+export function deckChargeResult(before: GameState, after: GameState): DeckChargeResult {
+  const need = cardChargeNeed(before.moves);
+  const full = after.deck.slots.filter((sl) => sl.charge >= need && !(before.deck.slots.find((b) => b.id === sl.id)?.charge! >= need)).map((sl) => sl.id);
+  return { full, before: deckMult(before), after: deckMult(after), allFull: full.length > 0 && deckAllFull(after) && !deckAllFull(before) };
+}
+
+/** 낀 카드마다 gain(그 카드의 태그)만큼 눈금을 올린다(필요 눈금에서 멈춤). 바뀐 게 없으면 같은 state */
+export function addCharge(state: GameState, gain: (tags: readonly CardTag[]) => number): GameState {
+  const deck = state.deck;
+  if (deck.slots.length === 0) return state;
+  const need = cardChargeNeed(state.moves);
+  let changed = false;
+  const slots = deck.slots.map((sl) => {
+    const g = gain(cardDef(sl.id)?.tags ?? []);
+    if (g <= 0 || sl.charge >= need) return sl;
+    changed = true;
+    return { ...sl, charge: Math.min(need, sl.charge + g) };
+  });
+  return changed ? { ...state, deck: { ...deck, slots } } : state;
+}
+
+/** 강타(강타·급소) 정산 때 연쇄·특별·피버 조건 충전. feverBefore는 강타 직전 피버 중이었는가, feverAfter는 직후 */
+export function chargeOnStrike(state: GameState, ev: { chain: number; specials: number; feverBefore: boolean; feverAfter: boolean }): GameState {
+  const chainGain = Math.min(CHARGE_RULES.chainMax, Math.floor(ev.chain / CHARGE_RULES.chainPer));
+  const feverGain = (ev.feverBefore ? CHARGE_RULES.feverStrike : 0) + (!ev.feverBefore && ev.feverAfter ? CHARGE_RULES.feverOn : 0);
+  const specialGain = ev.specials * CHARGE_RULES.special;
+  return addCharge(state, (tags) => (tags.includes('chain') ? chainGain : 0) + (tags.includes('special') ? specialGain : 0) + (tags.includes('fever') ? feverGain : 0));
+}
+
+/** 퍼펙트 강타 정산 충전(정밀). streak은 이번 강타를 포함한 연속 퍼펙트 수 */
+export function chargeOnPerfect(state: GameState, streak: number): GameState {
+  const g = streak > 0 && streak % 10 === 0 ? CHARGE_RULES.preciseTen : CHARGE_RULES.precise;
+  return addCharge(state, (tags) => (tags.includes('precise') ? g : 0));
+}
 
 /** 칸 수. 1단계는 이사 횟수와 상관없이 3칸(뒤 단계에서 4·5·6칸) */
 export function deckSlots(moves: number): number {
@@ -160,16 +265,16 @@ export function deckEvent(state: { deck?: DeckState }, ev: StrikeEvent): DeckFir
   return out;
 }
 
-/** 진행 문턱 k(1~5)의 누적 P: 목표 x 10^(-d), d는 `DECK_MARK_DIGITS[이사 횟수][k]` */
-export function markThreshold(moves: number, k: number): number {
-  const row = DECK_MARK_DIGITS[Math.min(Math.max(moves, 1), DECK_MARK_DIGITS.length) - 1];
-  return houseInfo(moves).target * 10 ** -row[k - 1];
+/** 진행 문턱 k(1~5)의 누적 P: 이 집 목표(`houseTarget`) x 10^(-d), d는 `DECK_MARK_DIGITS[이사 횟수][k]` */
+export function markThreshold(state: Pick<GameState, 'moves' | 'deck'>, k: number): number {
+  const row = DECK_MARK_DIGITS[Math.min(Math.max(state.moves, 1), DECK_MARK_DIGITS.length) - 1];
+  return houseTarget(state) * 10 ** -row[k - 1];
 }
 
 /** 이 집에서 지금까지 지난 문턱 수(이사 직후 1곳 포함, 1~DECK_MARKS) */
-export function marksPassed(moves: number, earned: number): number {
+export function marksPassed(state: Pick<GameState, 'moves' | 'deck'>, earned: number): number {
   let m = 1;
-  while (m < DECK_MARKS && earned >= markThreshold(moves, m)) m++;
+  while (m < DECK_MARKS && earned >= markThreshold(state, m)) m++;
   return m;
 }
 
@@ -208,7 +313,7 @@ export function offerSeed(state: Pick<GameState, 'moves' | 'stats'>, mark: numbe
 /** 이사 직후의 덱: 빈 칸·첫 묶음·문턱 1(다시 받기 2, 카드 도감은 이어받음) */
 export function deckAfterMove(prev: Pick<GameState, 'moves' | 'stats' | 'deck'>): DeckState {
   const moves = prev.moves + 1;
-  return { slots: [], offers: [rollCardOffer([], offerSeed({ moves, stats: prev.stats }, 1))], rerolls: 2, mark: 1, seen: prev.deck.seen };
+  return { slots: [], offers: [rollCardOffer([], offerSeed({ moves, stats: prev.stats }, 1))], rerolls: 2, mark: 1, seen: prev.deck.seen, targetScale: deckTargetScale(moves) };
 }
 
 /**
@@ -218,8 +323,8 @@ export function deckAfterMove(prev: Pick<GameState, 'moves' | 'stats' | 'deck'>)
 export function checkMarks(state: GameState): GameState {
   if (state.moves === 0) return state;
   const deck = state.deck;
-  if (deck.mark >= DECK_MARKS || state.earned < markThreshold(state.moves, deck.mark)) return state;
-  const mark = marksPassed(state.moves, state.earned);
+  if (deck.mark >= DECK_MARKS || state.earned < markThreshold(state, deck.mark)) return state;
+  const mark = marksPassed(state, state.earned);
   return { ...state, deck: { ...deck, mark, offers: [...deck.offers, rollCardOffer(deck.slots, offerSeed(state, mark))] } };
 }
 
@@ -240,7 +345,7 @@ export function chooseCard(state: GameState, offerIndex: number, cardId: string 
   const offers = state.deck.offers.filter((_, i) => i !== offerIndex);
   if (cardId === null) return { ...state, deck: { ...state.deck, offers } };
   if (!offer.includes(cardId) || !cardDef(cardId) || state.deck.slots.some((s) => s.id === cardId)) return null;
-  const card: DeckSlot = { id: cardId, star: 1 };
+  const card: DeckSlot = { id: cardId, star: 1, charge: 0 };
   let slots: DeckSlot[];
   if (!deckFull(state)) slots = [...state.deck.slots, card];
   else {

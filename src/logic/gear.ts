@@ -19,7 +19,7 @@ import type { ChargeGrade } from './charge';
 import { GUIDE_SPECIAL_RATE, featureOpen, guideAt, guideEnded, type GuideFeature } from './guide';
 import { DECK_PERFECT_HALF_HARD_MAX } from '../data/cards';
 import { deckEffects } from './deck';
-import { houseInfo } from './house';
+import { houseTarget } from './house';
 import { perkEffects } from './perks';
 import type { GameState } from './state';
 
@@ -32,7 +32,7 @@ export function gearCost(state: GameState, id: GearId): number {
   const def = gearDef(id);
   const lv = gearLevel(state, id);
   if (lv >= def.maxLevel) return Infinity;
-  return houseInfo(state.moves).target * def.frac * GEAR_COST_GROWTH ** lv;
+  return houseTarget(state) * def.frac * GEAR_COST_GROWTH ** lv;
 }
 
 /** 가이드 중에는 공구가 돕는 요소(수평계 = 강타, 안전모 = 연속 퍼펙트…)가 열려야 카드가 열린다 */

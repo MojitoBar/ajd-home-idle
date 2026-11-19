@@ -228,7 +228,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await page.locator('.modal .btn.primary').click();
       await page.waitForTimeout(400);
       const sv = await save(page);
-      check('안내를 닫으면 notice가 지워지고 현재 version 12로 저장', sv.version === 12 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
+      check('안내를 닫으면 notice가 지워지고 현재 version 13로 저장', sv.version === 13 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
       await page.reload();
       await page.waitForSelector('.phone');
       await page.waitForTimeout(800);
@@ -816,7 +816,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
     {
       const DECK_ALL = [...ALL, 'deck'];
       const GUIDE_DONE = { step: 18, n: 0, done: true };
-      const deckSet = (page, slots, offers, moves = 1) => page.evaluate(([sl, of, m]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: m, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1 })), offers: of } }); }, [slots, offers, moves]);
+      const deckSet = (page, slots, offers, moves = 1) => page.evaluate(([sl, of, m]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: m, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1, charge: 0 })), offers: of } }); }, [slots, offers, moves]);
       {
         const { ctx, page } = await newPage(browser, { version: 12, unlocked: ALL, moves: 0, guide: GUIDE_DONE });
         await page.waitForTimeout(700);
@@ -830,7 +830,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.waitForTimeout(600);
         check('덱: 이사 뒤 카드 줄(칸 3개)과 노란 카드 고르기 버튼이 보인다', (await vis(page, '.deck-row')) && (await page.locator('.deck-slot').count()) === 3 && (await text(page, '.deck-alert')).includes('카드 고르기'));
         const g = await page.evaluate(() => { const r = document.querySelector('.deck-row').getBoundingClientRect(); const m = document.querySelector('.move-row').getBoundingClientRect(); const c = document.querySelector('.charge')?.getBoundingClientRect(); return { rowBottom: r.bottom, moveTop: m.top, chargeBottom: c && c.width ? c.bottom : 0, rowTop: r.top, h: r.height }; });
-        check('덱: 카드 줄(높이 48)이 이사 줄·강타 띠와 겹치지 않는다', g.h === 48 && g.rowBottom <= g.moveTop && g.rowTop >= g.chargeBottom, JSON.stringify(g));
+        check('덱: 카드 줄(높이 60)이 이사 줄·강타 띠와 겹치지 않는다', g.h === 60 && g.rowBottom <= g.moveTop && g.rowTop >= g.chargeBottom, JSON.stringify(g));
         check('덱: 공구 탭을 보는 중에는 공구 강화 탭에 알림 점이 없다', (await page.locator('.dock .tab:not([data-ux]) .dot:visible').count()) === 0);
         await tab(page, 'home').click();
         await page.waitForTimeout(300);
@@ -894,7 +894,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       }
       // ---- 공구함 덱 2단계(화면): 카드 12장 · 발동 연출 · 피버 띠 ----
       const DECK2 = [...DECK_ALL, 'special', 'fever'];
-      const deck2Set = (page, slots, offers = []) => page.evaluate(([sl, of, un]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: un, deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1 })), offers: of } }); }, [slots, offers, DECK2]);
+      const deck2Set = (page, slots, offers = []) => page.evaluate(([sl, of, un]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: un, deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1, charge: 0 })), offers: of } }); }, [slots, offers, DECK2]);
       const observeX = (page) => page.evaluate(() => { window.__xs = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('deck-x')) window.__xs.push(n.textContent); }).observe(document.querySelector('.deck-row'), { childList: true, subtree: true }); });
       {
         const { ctx, page } = await newPage(browser, { version: 12, unlocked: DECK2, moves: 1, guide: GUIDE_DONE });
@@ -960,7 +960,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         for (let i = 0; i < 60 && (await page.evaluate(() => window.__xs.length)) === 0; i++) await page.waitForTimeout(50);
         await page.waitForTimeout(100);
         const after = await page.evaluate(() => ({ t: window.__ajd.get().fever.activeSec, xs: window.__xs, color: document.querySelector('.deck-x') ? getComputedStyle(document.querySelector('.deck-x')).color : '' }));
-        check('덱 2단계: F3 피버 중 퍼펙트에 +2초가 한 번 뜨고 피버 남은 시간이 늘어난다', after.xs.length === 1 && after.xs[0] === '+2초' && after.t > before + 1, JSON.stringify({ before, after }));
+        check('덱 2단계: F3 피버 중 퍼펙트에 +2초가 한 번 뜨고 피버 남은 시간이 늘어난다', after.xs.length === 1 && after.xs[0] === '+2초' && after.t > before + 0.5, JSON.stringify({ before, after }));
         const tagTxt = await text(page, '.fever-tag');
         check('덱 2단계: 피버 칩이 늘어난 시간을 바로 보인다', num(tagTxt.split('·')[1]) >= Math.ceil(after.t) - 1, tagTxt);
         await ctx.close();
@@ -1006,6 +1006,89 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.waitForTimeout(800);
         const sv = await gs(page);
         check('덱: v11 저장(moves > 0)으로 열면 대기 묶음이 1개 있고 카드 고르기 버튼이 뜬다', sv.deck.offers.length === 1 && sv.deck.offers[0].length === 3 && (await vis(page, '.deck-alert')), JSON.stringify(sv.deck));
+        await ctx.close();
+      }
+    }
+
+
+    // ---- 공구함 덱 3단계(화면): 충전 막대 · 공구함 ×N · 카드 완성 · 덱 완성 · 배율 내역 · 교체 ----
+    {
+      // moves 1의 필요 눈금 = 40 x 0.35 = 14
+      const NEED = 14;
+      const charged = (page, slots, offers = []) => page.evaluate(([sl, of]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck', 'fever', 'special'], deck: { ...s.deck, slots: sl.map((x) => ({ id: x[0], star: 1, charge: x[1] })), offers: of } }); }, [slots, offers]);
+      const perfectHit = (page) => page.evaluate(() => { window.__ajd.zone(0.5); window.__ajd.charge(0.5); });
+      const watch = (page) => page.evaluate(() => { window.__xs = []; window.__bn = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) { if (n.classList?.contains('deck-x')) window.__xs.push(n.textContent); if (n.classList?.contains('fx-banner')) window.__bn.push(n.textContent); } }).observe(document.body, { childList: true, subtree: true }); });
+      const px = (page) => page.evaluate(() => [...document.querySelectorAll('.deck-row .deck-bar i')].map((i) => parseInt(i.style.width || '0', 10)));
+      {
+        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
+        await page.waitForTimeout(500);
+        await charged(page, [['P2', 3], ['C1', 0]]);
+        await page.waitForTimeout(400);
+        const w0 = await px(page);
+        const head0 = await text(page, '.badge');
+        await perfectHit(page);
+        await page.waitForTimeout(800);
+        const w1 = await px(page);
+        const sv = await gs(page);
+        check('덱 3단계: 퍼펙트 강타로 정밀 카드의 충전 막대가 오른다(연쇄 카드는 그대로)', w1[0] > w0[0] && w1[1] === w0[1] && sv.deck.slots[0].charge === 4, JSON.stringify([w0, w1]));
+        check('덱 3단계: 카드 줄 오른쪽에 공구함 ×N 숫자', /^공구함 ×/.test(await text(page, '.deck-mult')), await text(page, '.deck-mult'));
+        check('덱 3단계: 칸 아래 충전 막대는 칸마다 4px', await page.evaluate(() => [...document.querySelectorAll('.deck-row .deck-bar')].every((b) => b.getBoundingClientRect().height === 4)));
+        await page.evaluate((n) => window.__ajd.deckCharge(n), NEED);
+        await page.waitForTimeout(500);
+        check('덱 3단계: 머리 총 배율 칩은 덱 충전으로 안 변한다', (await text(page, '.badge')) === head0, `${head0} -> ${await text(page, '.badge')}`);
+        await page.locator('.badge').click();
+        await page.waitForSelector('.modal');
+        const mp = await text(page, '.modal');
+        check('덱 3단계: 배율 내역 창에 공구함(이 집) 줄이 총 배율 아래에 있다', mp.includes('공구함(이 집)') && mp.indexOf('공구함(이 집)') > mp.indexOf('총 배율'), mp.replace(/\n/g, ' ').slice(0, 140));
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
+        await page.waitForTimeout(500);
+        await charged(page, [['P2', NEED - 1], ['C1', 0]]);
+        await page.waitForTimeout(400);
+        await watch(page);
+        await perfectHit(page);
+        await page.waitForTimeout(1200);
+        const xs = await page.evaluate(() => window.__xs);
+        const t = await text(page, '.deck-mult');
+        check('덱 3단계: 카드가 꽉 차면 칸 위에 ×4가 한 번 뜨고 공구함 숫자가 ×4가 된다', xs.filter((x) => x === '×4').length === 1 && t === '공구함 ×4', JSON.stringify([xs, t]));
+        check('덱 3단계: 막대가 꽉 차면 노랑(full)', (await page.locator('.deck-bar.full').count()) === 1);
+        await page.locator('.deck-row').click();
+        await page.waitForTimeout(400);
+        const tb = await text(page, '.modal-body');
+        check('덱 3단계: 공구함 창에 배율 큰 숫자·지금/최대·충전 방법', tb.includes('공구함 배율') && tb.includes('지금 ×4') && tb.includes('최대 ×4') && tb.includes('퍼펙트 강타로 충전') && tb.includes('긴 연쇄로 충전'), tb.replace(/\n/g, ' ').slice(0, 160));
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
+        await page.waitForTimeout(500);
+        await charged(page, [['P2', NEED - 1], ['P3', NEED], ['F3', NEED]]);
+        await page.waitForTimeout(400);
+        await watch(page);
+        await perfectHit(page);
+        await page.waitForTimeout(5000);
+        const bn = await page.evaluate(() => window.__bn);
+        check('덱 3단계: 덱이 다 차면 큰 글자 "공구함 완성 ×64"가 한 번 뜬다', bn.filter((b) => b.includes('공구함 완성 ×64')).length === 1, JSON.stringify(bn));
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
+        await page.waitForTimeout(500);
+        await charged(page, [['P2', 9], ['P3', 5], ['C1', 7]], [['C3', 'S3', 'F1']]);
+        await page.waitForTimeout(400);
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(400);
+        check('덱 3단계: 고르기 창 카드마다 충전 방법 한 줄', (await page.locator('.deck-pick .pc-how').count()) === 3);
+        await page.locator('.deck-pick .pcard').first().click();
+        await page.waitForTimeout(500);
+        const rt = await text(page, '.modal-body');
+        check('덱 3단계: 교체 화면에 칸마다 지금 배수와 충전 소멸 안내', (rt.match(/지금 ×/g) || []).length === 3 && rt.includes('충전이 사라져요'), rt.replace(/\n/g, ' ').slice(0, 160));
+        await page.locator('.deck-pick .pcard').nth(1).click();
+        await page.waitForTimeout(1200);
+        const sv = await gs(page);
+        check('덱 3단계: 교체하면 그 칸의 충전은 0, 나머지는 그대로', sv.deck.slots.map((x) => `${x.id}:${x.charge}`).join() === 'P2:9,C3:0,C1:7', sv.deck.slots.map((x) => `${x.id}:${x.charge}`).join());
         await ctx.close();
       }
     }

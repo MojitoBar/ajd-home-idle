@@ -1,6 +1,6 @@
 /** 꾹 눌러 강타: 길게 누르면 표시(marker)가 0 -> 1 -> 0을 왕복하고, 손을 뗀 자리가 판정이 된다. 저장하지 않는 실행 중 상태(연속 퍼펙트 streak 포함). */
 import { DECK_PERFECT_HALF_HARD_MAX } from '../data/cards';
-import { deckFeverFires, deckMultFires, deckStrikeMult } from './deck';
+import { chargeOnPerfect, deckChargeResult, deckFeverFires, deckMultFires, deckStrikeMult } from './deck';
 import { heavyHit, type HeavyResult } from './unpack';
 import type { GameState } from './state';
 import { strikeMult } from './economy';
@@ -135,6 +135,7 @@ export function releaseCharge(
   const h = heavyHit(state, rng, taps, comboMult, reward.fever);
   const fev = deckFeverFires(state, grade);
   const deckFires = deckMult > 1 || fev.sec > 0 ? [...deckMultFires(state, grade, nextStreak), ...fev.fires, ...h.deckFires] : h.deckFires;
-  const out = fev.sec > 0 && h.state.fever.activeSec > 0 ? { ...h.state, fever: { ...h.state.fever, activeSec: h.state.fever.activeSec + fev.sec } } : h.state;
-  return { ...h, state: out, deckFires, grade, streak: nextStreak, comboAdd: reward.combo, taps };
+  const fed = fev.sec > 0 && h.state.fever.activeSec > 0 ? { ...h.state, fever: { ...h.state.fever, activeSec: h.state.fever.activeSec + fev.sec } } : h.state;
+  const out = grade === 'perfect' ? chargeOnPerfect(fed, nextStreak) : fed;
+  return { ...h, state: out, deckFires, deckCharge: deckChargeResult(state, out), grade, streak: nextStreak, comboAdd: reward.combo, taps };
 }

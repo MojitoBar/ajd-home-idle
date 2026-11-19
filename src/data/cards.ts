@@ -63,15 +63,38 @@ export const CARD_OFFER_SIZE = 3;
 export const DECK_MARKS = 6;
 /**
  * 진행 문턱(k=1..5)이 목표보다 몇 자릿수 아래인지(`earned >= target x 10^(-d)`). 행은 이사 횟수 1~5(6 이상은 마지막 행), 열은 k.
- * 집 시간의 대략 15·30·50·70·85%에 오도록 시뮬(현실 정책, 원형 4개 덱 x 시드 20개)의 집별 누적 P 곡선 중앙값에서 잡은 값이다(`DECK=정밀,연쇄,특별,피버`가 후보를 출력한다). 집마다 곡선이 달라 행이 따로다.
+ * 집 시간의 대략 15·30·50·70·85%에 오도록 시뮬(현실 정책, 원형 4개 덱 x 시드 10개)의 집별 누적 P 곡선 중앙값에서 잡은 값이다. 3단계에서 목표가 `houseTarget`(보정 목표)로 바뀌고 덱 배율이 곡선을 바꿔 다시 잡았다(이전 값은 2단계 기록)(`DECK=정밀,연쇄,특별,피버`가 후보를 출력한다). 집마다 곡선이 달라 행이 따로다.
  */
 export const DECK_MARK_DIGITS: readonly (readonly number[])[] = [
-  [2.33, 1.66, 1.02, 0.54, 0.27],
-  [2.48, 1.83, 1.25, 0.77, 0.33],
-  [1.73, 1.2, 0.72, 0.39, 0.19],
-  [1.65, 1.18, 0.74, 0.4, 0.21],
-  [1.52, 1.12, 0.61, 0.3, 0.14],
+  [4.0, 2.75, 1.45, 0.8, 0.35],
+  [3.85, 2.78, 1.3, 0.68, 0.32],
+  [3.05, 2.08, 1.03, 0.52, 0.26],
+  [3.17, 2.35, 1.08, 0.52, 0.24],
+  [2.87, 1.68, 0.8, 0.41, 0.18],
 ];
+
+/** 카드 배수 상한(★1 x4, ★ 하나당 +1) = 이 값 + ★ */
+export const CARD_MULT_CAP_BASE = 3;
+/** 충전 필요 눈금(희귀도별 첫 값). 지금 카드는 전부 일반으로 본다(`cardChargeNeed`) */
+export const CARD_CHARGE_NEED: Record<CardRarity, number> = { common: 40, rare: 50, legend: 60 };
+/** 집 길이 보정: 행은 이사 횟수 0~5(6 이상은 마지막 행). 필요 눈금 = `CARD_CHARGE_NEED` x 이 값. 시뮬로 맞춘 값(DESIGN-DECK.md 3단계 기록) */
+export const CHARGE_NEED_SCALE: readonly number[] = [1, 0.35, 0.9, 1.05, 1.8, 1.05];
+/** 이사할 때 `deck.targetScale`에 고정하는 집 목표 배수: 행은 새 이사 횟수 0~5(6 이상은 마지막 행). 시뮬로 집 2부터 하나씩 맞춘 값 */
+export const DECK_TARGET_SCALE: readonly number[] = [1, 58, 85, 56, 112, 56];
+/** 충전 조건 상수(DESIGN-DECK.md 13.3) */
+export const CHARGE_RULES = {
+  /** 정밀: 퍼펙트 강타 +1, 연속이 10의 배수면 +3 */
+  precise: 1,
+  preciseTen: 3,
+  /** 연쇄: 한 강타의 per연쇄마다 +1, 강타당 최대 max */
+  chainPer: 50,
+  chainMax: 6,
+  /** 특별: 터진 특별 상자 1개 +2 */
+  special: 2,
+  /** 피버: 피버 중 강타 +1, 피버가 켜질 때 +4 */
+  feverStrike: 1,
+  feverOn: 4,
+} as const;
 
 export function cardDef(id: string): CardDef | undefined {
   return CARDS.find((c) => c.id === id);

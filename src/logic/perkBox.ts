@@ -1,13 +1,13 @@
 /** 특전 상자: 이번 집 목표에 비례해 가격이 오르는 살 수 있는 상자. 열면 특전 3택 묶음 1개가 대기열에 쌓인다. 영구 공구(`gear.ts`)와 같은 방식의 가격. */
 import { PERK_BOX_FRAC, PERK_BOX_GROWTH } from '../data/perks';
 import { featureOpen } from './guide';
-import { houseInfo } from './house';
+import { houseTarget } from './house';
 import { rollPerkOffer, seededRng } from './perks';
 import type { GameState } from './state';
 
 /** 다음 특전 상자 가격 = 이 집 목표 x PERK_BOX_FRAC x PERK_BOX_GROWTH ^ 이 집에서 산 개수 */
 export function perkBoxCost(state: GameState): number {
-  return houseInfo(state.moves).target * PERK_BOX_FRAC * PERK_BOX_GROWTH ** state.perkBoxBought;
+  return houseTarget(state) * PERK_BOX_FRAC * PERK_BOX_GROWTH ** state.perkBoxBought;
 }
 
 /** 가이드의 특전 상자 단계에 닿았거나 가이드가 끝났나 */

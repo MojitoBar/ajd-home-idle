@@ -1,7 +1,7 @@
 import { GEARS } from '../data/gear';
 import { PERKS, PERK_OFFER_SIZE } from '../data/perks';
 import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, cardDef } from '../data/cards';
-import { deckSlots, emptyDeck, marksPassed, rollCardOffer, type DeckSlot, type DeckState } from './deck';
+import { cardChargeNeed, deckSlots, emptyDeck, marksPassed, rollCardOffer, type DeckSlot, type DeckState } from './deck';
 import { rollPerkOffer, seededRng } from './perks';
 import { BOX_PATTERN, ROOM_BOXES } from '../data/unpack';
 import { boxHp, endlessHp } from './unpack';
@@ -123,8 +123,14 @@ export const MIGRATIONS: Migrations = {
   11: (s) => {
     const moves = num(s.moves, 0, true);
     if (moves === 0) return { ...s, version: 12, deck: emptyDeck() };
-    const mark = marksPassed(moves, num(s.earned, 0));
+    const mark = marksPassed({ moves, deck: emptyDeck() }, num(s.earned, 0));
     return { ...s, version: 12, deck: { ...emptyDeck(), mark, offers: [rollCardOffer([], moves * 7919 + 29)] } };
+  },
+  // 12 -> 13: 공구함 배율. 낀 카드는 눈금 0(공구함 x1부터라 지금보다 줄지 않는다), 이 집의 목표 배수는 1(지금 있는 집의 목표·진행 막대 그대로). 다음 이사부터 표 값
+  12: (s) => {
+    const d = isObj(s.deck) ? s.deck : {};
+    const slots = Array.isArray(d.slots) ? d.slots.map((o) => (isObj(o) ? { ...o, charge: 0 } : o)) : [];
+    return { ...s, version: 13, deck: { ...d, slots, targetScale: 1 } };
   },
 };
 
@@ -201,7 +207,7 @@ export function sanitize(raw: Raw): GameState {
   if (Array.isArray(rawDeck.slots)) {
     for (const o of rawDeck.slots) {
       if (!isObj(o) || typeof o.id !== 'string' || !cardDef(o.id) || slots.some((s) => s.id === o.id) || slots.length >= deckSlotsMax) continue;
-      slots.push({ id: o.id, star: Math.min(3, Math.max(1, num(o.star, 1, true))) });
+      slots.push({ id: o.id, star: Math.min(3, Math.max(1, num(o.star, 1, true))), charge: Math.min(cardChargeNeed(moves), num(o.charge, 0)) });
     }
   }
   const cardOffers: string[][] = [];
@@ -217,6 +223,7 @@ export function sanitize(raw: Raw): GameState {
     offers: cardOffers,
     rerolls: Math.min(9, num(rawDeck.rerolls, d.deck.rerolls, true)),
     mark: Math.min(DECK_MARKS, num(rawDeck.mark, 0, true)),
+    targetScale: Math.max(1e-6, num(rawDeck.targetScale, 1)),
     seen: Array.isArray(rawDeck.seen) ? [...new Set(rawDeck.seen.filter((id): id is string => typeof id === 'string' && !!cardDef(id)))] : [],
   };
   const rawUnpack = isObj(raw.unpack) ? raw.unpack : {};

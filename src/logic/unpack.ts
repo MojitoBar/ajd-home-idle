@@ -30,7 +30,7 @@ import type { BoxResult } from './gacha';
 import { tapBase, tapValue } from './economy';
 import { gearEffects } from './gear';
 import { featureOpen } from './guide';
-import { checkMarks, deckEffects, deckEvent, type DeckFire } from './deck';
+import { checkMarks, chargeOnStrike, deckChargeResult, deckEffects, deckEvent, type DeckChargeResult, type DeckFire } from './deck';
 import { chargeFever, feverMultOf } from './fever';
 import { perkEffects, seededRng, tapPowerMult } from './perks';
 import { HOME_SLOTS, type GameState } from './state';
@@ -316,8 +316,8 @@ function tapCore(state: GameState, rng: () => number, damped: boolean, comboMult
   const p = chainPrize(state, next, chain);
   let out = p.state;
   if (chain > 1 && chain > out.bestChain) out = { ...out, bestChain: chain };
-  const d = settleDeck(state, out, 0, bursts);
-  return { ...r, state: d.state, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize: p.prize, deckFires: [], deckOffered: d.offered };
+  const d = settleDeck(state, out, 0, bursts, false);
+  return { ...r, state: d.state, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize: p.prize, deckFires: [], deckOffered: d.offered, deckCharge: d.charge };
 }
 
 /**
@@ -345,10 +345,12 @@ export interface HeavyResult extends TapResult {
   deckFires: DeckFire[];
   /** 이번에 진행 문턱을 넘어 카드 3택 묶음이 새로 생겼는가(`state.deck.offers`에 들어 있다) */
   deckOffered: boolean;
+  /** 이번 강타의 공구함 충전 결과(일반 탭·러시는 변화 없음: `full` 빈 배열, 전·후 같음). `releaseCharge`는 정밀 충전까지 합친 값으로 덮어쓴다 */
+  deckCharge: DeckChargeResult;
 }
 
 /** 공구함 정산: 강타 사건의 보상 카드(탭 1회 수익 x taps, 연쇄 상금과 같은 방식)를 P·누적에 더하고, 진행 문턱을 판정한다. 일반 탭은 chain을 0으로 넘겨 문턱만 본다 */
-function settleDeck(start: GameState, state: GameState, chain: number, bursts: readonly BoxBurst[]): { state: GameState; fires: DeckFire[]; offered: boolean } {
+function settleDeck(start: GameState, state: GameState, chain: number, bursts: readonly BoxBurst[], strike: boolean): { state: GameState; fires: DeckFire[]; offered: boolean; charge: DeckChargeResult } {
   let out = state;
   const fires = chain > 0 ? deckEvent(out, { chain, gold: out.deck.slots.length > 0 ? bursts.reduce((n, b) => n + (b.special === 'gold' ? 1 : 0), 0) : 0 }) : [];
   if (fires.length > 0) {
@@ -361,8 +363,9 @@ function settleDeck(start: GameState, state: GameState, chain: number, bursts: r
     }
     if (gain > 0) out = { ...out, points: out.points + gain, earned: out.earned + gain, stats: { ...out.stats, totalEarned: out.stats.totalEarned + gain } };
   }
+  if (strike) out = chargeOnStrike(out, { chain, specials: bursts.reduce((n, b) => n + (b.special ? 1 : 0), 0), feverBefore: start.fever.activeSec > 0, feverAfter: out.fever.activeSec > 0 });
   const marked = checkMarks(out);
-  return { state: marked, fires, offered: marked.deck.mark > out.deck.mark };
+  return { state: marked, fires, offered: marked.deck.mark > out.deck.mark, charge: deckChargeResult(start, marked) };
 }
 
 /** i번째(0부터) 터진 상자의 연쇄 보너스 배율 */
@@ -395,8 +398,8 @@ export function heavyHit(state: GameState, rng: () => number, taps: number, comb
   next = p.state;
   const prize = p.prize;
   if (chain > next.bestChain) next = { ...next, bestChain: chain };
-  const d = settleDeck(state, next, chain, bursts);
-  return { ...r, state: d.state, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize, deckFires: d.fires, deckOffered: d.offered };
+  const d = settleDeck(state, next, chain, bursts, true);
+  return { ...r, state: d.state, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize, deckFires: d.fires, deckOffered: d.offered, deckCharge: d.charge };
 }
 
 export interface RoomProgress {

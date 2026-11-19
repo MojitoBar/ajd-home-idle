@@ -1,6 +1,7 @@
 // 전략 요소 화면: 이사 특전 3택 · 배율 내역. 로직은 읽기/호출만 한다.
 import { PERKS, type PerkCategory } from '../data/perks';
 import { TAPS_PER_SEC_FULL } from '../data/tap';
+import { deckMult } from '../logic/deck';
 import { multBreakdown, tapBreakdown } from '../logic/economy';
 import { formatNumber } from '../logic/format';
 import { choosePerk, discardPerkOffer, pendingPerkCount, perkLevel, perkOfferViews, type PerkOptionView } from '../logic/perks';
@@ -256,6 +257,10 @@ function renderMult(state: GameState): void {
     list.append(el('div', { cls: `mp-row${v > 1.0001 ? ' hot' : ''}` }, el('span', { text: label }), el('b', { text: `x${formatNumber(v)}` })));
     // 머리 칩과 같은 값(피버 제외)이 맨 위, 피버 중일 때만 그 아래에 지금 값을 따로 보인다
     if (label === '총 배율' && bd.fever > 1.0001) list.append(el('div', { cls: 'mp-row fever' }, el('span', { text: `피버 중 x${formatNumber(bd.fever)}` }), el('b', { text: `→ 지금 x${formatNumber(bd.total)}` })));
+    if (label === '총 배율' && state.moves > 0 && state.deck) {
+      const dm = deckMult(state);
+      list.append(el('div', { cls: `mp-row deck${dm > 1.0001 ? ' hot' : ''}` }, el('span', { text: '공구함(이 집)' }), el('b', { text: `x${formatNumber(dm)}` })));
+    }
   }
   const note = (text: string): HTMLElement => el('div', { cls: 'mp-note', text });
   const foot = el('div', { cls: 'mp-foot' }, note(`탭 1회 기본 ${formatNumber(tbd.flat)} P`), ...(inMultModal ? [note(`초당 ${TAPS_PER_SEC_FULL}회까지는 전액, 넘으면 기본값만 받아요`)] : []));

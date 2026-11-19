@@ -287,7 +287,7 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
 
   // ---- 공구함 덱 1단계(PC) ----
   {
-    const deckSet = (pg, slots, offers, moves = 1) => pg.evaluate(([sl, of, mv]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: mv, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1 })), offers: of } }); }, [slots, offers, moves]);
+    const deckSet = (pg, slots, offers, moves = 1) => pg.evaluate(([sl, of, mv]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: mv, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1, charge: 0 })), offers: of } }); }, [slots, offers, moves]);
     const fit = (pg) => pg.evaluate(() => { const r = document.querySelector('.deck-row')?.getBoundingClientRect(); const m = document.querySelector('.move-row')?.getBoundingClientRect(); return { rowH: r && Math.round(r.height), gap: r && m ? Math.round(m.top - r.bottom) : null, scrollH: document.documentElement.scrollHeight, innerH: innerHeight, hs: document.documentElement.scrollWidth > document.documentElement.clientWidth }; });
     for (const size of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
       const { ctx, page } = await open(size);
@@ -298,7 +298,9 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
       await deckSet(page, ['P2', 'P3'], [['C1', 'C3', 'P2']], 1);
       await page.waitForTimeout(700);
       const f = await fit(page);
-      check(`덱(PC ${size.width}): 카드 줄이 보이고 카드 고르기 버튼이 뜬다`, (await page.locator('.deck-row').isVisible()) && (await page.locator('.deck-alert').isVisible()) && f.rowH === 48 && f.gap >= 0, JSON.stringify(f));
+      check(`덱(PC ${size.width}): 카드 줄이 보이고 카드 고르기 버튼이 뜬다`, (await page.locator('.deck-row').isVisible()) && (await page.locator('.deck-alert').isVisible()) && f.rowH === 60 && f.gap >= 0, JSON.stringify(f));
+      const ov = await page.evaluate(() => { const q = (x) => document.querySelector(x); const vis = (e) => !!e && getComputedStyle(e).visibility !== 'hidden' && e.getBoundingClientRect().width > 0; const m = q('.deck-mult'); const a = q('.deck-alert'); const bars = [...document.querySelectorAll('.deck-row .deck-bar')]; const mr = m?.getBoundingClientRect(); const ar = a?.getBoundingClientRect(); return { mult: /^공구함 ×/.test(m?.textContent || ''), bars: bars.length, barH: bars.every((b) => b.getBoundingClientRect().height === 4), hit: vis(m) && vis(a) && mr.left < ar.right && mr.right > ar.left && mr.top < ar.bottom && mr.bottom > ar.top, sh: document.documentElement.scrollHeight, ih: innerHeight }; });
+      check(`덱(PC ${size.width}): 공구함 ×N 숫자·충전 막대가 있고 카드 고르기 버튼과 안 겹치며 세로 넘침이 없다`, ov.mult && ov.bars === 2 && ov.barH && !ov.hit && ov.sh <= ov.ih, JSON.stringify(ov));
       check(`덱(PC ${size.width}): 카드 줄이 떠도 세로·가로로 넘치지 않는다`, f.scrollH <= f.innerH && !f.hs, JSON.stringify(f));
       await page.locator('.deck-alert').click();
       await page.waitForSelector('.modal.deck-pick .pcard');

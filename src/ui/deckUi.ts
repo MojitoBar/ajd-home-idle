@@ -1,6 +1,7 @@
 // 공구함 덱 화면(1단계): 카드 줄 · 공구함 창 · 카드 고르기 창 · 발동 연출. 로직은 logic/deck.ts, 설계는 DESIGN-DECK.md 7·8절.
 import { cardDef, type CardDef, type CardTag } from '../data/cards';
-import { chooseCard, deckFull, deckSlots, type DeckFire } from '../logic/deck';
+import { cardMult, chooseCard, deckFull, deckMult, deckSlotViews, deckSlots, type DeckChargeResult, type DeckFire, type DeckSlotView } from '../logic/deck';
+import { formatNumber } from '../logic/format';
 import type { GameState } from '../logic/state';
 import type { UiCtx } from './collectUi';
 import { el } from './dom';
@@ -16,11 +17,19 @@ export interface DeckHooks {
   pts: () => Element;
   /** 카드 줄이 들어갈 이사 블록 */
   host: HTMLElement;
+  /** 방(테두리 번쩍임이 도는 곳) */
+  room: () => Element;
 }
 
 let H: DeckHooks;
 const TAG_NAME: Record<CardTag, string> = { precise: '정밀', chain: '연쇄', special: '특별', rush: '러시', fever: '피버' };
 const RARITY_NAME = { common: '일반', rare: '레어', legend: '전설' } as const;
+/** 충전 방법(로직 `CHARGE_RULES`의 조건과 같다: 정밀 = 퍼펙트 강타, 연쇄 = 50연쇄마다, 특별 = 터진 특별 상자, 피버 = 피버 중 강타) */
+const HOW: Partial<Record<CardTag, string>> = { precise: '퍼펙트 강타로 충전', chain: '긴 연쇄로 충전', special: '특별 상자를 터뜨려 충전', fever: '피버 중 강타로 충전' };
+const howText = (d: CardDef): string => d.tags.map((t) => HOW[t]).filter(Boolean).join(' · ') || '충전 없음';
+/** 배수 글자: 10 미만은 소수 한 자리(.0은 뗀다), 그 이상은 정수 */
+const fmtMult = (v: number): string => (v >= 10 ? formatNumber(Math.round(v)) : String(Math.round(v * 10) / 10));
+const pow10 = (v: number): number => (v >= 1 ? Math.floor(Math.log10(v) + 1e-9) : 0);
 const cardIcon = (d: CardDef, size: number, cls?: string): HTMLImageElement => iconImg(d.icon as IconName, { size, alt: '', cls });
 const tagVar = (d: CardDef): string => `var(--tag-${d.tags[0]})`;
 /** 태그 칩(이중 태그 카드는 두 개). 칩마다 자기 태그 색 테두리 */
@@ -33,6 +42,17 @@ const chip = (t: CardTag, cls: string): HTMLElement => {
 // ---------- 카드 줄 ----------
 const row = el('div', { cls: 'deck-row', attrs: { role: 'group', 'aria-label': '공구함' } });
 const rowLabel = el('span', { cls: 'deck-label' });
+const multEl = el('b', { cls: 'deck-mult calm' });
+const side = el('div', { cls: 'deck-side' }, multEl, rowLabel);
+const multRoll = fx.roller(multEl, (v) => `공구함 ×${fmtMult(v)}`);
+interface Cell {
+  slot: HTMLElement;
+  fill: HTMLElement | null;
+  bar: HTMLElement | null;
+}
+let cells: Cell[] = [];
+/** 연쇄 재생이 끝날 때까지 공구함 숫자를 강타 전 값으로 붙든다 */
+let heldMult: number | null = null;
 /** 알림: 대기 묶음이 있을 때 이사 줄 위에 뜨는 노란 버튼 */
 export const alertBtn = el('button', { cls: 'btn gold perk-alert deck-alert', attrs: { type: 'button', hidden: '' } });
 let rowKey = '';
@@ -54,6 +74,8 @@ export function sync(state: GameState): void {
     if (row.isConnected) row.remove();
     alertBtn.hidden = true;
     rowKey = '';
+    heldMult = null;
+    multRoll.snap(1);
     document.body.classList.remove('has-deck');
     return;
   }
@@ -65,26 +87,47 @@ export function sync(state: GameState): void {
   const key = `${n}|${state.deck.slots.map((s) => s.id).join(',')}|${pendingCount(state) > 0 ? 1 : 0}`;
   if (key !== rowKey) {
     rowKey = key;
-    const kids: HTMLElement[] = [];
+    cells = [];
     for (let i = 0; i < n; i++) {
-      const slot = state.deck.slots[i];
-      const d = slot ? cardDef(slot.id) : undefined;
+      const slotState = state.deck.slots[i];
+      const d = slotState ? cardDef(slotState.id) : undefined;
       const b = el('button', { cls: `deck-slot${d ? ' on' : ''}`, attrs: { type: 'button', 'aria-label': d ? `${d.name}: ${d.desc}` : '빈 칸' } });
+      let fill: HTMLElement | null = null;
+      let bar: HTMLElement | null = null;
       if (d) {
         b.dataset.card = d.id;
         b.style.setProperty('--tc', tagVar(d));
         b.append(cardIcon(d, 32));
+        fill = el('i');
+        bar = el('span', { cls: 'deck-bar' }, fill);
       }
-      kids.push(b);
+      cells.push({ slot: b, fill, bar });
     }
-    row.replaceChildren(...kids, rowLabel);
+    row.replaceChildren(...cells.map((c) => el('div', { cls: 'deck-cell' }, c.slot, ...(c.bar ? [c.bar] : []))), side);
   }
+  const views = deckSlotViews(state);
+  views.forEach((v, i) => {
+    const c = cells[i];
+    if (!c?.fill || !c.bar) return;
+    c.fill.style.width = `${barPx(v)}px`;
+    c.bar.classList.toggle('full', v.full);
+    c.bar.dataset.charge = `${v.charge}/${v.need}`;
+  });
+  const m = heldMult ?? deckMult(state);
+  multRoll.set(m);
+  multEl.classList.toggle('calm', m <= 1.0001);
   const filled = state.deck.slots.length;
-  const label = filled >= n ? '공구함 가득' : `공구함 · 빈 칸 ${n - filled}`;
+  const label = filled >= n ? '칸 가득' : `빈 칸 ${n - filled}`;
   if (rowLabel.textContent !== label) rowLabel.textContent = label;
   const pend = pendingCount(state);
   alertBtn.hidden = pend === 0;
   if (pend > 0) setLabel(alertBtn, 'ui-tools', 32, `카드 고르기${pend > 1 ? ` ${pend}` : ''}`);
+}
+
+/** 충전 막대 채움: 1도트(2px) 단위, 막대 48px = 24도트 */
+function barPx(v: DeckSlotView): number {
+  if (v.full) return 48;
+  return v.charge <= 0 ? 0 : Math.max(2, Math.floor((v.charge / v.need) * 24) * 2);
 }
 
 // ---------- 모달 공통 ----------
@@ -112,18 +155,19 @@ function setModal(title: string, body: Node[], actions: Parameters<typeof setAct
 const titleIcon = (): HTMLElement => iconImg('ui-tools', { size: 32, cls: 'title-ico' });
 
 // ---------- 공구함 창 ----------
-function cardRow(d: CardDef): HTMLElement {
+function cardRow(d: CardDef, v?: DeckSlotView): HTMLElement {
+  const main = el('div', { cls: 'pr-main' }, el('div', { cls: 'pr-name' }, el('b', { cls: 'fb', text: d.name }), ...d.tags.map((t) => chip(t, 'tag'))), el('div', { cls: 'pr-desc', text: d.desc }), el('div', { cls: 'pr-how', text: howText(d) }));
+  if (v) {
+    const fill = el('i');
+    fill.style.width = v.full ? '100%' : `${Math.min(100, Math.round(barPx(v) / 0.48))}%`;
+    main.append(el('span', { cls: `deck-bar${v.full ? ' full' : ''}` }, fill));
+  }
   const r = el(
     'div',
     { cls: 'perk-row deck-card' },
     el('span', { cls: 'pr-emoji' }, cardIcon(d, 32)),
-    el(
-      'div',
-      { cls: 'pr-main' },
-      el('div', { cls: 'pr-name' }, el('b', { cls: 'fb', text: d.name }), ...d.tags.map((t) => chip(t, 'tag'))),
-      el('div', { cls: 'pr-desc', text: d.desc }),
-    ),
-    el('div', { cls: 'pr-lv' }, el('b', { text: RARITY_NAME[d.rarity] })),
+    main,
+    el('div', { cls: 'pr-lv' }, v ? el('b', { text: `지금 ×${fmtMult(v.mult)}` }) : el('b', { text: RARITY_NAME[d.rarity] }), ...(v ? [el('span', { cls: 'pr-max', text: `최대 ×${fmtMult(cardMult(v.star, v.need, v.need))}` })] : [])),
   );
   r.style.setProperty('--cc', tagVar(d));
   return r;
@@ -145,12 +189,13 @@ export function openToolbox(): void {
     body.push(b);
   }
   const empty = n - state.deck.slots.length;
+  body.unshift(el('div', { cls: 'tb-total' }, el('span', { text: '공구함 배율' }), el('b', { text: `×${fmtMult(deckMult(state))}` })));
   body.push(el('p', { cls: 'dim', text: empty > 0 ? `빈 칸 ${empty}개 · 카드는 이 집에서만 써요. 이사하면 비워져요.` : '칸이 가득 찼어요. 새 카드를 고르면 바꿀 칸을 골라요.' }));
   const list = el('div', { cls: 'perk-list' });
-  for (const s of state.deck.slots) {
-    const d = cardDef(s.id);
-    if (d) list.append(cardRow(d));
-  }
+  deckSlotViews(state).forEach((v) => {
+    const d = cardDef(v.id);
+    if (d) list.append(cardRow(d, v));
+  });
   for (let i = 0; i < empty; i++) list.append(el('div', { cls: 'perk-row deck-card-empty' }, el('span', { cls: 'pr-emoji' }), el('div', { cls: 'pr-main' }, el('div', { cls: 'pr-name' }, el('span', { text: '빈 칸' })))));
   body.push(list);
   H.ctx.showModal('공구함', body, [{ label: '닫기', onClick: H.ctx.dismissModal }], { icon: titleIcon(), cls: 'deck-box' });
@@ -172,6 +217,7 @@ function deckCard(d: CardDef, k: number, o: { lv: string; btn: string; locked?: 
     el('span', { cls: 'pc-emoji' }, cardIcon(d, 32)),
     el('span', { cls: 'pc-name', text: d.name }),
     el('span', { cls: 'pc-fx', text: d.desc }),
+    el('span', { cls: 'pc-how', text: howText(d) }),
     el('span', { cls: 'pc-lv', text: o.lv }),
     pickBtn(o.btn),
   );
@@ -268,10 +314,11 @@ function commit(next: GameState, card: HTMLElement, all: HTMLElement[]): void {
 /** 칸이 차 있을 때: 같은 창 안에서 바꿀 칸을 고른다 */
 function renderReplace(d: CardDef): void {
   const state = H.ctx.get();
-  const cards = state.deck.slots.map((s, i) => {
-    const sd = cardDef(s.id);
+  const views = deckSlotViews(state);
+  const cards = views.map((v, i) => {
+    const sd = cardDef(v.id);
     if (!sd) return null;
-    const c = deckCard(sd, i, { lv: '바꾸면 사라져요', btn: '바꾸기' });
+    const c = deckCard(sd, i, { lv: `지금 ×${fmtMult(v.mult)}`, btn: '바꾸기' });
     c.addEventListener('click', () => {
       if (busy) return;
       const next = chooseCard(H.ctx.get(), 0, d.id, i);
@@ -283,7 +330,7 @@ function renderReplace(d: CardDef): void {
   incoming.classList.add('incoming');
   setModal(
     '바꿀 칸 고르기',
-    [el('p', { cls: 'dim', text: '새 카드를 끼울 칸을 골라요. 고른 칸의 카드는 사라져요.' }), incoming, el('div', { cls: 'pcards' }, ...cards.filter((c): c is HTMLButtonElement => !!c))],
+    [el('p', { cls: 'dim', text: '새 카드를 끼울 칸을 골라요. 고른 칸의 카드는 사라지고, 바꾸면 이 카드의 충전이 사라져요.' }), incoming, el('div', { cls: 'pcards' }, ...cards.filter((c): c is HTMLButtonElement => !!c))],
     [{ label: '돌아가기', quiet: true, onClick: () => renderPick() }],
   );
 }
@@ -291,23 +338,34 @@ function renderReplace(d: CardDef): void {
 // ---------- 발동 연출 ----------
 const FIRE_GAP_MS = 90;
 const WAIT_CHAIN_MAX_MS = 9000;
+/** 같은 강타에 발동 카드가 있으면 충전 연출은 그 뒤로 미룬다 */
+const CHARGE_AFTER_FIRE_MS = 400;
 
 /** 강타·탭 결과를 받는다: deckFires는 연출, deckOffered는 새 묶음 알림 점멸. 창은 절대 저절로 열지 않는다 */
-export function hit(fires: readonly DeckFire[] | undefined, offered: boolean | undefined): void {
+export function hit(fires: readonly DeckFire[] | undefined, offered: boolean | undefined, charge?: DeckChargeResult): void {
   if (offered && row.isConnected && !fx.isReduced()) fx.edge(row, 'or', [1, 0, 1, 0, 1, 1]);
+  if (charge && row.isConnected && (charge.full.length > 0 || charge.after !== charge.before)) {
+    if (heldMult === null) heldMult = charge.before;
+    const lead = fires && fires.length > 0 ? CHARGE_AFTER_FIRE_MS : 0;
+    whenChainDone(() => window.setTimeout(() => chargeFx(charge), lead));
+  }
   if (!fires || fires.length === 0 || !row.isConnected) return;
   // 탭 수에 곱하는 카드(mult)는 뗀 순간, 보상 카드는 연쇄 재생이 끝나는 순간
   const now = fires.filter((f) => f.mult !== undefined);
   const late = fires.filter((f) => f.mult === undefined);
   if (now.length > 0) play(now);
   if (late.length === 0) return;
+  whenChainDone(() => play(late));
+}
+
+function whenChainDone(cb: () => void): void {
   const t0 = performance.now();
   const go = (): void => {
     if ((chainPlaying() || chainFinishing()) && performance.now() - t0 < WAIT_CHAIN_MAX_MS) {
       window.setTimeout(go, 50);
       return;
     }
-    play(late);
+    cb();
   };
   go();
 }
@@ -321,24 +379,63 @@ function play(fires: DeckFire[]): void {
   ordered.forEach(({ f, i }, k) => window.setTimeout(() => fire(f, i, k), k * FIRE_GAP_MS));
 }
 
-function fire(f: DeckFire, index: number, order: number): void {
-  const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[index];
-  if (!slot || slot.dataset.card !== f.id) return;
-  const reduced = fx.isReduced();
-  const mark = el('b', { cls: `deck-x${f.sec !== undefined ? ' sec' : ''}`, text: f.sec !== undefined ? `+${f.sec}초` : `×${f.mult ?? f.times}` });
+/** 칸 위에 뜨는 글자(×N, +N초). 움직임 줄이기에서는 제자리 1초 */
+function slotMark(slot: HTMLElement, text: string, cls = ''): void {
+  const mark = el('b', { cls: `deck-x${cls ? ` ${cls}` : ''}`, text });
   slot.append(mark);
-  if (reduced) {
+  if (fx.isReduced()) {
     slot.classList.add('lit');
     window.setTimeout(() => slot.classList.remove('lit'), 300);
     window.setTimeout(() => mark.remove(), 1000);
     mark.classList.add('still');
-  } else {
-    fx.pxFrames(slot, [{ translate: '0 -4px' }, { translate: '0 -4px' }, { translate: '0 -2px' }, { translate: '0 0' }], 60);
-    fx.edge(slot, 'g3', [1, 0, 1, 0, 1, 1]);
-    fx.pxFrames(mark, [{ translate: '-50% 0' }, { translate: '-50% -4px' }, { translate: '-50% -8px' }, { translate: '-50% -8px' }, { translate: '-50% -8px' }, { translate: '-50% -8px' }, { translate: '-50% -8px', visibility: 'hidden' }, { translate: '-50% -8px' }, { translate: '-50% -8px', visibility: 'hidden' }], 100).onfinish = () => mark.remove();
-    window.setTimeout(() => mark.remove(), 1200);
-    vibrate(8);
+    return;
   }
+  fx.pxFrames(slot, [{ translate: '0 -4px' }, { translate: '0 -4px' }, { translate: '0 -2px' }, { translate: '0 0' }], 60);
+  fx.edge(slot, 'g3', [1, 0, 1, 0, 1, 1]);
+  fx.pxFrames(mark, [{ translate: '-50% 0' }, { translate: '-50% -4px' }, { translate: '-50% -8px' }, { translate: '-50% -8px' }, { translate: '-50% -8px' }, { translate: '-50% -8px' }, { translate: '-50% -8px', visibility: 'hidden' }, { translate: '-50% -8px' }, { translate: '-50% -8px', visibility: 'hidden' }], 100).onfinish = () => mark.remove();
+  window.setTimeout(() => mark.remove(), 1200);
+  vibrate(8);
+}
+
+function fire(f: DeckFire, index: number, order: number): void {
+  const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[index];
+  if (!slot || slot.dataset.card !== f.id) return;
+  slotMark(slot, f.sec !== undefined ? `+${f.sec}초` : `×${f.mult ?? f.times}`, f.sec !== undefined ? 'sec' : '');
   if (order < 3) sfx.milestone();
-  if (f.gain !== undefined && f.gain > 0 && !reduced) fx.coinShower(slot, H.pts(), 8);
+  if (f.gain !== undefined && f.gain > 0 && !fx.isReduced()) fx.coinShower(slot, H.pts(), 8);
+}
+
+// ---------- 충전 연출 ----------
+/** 눈금은 막대만 오른다. 카드 완성·10의 거듭제곱 돌파·덱 완성만 연출(강타 1회에 한 번) */
+function chargeFx(c: DeckChargeResult): void {
+  heldMult = null;
+  if (!row.isConnected) return;
+  const state = H.ctx.get();
+  sync(state);
+  const reduced = fx.isReduced();
+  const crossed = pow10(c.after) > pow10(c.before);
+  if (c.full.length > 0) {
+    const views = deckSlotViews(state);
+    const order = c.full.map((id) => ({ id, i: slotIndex(id) })).filter((x) => x.i >= 0).sort((a, b) => a.i - b.i);
+    order.forEach(({ id, i }, k) =>
+      window.setTimeout(() => {
+        const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[i];
+        const v = views.find((x) => x.id === id);
+        if (!slot || !v) return;
+        slotMark(slot, `×${fmtMult(v.mult)}`);
+        if (k < 3) sfx.milestone();
+      }, k * FIRE_GAP_MS),
+    );
+    fx.edge(H.room(), 'g3', [1, 0, 1, 0, 1, 1]);
+  }
+  if (crossed) {
+    fx.edge(row, 'or', [1, 0, 1, 0, 1, 1]);
+    window.setTimeout(() => sfx.breakthrough(), c.full.length > 0 ? 180 : 0);
+  }
+  if ((c.full.length > 0 || crossed) && !reduced) {
+    fx.pxFrames(multEl, [{ translate: '0 -8px' }, { translate: '0 -8px' }, { translate: '0 -4px' }, { translate: '0 0' }], 60);
+    multEl.classList.add('pop');
+    window.setTimeout(() => multEl.classList.remove('pop'), 500);
+  }
+  if (c.allFull) fx.banner(`공구함 완성 ×${fmtMult(c.after)}`, { tone: 'gold', ms: 1700 });
 }
