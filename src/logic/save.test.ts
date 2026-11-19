@@ -120,11 +120,13 @@ describe('저장·불러오기', () => {
     expect(r.state.unpack).toMatchObject({ box: 33, damage: 4, hp: 9, rushSec: 0, salt: (3 * 7919 + 33 * 31 + 17) & 0x7fffffff });
     expect(Number.isInteger(r.state.unpack.salt) && r.state.unpack.salt >= 0).toBe(true);
   });
-  it('sanitize: salt·rushSec를 정수·상한으로 고친다', () => {
+  it('sanitize: salt·rushSec를 정수로 고친다(rushSec 상한 없음)', () => {
     const base = JSON.parse(serialize(defaultState(), 1));
     const u = (unpack: unknown) => sanitize({ ...base, unpack }).unpack;
     expect(u({ salt: -5, rushSec: -1 })).toMatchObject({ salt: 0, rushSec: 0 });
-    expect(u({ salt: 12.9, rushSec: 999 })).toMatchObject({ salt: 12, rushSec: 15 });
+    expect(u({ salt: 12.9, rushSec: 999 })).toMatchObject({ salt: 12, rushSec: 999 });
+    expect(u({ rushSec: Infinity })).toMatchObject({ rushSec: 0 });
+    expect(u({ rushSec: NaN })).toMatchObject({ rushSec: 0 });
   });
   it('5->6: hp 0으로 비우고 푼 큰 상자 수만큼 homeLv 1', () => {
     const { homeLv, ...rest } = JSON.parse(serialize({ ...defaultState(), unpack: { box: 35, damage: 3, roomDone: false, hp: 9, salt: 0, rushSec: 0 } }, 1));

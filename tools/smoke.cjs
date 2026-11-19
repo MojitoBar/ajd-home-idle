@@ -398,6 +398,10 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await sp.page.mouse.click(mm.x, mm.y);
       await sp.page.waitForTimeout(300);
       check('특별: 시계 상자가 터지면 `자동 N초` 칩과 rushSec > 0', (await sp.page.locator('.rush-tag').isVisible()) && /자동 \d+초/.test(await sp.page.locator('.rush-tag').innerText()) && (await gs(sp.page)).unpack.rushSec > 0);
+      await sp.page.evaluate(() => window.__ajd.rush(130));
+      await sp.page.waitForTimeout(400);
+      const rl = (await gs(sp.page)).unpack.rushSec;
+      check('특별: 자동 연타가 15초를 넘어 쌓인다(상한 없음)', rl > 15 && /자동 1\d\d초/.test(await sp.page.locator('.rush-tag').innerText()), `rushSec=${rl}`);
       const r0 = (await gs(sp.page)).unpack.box;
       await sp.page.waitForTimeout(1500);
       check('특별: 러시 중 손을 안 대도 상자 번호가 오른다', (await gs(sp.page)).unpack.box > r0, `${r0} -> ${(await gs(sp.page)).unpack.box}`);

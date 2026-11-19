@@ -96,10 +96,11 @@ export const SPECIAL_WEIGHTS: Record<SpecialBox, number> = { gold: 5, bomb: 3, c
 export const GOLD_GAIN_MULT = 10;
 /** 폭탄 상자가 터질 때 뒤따라 함께 터지는 상자 수 */
 export const BOMB_BLAST = 5;
-/** 시계 상자가 더하는 러시 시간(초)과 상한 */
+/** 시계 상자가 더하는 러시 시간(초). 상한은 없다 */
 export const RUSH_SEC = 5;
-export const RUSH_MAX_SEC = 15;
-/** 이 시간(초)보다 오래 비웠다 돌아오면 러시를 가득 채워 준다 */
+/** 이 시간(초)보다 오래 비웠다 돌아오면 주는 러시 시간(초). 이미 이보다 많이 쌓여 있으면 줄이지 않는다 */
+export const RETURN_RUSH_SEC = 15;
+/** 이 시간(초)보다 오래 비웠다 돌아오면 러시를 준다 */
 export const RETURN_RUSH_AWAY_SEC = 1800;
 /** 러시 중 화면이 부를 초당 탭 수 */
 export const RUSH_RATE = 10;

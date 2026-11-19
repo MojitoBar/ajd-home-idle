@@ -8,7 +8,6 @@ import {
   BOX_PATTERN,
   BOMB_BLAST,
   GOLD_GAIN_MULT,
-  RUSH_MAX_SEC,
   RUSH_SEC,
   SPECIAL_FREE_BOXES,
   SPECIAL_GAP,
@@ -228,7 +227,7 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
       damage: 0,
       roomDone: state.unpack.roomDone || completes,
       hp: 0,
-      rushSec: special === 'clock' ? Math.min(RUSH_MAX_SEC, state.unpack.rushSec + RUSH_SEC) : state.unpack.rushSec,
+      rushSec: special === 'clock' ? state.unpack.rushSec + RUSH_SEC : state.unpack.rushSec,
     },
   };
   next.unpack.hp = hpFor(next, k + 1);

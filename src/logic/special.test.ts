@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOMB_BLAST, BOX_KINDS, GOLD_GAIN_MULT, RUSH_MAX_SEC, RUSH_SEC, SPECIAL_GAP, SPECIAL_WEIGHTS, type SpecialBox } from '../data/unpack';
+import { BOMB_BLAST, RETURN_RUSH_SEC, BOX_KINDS, GOLD_GAIN_MULT, RUSH_SEC, SPECIAL_GAP, SPECIAL_WEIGHTS, type SpecialBox } from '../data/unpack';
 import { tick, tapValue } from './economy';
 import { applyOffline } from './offline';
 import { move } from './prestige';
@@ -159,8 +159,10 @@ describe('시계 상자·러시', () => {
     const s = lastWith(clockSalt, 34);
     const r2 = tapAndHit({ ...s, unpack: { ...s.unpack, rushSec: 3 } }, never);
     expect(r2.state.unpack.rushSec).toBe(3 + RUSH_SEC);
-    const r3 = tapAndHit({ ...s, unpack: { ...s.unpack, rushSec: RUSH_MAX_SEC - 1 } }, never);
-    expect(r3.state.unpack.rushSec).toBe(RUSH_MAX_SEC);
+    const r3 = tapAndHit({ ...s, unpack: { ...s.unpack, rushSec: 14 } }, never);
+    expect(r3.state.unpack.rushSec).toBe(14 + RUSH_SEC);
+    const r4 = tapAndHit({ ...s, unpack: { ...s.unpack, rushSec: 1000 } }, never);
+    expect(r4.state.unpack.rushSec).toBe(1000 + RUSH_SEC);
   });
   it('tick이 러시 시간을 줄이고 0 아래로 내려가지 않는다', () => {
     const s = { ...defaultState(), unpack: { ...defaultState().unpack, rushSec: 5 } };
@@ -175,9 +177,9 @@ describe('시계 상자·러시', () => {
     expect(m.unpack.rushSec).toBe(0);
     expect(m.unpack.salt).toBe(rollSalt(() => 0.5));
   });
-  it('오래 비웠다 돌아오면 러시 시간이 가득 찬다', () => {
+  it('오래 비웠다 돌아오면 러시 시간이 15초가 된다', () => {
     const s = { ...defaultState(1000), unpack: { ...defaultState().unpack, rushSec: 9 } };
-    expect(applyOffline(s, 1000 + 3600_000).state.unpack.rushSec).toBe(RUSH_MAX_SEC);
+    expect(applyOffline(s, 1000 + 3600_000).state.unpack.rushSec).toBe(RETURN_RUSH_SEC);
   });
   it('rushTap은 일반 탭과 같은 보상·피해지만 피버 게이지를 올리지 않는다', () => {
     const s = lastWith(plainSalt, 10);

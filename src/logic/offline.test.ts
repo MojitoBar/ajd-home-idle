@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RETURN_RUSH_AWAY_SEC, RUSH_MAX_SEC } from '../data/unpack';
+import { RETURN_RUSH_AWAY_SEC, RETURN_RUSH_SEC } from '../data/unpack';
 import { applyOffline } from './offline';
 import { defaultState } from './testState';
 
@@ -15,14 +15,18 @@ describe('돌아오면 러시', () => {
     expect(r.state.points).toBe(0);
     expect(r.state.earned).toBe(0);
   });
-  it('30분을 넘기면 rushSec이 RUSH_MAX_SEC(15)로 찬다. 수익은 0', () => {
+  it('30분을 넘기면 rushSec이 RETURN_RUSH_SEC(15)로 찬다. 수익은 0', () => {
     const s = { ...defaultState(T), unpack: { ...defaultState().unpack, rushSec: 4 } };
     const r = applyOffline(s, T + (RETURN_RUSH_AWAY_SEC + 1) * 1000);
     expect(r.rush).toBe(true);
-    expect(RUSH_MAX_SEC).toBe(15);
+    expect(RETURN_RUSH_SEC).toBe(15);
     expect(r.state.unpack.rushSec).toBe(15);
     expect(r.state.points).toBe(0);
     expect(r.state.stats.totalEarned).toBe(0);
+  });
+  it('이미 15초보다 많이 쌓여 있으면 줄이지 않는다', () => {
+    const s = { ...defaultState(T), unpack: { ...defaultState().unpack, rushSec: 120 } };
+    expect(applyOffline(s, T + (RETURN_RUSH_AWAY_SEC + 1) * 1000).state.unpack.rushSec).toBe(120);
   });
   it('시계가 거꾸로 가면 러시 없이 savedAt을 현재로 보정한다', () => {
     const r = applyOffline(defaultState(T), T - 5 * 3600 * 1000);

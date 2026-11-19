@@ -1,4 +1,4 @@
-import { RETURN_RUSH_AWAY_SEC, RUSH_MAX_SEC } from '../data/unpack';
+import { RETURN_RUSH_AWAY_SEC, RETURN_RUSH_SEC } from '../data/unpack';
 import type { GameState } from './state';
 
 export interface OfflineResult {
@@ -17,6 +17,6 @@ export function applyOffline(state: GameState, now: number): OfflineResult {
   const awaySec = Math.max(0, (now - savedAt) / 1000);
   const rush = awaySec > RETURN_RUSH_AWAY_SEC;
   const next: GameState = { ...state, savedAt };
-  if (rush) next.unpack = { ...state.unpack, rushSec: RUSH_MAX_SEC };
+  if (rush) next.unpack = { ...state.unpack, rushSec: Math.max(state.unpack.rushSec, RETURN_RUSH_SEC) };
   return { state: next, rush, awaySec };
 }

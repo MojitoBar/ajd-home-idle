@@ -1,7 +1,7 @@
 import { GEARS } from '../data/gear';
 import { PERKS, PERK_OFFER_SIZE } from '../data/perks';
 import { rollPerkOffer, seededRng } from './perks';
-import { BOX_PATTERN, ROOM_BOXES, RUSH_MAX_SEC } from '../data/unpack';
+import { BOX_PATTERN, ROOM_BOXES } from '../data/unpack';
 import { boxHp, endlessHp } from './unpack';
 import { addToCollection, rollBox } from './gacha';
 import { houseInfo } from './house';
@@ -196,7 +196,7 @@ export function sanitize(raw: Raw): GameState {
     roomDone: rawUnpack.roomDone === true,
     hp: num(rawUnpack.hp, 0, true),
     salt: num(rawUnpack.salt, 0, true),
-    rushSec: Math.min(RUSH_MAX_SEC, num(rawUnpack.rushSec, 0, true)),
+    rushSec: num(rawUnpack.rushSec, 0, true),
   };
   const out: GameState = {
     version: CURRENT_VERSION,

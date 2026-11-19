@@ -1532,7 +1532,10 @@ function frame(now: number): void {
       } else comboUi.tick(nowMs, combo, win);
     }
     rushFrame(dt);
+    // 강타 연쇄가 재생되는 동안은 자동 탭이 쉬므로 남은 러시 시간도 줄이지 않는다
+    const holdRush = chainPlaying() ? state.unpack.rushSec : -1;
     state = tick(state, dt, () => Math.random());
+    if (holdRush > 0 && state.unpack.rushSec < holdRush) state = { ...state, unpack: { ...state.unpack, rushSec: holdRush } };
     guideTickAcc += dt;
     if (guideTickAcc >= 0.5) {
       guideTickAcc = 0;

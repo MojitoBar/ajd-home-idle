@@ -63,7 +63,7 @@
 
 ## 호출 시점 요약
 - 매 프레임 `tick(state, dt, rng)` 하나로 타이머(피버·택배·러시)를 처리한다. 자동 수익은 없다.
-- 시작·복귀 시 `applyOffline(state, now)` -> `{state, rush, awaySec}`. 오프라인 수익은 없고 30분(`RETURN_RUSH_AWAY_SEC` 1800초) 넘게 비웠으면 `unpack.rushSec = RUSH_MAX_SEC`(15초 러시, 돌아오면 자동 연타). 저장 시각이 미래면 현재로 보정.
+- 시작·복귀 시 `applyOffline(state, now)` -> `{state, rush, awaySec}`. 오프라인 수익은 없고 30분(`RETURN_RUSH_AWAY_SEC` 1800초) 넘게 비웠으면 `unpack.rushSec`을 `RETURN_RUSH_SEC`(15초)까지 채운다(이미 더 쌓여 있으면 그대로). 저장 시각이 미래면 현재로 보정.
 - 이사: `moveStatus(state)` -> `{ok, reason:null|'target', targetReached}`, 확인 시 `move(state, rng?)`. 인자 rng는 특전 3택 추첨용(생략하면 이사 횟수 기반 결정적). 이사 보상은 특전 상자 `movePerkBoxes(이사 전 횟수)`개 = 3택 묶음 그만큼(첫 이사 2개, 그 뒤 3·4·5·5…).
 
 ## 이사 (`prestige.ts`, 집 목표 `data/houses.ts`)
@@ -123,7 +123,7 @@
 상자 줄에 가끔 황금·폭탄·시계가 섞인다. 종류는 난수 없이 `specialAt(state.unpack.salt, k)`로 정해져(salt는 새 게임·이사 때 `rollSalt`로 뽑고 저장 v8) 저장·불러오기 뒤에도 같고, 화면은 `boxSpecial(state, offset)`으로 지금·다음 상자를 미리 볼 수 있다. 큰 상자 자리와 한 집의 처음 20개에는 없고, 확률 `SPECIAL_RATE`(5%), 가중치 황금 5 : 폭탄 3 : 시계 2, 특별 상자 뒤 4개는 일반 상자다.
 - 황금: 보상 x`GOLD_GAIN_MULT`(10), 연쇄 보너스와 곱해진다.
 - 폭탄: 터지면 뒤따르는 `BOMB_BLAST`(5)개가 내구도와 상관없이 함께 터진다(`BoxBurst.blast`). 휩쓸린 상자도 정상 보상·부수 효과를 받고 연쇄 수·`chainBonus`·연쇄 상금에 들어가며, 휩쓸린 폭탄은 다시 5개를 터뜨린다. 강타는 폭발이 끝난 뒤 남은 타격이 다음 상자로 이어진다.
-- 시계: 터지면 `state.unpack.rushSec`에 `RUSH_SEC`(5)초(상한 `RUSH_MAX_SEC` 15). 러시 중 화면이 초당 `RUSH_RATE`(10)번 `rushTap`을 부른다: 일반 탭과 같은 피해·보상·치명타지만 피버 게이지를 올리지 않는다(열기·콤보는 화면 몫). `tick`이 시간을 줄이고, 이사·오프라인 정산은 0으로 만든다.
+- 시계: 터지면 `state.unpack.rushSec`에 `RUSH_SEC`(5)초(상한 없음). 러시 중 화면이 초당 `RUSH_RATE`(10)번 `rushTap`을 부른다: 일반 탭과 같은 피해·보상·치명타지만 피버 게이지를 올리지 않는다(열기·콤보는 화면 몫). `tick`이 시간을 줄이고, 이사·오프라인 정산은 0으로 만든다.
 - `tapAndHit`·`rushTap`도 `heavyHit`와 같은 모양(`bursts`·`chain`·`prize`, `burst`는 마지막으로 터진 상자)을 돌려준다. 폭탄이 아니면 `bursts`는 0~1개. `bestChain`은 2개 이상 터졌을 때만 갱신한다.
 
 ## 공구 강화 (`gear.ts`, 정의 `data/gear.ts`, 설계 `DESIGN-BOXLOOP.md` 3절)
