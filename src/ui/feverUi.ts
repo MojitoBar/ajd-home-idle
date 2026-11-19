@@ -1,5 +1,6 @@
 // 피버 게이지(방 아래 가로 한 줄)·발동 연출·발동 중 분위기. 상태는 읽기만 한다.
 import { FEVER_MULT, feverRatio } from '../logic/fever';
+import { perkEffects } from '../logic/perks';
 import type { GameState } from '../logic/state';
 import { el, setText, toggleClass } from './dom';
 import { iconImg } from './icons';
@@ -40,7 +41,7 @@ export function syncFever(state: GameState): void {
   const f = state.fever;
   const active = f.activeSec > 0;
   const lock = !active && f.cooldownSec > 0;
-  const ratio = feverRatio(state);
+  const ratio = Math.min(1, feverRatio(state, perkEffects(state).feverSec));
   const near = !active && !lock && ratio >= 0.8;
   const now = performance.now();
   if (f.gauge > lastGauge && !active) tagHoldUntil = now + TAG_HOLD_MS;

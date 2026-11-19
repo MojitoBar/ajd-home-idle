@@ -1,5 +1,6 @@
 /** 꾹 눌러 강타: 길게 누르면 표시(marker)가 0 -> 1 -> 0을 왕복하고, 손을 뗀 자리가 판정이 된다. 저장하지 않는 실행 중 상태(연속 퍼펙트 streak 포함). */
-import { deckMultFires, deckStrikeMult } from './deck';
+import { DECK_PERFECT_HALF_HARD_MAX } from '../data/cards';
+import { deckFeverFires, deckMultFires, deckStrikeMult } from './deck';
 import { heavyHit, type HeavyResult } from './unpack';
 import type { GameState } from './state';
 import { strikeMult } from './economy';
@@ -36,9 +37,9 @@ export const CHARGE_CENTER_GAP = 0.15;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-/** 퍼펙트 가운데가 center인 구간(굿 구간은 그대로, 퍼펙트 반폭 half는 0.12까지, 0~1로 자름) */
+/** 퍼펙트 가운데가 center인 구간(굿 구간은 그대로, 퍼펙트 반폭 half는 수평계 상한 0.12(공구함 P1을 더한 값은 고정 상한 0.125)까지, 0~1로 자름) */
 export function chargeZoneAt(center: number, half = GEAR_PERFECT_HALF_BASE): ChargeZone {
-  const h = Math.min(half, GEAR_PERFECT_HALF_MAX);
+  const h = Math.min(half, half <= DECK_PERFECT_HALF_HARD_MAX ? DECK_PERFECT_HALF_HARD_MAX : GEAR_PERFECT_HALF_MAX);
   return {
     perfect: [clamp01(center - h), clamp01(center + h)],
     good: [clamp01(center - 0.25), clamp01(center + 0.13)],
@@ -132,6 +133,8 @@ export function releaseCharge(
   const deckMult = deckStrikeMult(state, grade, nextStreak);
   const taps = Math.round(chargeTaps(grade, featureOpen(state, 'streak') ? streak : 0, fx.streakBonus) * mult * strikeMult(state.strikeLevel) * fx.strikeMult * deckMult);
   const h = heavyHit(state, rng, taps, comboMult, reward.fever);
-  const deckFires = deckMult > 1 ? [...deckMultFires(state, grade, nextStreak), ...h.deckFires] : h.deckFires;
-  return { ...h, deckFires, grade, streak: nextStreak, comboAdd: reward.combo, taps };
+  const fev = deckFeverFires(state, grade);
+  const deckFires = deckMult > 1 || fev.sec > 0 ? [...deckMultFires(state, grade, nextStreak), ...fev.fires, ...h.deckFires] : h.deckFires;
+  const out = fev.sec > 0 && h.state.fever.activeSec > 0 ? { ...h.state, fever: { ...h.state.fever, activeSec: h.state.fever.activeSec + fev.sec } } : h.state;
+  return { ...h, state: out, deckFires, grade, streak: nextStreak, comboAdd: reward.combo, taps };
 }

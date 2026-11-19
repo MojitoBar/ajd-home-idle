@@ -48,17 +48,18 @@ export function perkEffects(state: Pick<GameState, 'perks'> & { collection?: Gam
   const set = setEffects({ collection: state.collection ?? {} });
   const lv = (id: string) => perkLevel(state, id);
   const per = (id: string) => perkDef(id)!.per;
+  const dk = deckEffects(state);
   return {
     tapMult: 1 + per('tap_power') * lv('tap_power'),
     critChance: CRIT_CHANCE + per('crit') * lv('crit'),
     critMult: CRIT_MULT + per('tap_crit_power') * lv('tap_crit_power') + set.critMult,
-    feverSec: FEVER_SEC + per('fever_long') * lv('fever_long') + set.feverSec,
+    feverSec: FEVER_SEC + per('fever_long') * lv('fever_long') + set.feverSec + dk.feverSecAdd,
     boxPriceMult: 1 - per('box_discount') * lv('box_discount'),
     parcelDelayScale: 1 - per('parcel_freq') * lv('parcel_freq'),
     strikeMult: 1 + per('strike_power') * lv('strike_power'),
-    streakBonus: per('streak_coef') * lv('streak_coef') + deckEffects(state).streakBonus,
-    specialRateMult: 1 + per('special_freq') * lv('special_freq'),
-    feverCharge: 1 + per('fever_charge') * lv('fever_charge'),
+    streakBonus: per('streak_coef') * lv('streak_coef') + dk.streakBonus,
+    specialRateMult: (1 + per('special_freq') * lv('special_freq')) * dk.specialRateMult,
+    feverCharge: 1 + per('fever_charge') * lv('fever_charge') + dk.feverChargeAdd,
   };
 }
 

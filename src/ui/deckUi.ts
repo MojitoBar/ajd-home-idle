@@ -23,6 +23,12 @@ const TAG_NAME: Record<CardTag, string> = { precise: '정밀', chain: '연쇄', 
 const RARITY_NAME = { common: '일반', rare: '레어', legend: '전설' } as const;
 const cardIcon = (d: CardDef, size: number, cls?: string): HTMLImageElement => iconImg(d.icon as IconName, { size, alt: '', cls });
 const tagVar = (d: CardDef): string => `var(--tag-${d.tags[0]})`;
+/** 태그 칩(이중 태그 카드는 두 개). 칩마다 자기 태그 색 테두리 */
+const chip = (t: CardTag, cls: string): HTMLElement => {
+  const c = el('em', { cls, text: TAG_NAME[t] });
+  c.style.setProperty('--cc', `var(--tag-${t})`);
+  return c;
+};
 
 // ---------- 카드 줄 ----------
 const row = el('div', { cls: 'deck-row', attrs: { role: 'group', 'aria-label': '공구함' } });
@@ -114,7 +120,7 @@ function cardRow(d: CardDef): HTMLElement {
     el(
       'div',
       { cls: 'pr-main' },
-      el('div', { cls: 'pr-name' }, el('b', { cls: 'fb', text: d.name }), ...d.tags.map((t) => el('em', { cls: 'tag', text: TAG_NAME[t] }))),
+      el('div', { cls: 'pr-name' }, el('b', { cls: 'fb', text: d.name }), ...d.tags.map((t) => chip(t, 'tag'))),
       el('div', { cls: 'pr-desc', text: d.desc }),
     ),
     el('div', { cls: 'pr-lv' }, el('b', { text: RARITY_NAME[d.rarity] })),
@@ -162,7 +168,7 @@ function deckCard(d: CardDef, k: number, o: { lv: string; btn: string; locked?: 
   const front = el(
     'div',
     { cls: 'pface front' },
-    el('span', { cls: 'pc-cat tag', text: TAG_NAME[d.tags[0]] }),
+    el('span', { cls: 'pc-tags' }, ...d.tags.map((t) => chip(t, 'pc-cat tag'))),
     el('span', { cls: 'pc-emoji' }, cardIcon(d, 32)),
     el('span', { cls: 'pc-name', text: d.name }),
     el('span', { cls: 'pc-fx', text: d.desc }),
@@ -319,7 +325,7 @@ function fire(f: DeckFire, index: number, order: number): void {
   const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[index];
   if (!slot || slot.dataset.card !== f.id) return;
   const reduced = fx.isReduced();
-  const mark = el('b', { cls: 'deck-x', text: `×${f.mult ?? f.times}` });
+  const mark = el('b', { cls: `deck-x${f.sec !== undefined ? ' sec' : ''}`, text: f.sec !== undefined ? `+${f.sec}초` : `×${f.mult ?? f.times}` });
   slot.append(mark);
   if (reduced) {
     slot.classList.add('lit');

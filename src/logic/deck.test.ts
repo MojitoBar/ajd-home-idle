@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { CARDS, DECK_MARKS } from '../data/cards';
-import { chooseCard, checkMarks, deckAfterMove, deckEffects, deckEvent, deckFull, deckSlots, deckStrikeMult, emptyDeck, markThreshold, marksPassed, rollCardOffer, type DeckState } from './deck';
+import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, DECK_PERFECT_HALF_HARD_MAX } from '../data/cards';
+import { chooseCard, checkMarks, deckAfterMove, deckEffects, deckEvent, deckFeverFires, deckFull, deckSlots, deckStrikeMult, emptyDeck, markThreshold, marksPassed, rollCardOffer, type DeckState } from './deck';
 import { gearEffects } from './gear';
 import { houseInfo } from './house';
 import { perkEffects } from './perks';
 import { move } from './prestige';
-import { releaseCharge } from './charge';
+import { chargeZoneAt, releaseCharge } from './charge';
 import { defaultState } from './testState';
 import type { GameState } from './state';
-import { endlessHp, heavyHit, tapAndHit } from './unpack';
+import { boxSpecial, endlessHp, heavyHit, hitBox, tapAndHit } from './unpack';
 
 const never = () => 0.99;
 const withDeck = (over: Partial<DeckState>, extra: Partial<GameState> = {}): GameState => {
@@ -21,19 +21,19 @@ describe('공구함 덱: 칸·효과', () => {
   it('1단계는 3칸', () => {
     expect([0, 1, 4, 9].map(deckSlots)).toEqual([3, 3, 3, 3]);
   });
-  it('카드 4장(P2·C1·P3·C3)과 자료 구조 필드', () => {
-    expect(CARDS.map((c) => c.id)).toEqual(['P2', 'C1', 'P3', 'C3']);
+  it('카드 12장과 자료 구조 필드', () => {
+    expect(CARDS.map((c) => c.id)).toEqual(['P2', 'C1', 'P3', 'C3', 'P1', 'C4', 'S1', 'S3', 'S4', 'F1', 'F2', 'F3']);
     for (const c of CARDS) expect(c.tags.length).toBeGreaterThan(0);
   });
   it('덱이 비면 효과가 0이고 특전·공구 값과 같다', () => {
     const s = defaultState();
-    expect(deckEffects(s)).toEqual({ streakBonus: 0, chainCapAdd: 0 });
+    expect(deckEffects(s)).toEqual({ streakBonus: 0, chainCapAdd: 0, perfectHalfAdd: 0, weakTapsMult: 1, weakDelayMult: 1, goldMultAdd: 0, specialRateMult: 1, feverChargeAdd: 0, feverSecAdd: 0 });
     expect(perkEffects(s).streakBonus).toBe(0);
     expect(gearEffects(s).chainCap).toBe(20);
   });
-  it('P2는 연속 계수 +0.25, C1은 연쇄 상한 +30', () => {
+  it('P2는 연속 계수 +0.3, C1은 연쇄 상한 +30', () => {
     const s = withDeck({ slots: [slot('P2'), slot('C1')] });
-    expect(perkEffects(s).streakBonus).toBeCloseTo(0.25);
+    expect(perkEffects(s).streakBonus).toBeCloseTo(0.3);
     expect(gearEffects(s).chainCap).toBe(50);
   });
   it('P3는 연속 퍼펙트가 10의 배수인 퍼펙트 강타만 x3', () => {
@@ -59,7 +59,7 @@ describe('공구함 덱: 칸·효과', () => {
 describe('공구함 덱: 강타 사건', () => {
   it('3,000연쇄 강타에서 C3는 한 줄 x30으로 묶인다(칸이 여러 개여도 카드당 한 줄)', () => {
     const s = withDeck({ slots: [slot('C3'), slot('C1'), slot('P2')] });
-    expect(deckEvent(s, { chain: 3000 })).toEqual([{ id: 'C3', times: 30, taps: 600 }]);
+    expect(deckEvent(s, { chain: 3000 })).toEqual([{ id: 'C3', times: 30, taps: 900 }]);
     expect(deckEvent(s, { chain: 99 })).toEqual([]);
     expect(deckEvent(defaultState(), { chain: 3000 })).toEqual([]);
   });
@@ -90,8 +90,8 @@ describe('공구함 덱: 문턱·묶음', () => {
   it('문턱은 목표 쪽 자릿수 표이고 커진다', () => {
     const t = [1, 2, 3, 4, 5].map((k) => markThreshold(1, k));
     for (let i = 1; i < t.length; i++) expect(t[i]).toBeGreaterThan(t[i - 1]);
-    expect(t[4]).toBeCloseTo(houseInfo(1).target * 10 ** -0.25, -3);
-    expect(markThreshold(9, 1)).toBeCloseTo(houseInfo(9).target * 10 ** -1.47, -3);
+    expect(t[4]).toBeCloseTo(houseInfo(1).target * 10 ** -0.27, -3);
+    expect(markThreshold(9, 1)).toBeCloseTo(houseInfo(9).target * 10 ** -1.52, -3);
   });
   it('첫 집은 문턱을 보지 않고 같은 상태를 돌려준다', () => {
     const s = { ...defaultState(), earned: 1e30 };
@@ -115,8 +115,26 @@ describe('공구함 덱: 문턱·묶음', () => {
   it('묶음은 안 낀 카드를 먼저 담는다', () => {
     const o = rollCardOffer([slot('P2'), slot('C1')], 5);
     expect(o).toHaveLength(3);
-    expect(o).toContain('P3');
-    expect(o).toContain('C3');
+    expect(o).not.toContain('P2');
+    expect(o).not.toContain('C1');
+  });
+  it('안 낀 카드가 3장 이상 남아 있으면 낀 카드는 묶음에 나오지 않고 서로 다르다', () => {
+    const held = [slot('P2'), slot('C1'), slot('F3')];
+    for (let seed = 0; seed < 300; seed++) {
+      const o = rollCardOffer(held, seed);
+      expect(o).toHaveLength(CARD_OFFER_SIZE);
+      expect(new Set(o).size).toBe(CARD_OFFER_SIZE);
+      for (const id of o) expect(held.map((h) => h.id)).not.toContain(id);
+    }
+    const nine = CARDS.slice(0, 9).map((c) => slot(c.id));
+    for (let seed = 0; seed < 50; seed++) expect(rollCardOffer(nine, seed).sort()).toEqual(['F1', 'F2', 'F3']);
+  });
+  it('안 낀 카드가 3장 미만이면 낀 카드로 채우되 안 낀 카드는 전부 담긴다', () => {
+    const held = CARDS.slice(0, 10).map((c) => slot(c.id));
+    const o = rollCardOffer(held, 9);
+    expect(new Set(o).size).toBe(3);
+    expect(o).toContain('F2');
+    expect(o).toContain('F3');
   });
   it('tapAndHit·heavyHit 안에서도 문턱이 처리된다', () => {
     const s = withDeck({ mark: 1 }, { earned: markThreshold(1, 1) });
@@ -194,5 +212,143 @@ describe('덱이 없으면 기존 결과와 같다', () => {
       expect(r.deckFires).toEqual([]);
       expect(r.deckOffered).toBe(false);
     }
+  });
+});
+
+describe('공구함 덱: 2단계 카드 8장', () => {
+  it('P1: 퍼펙트 반폭 +0.01, 수평계가 최대여도 고정 상한 0.125', () => {
+    const base = withDeck({}, { gear: { level: 3 } });
+    const s = withDeck({ slots: [slot('P1')] }, { gear: { level: 3 } });
+    expect(gearEffects(s).perfectHalf - gearEffects(base).perfectHalf).toBeCloseTo(0.01);
+    const max = withDeck({ slots: [slot('P1')] }, { gear: { level: 50 } });
+    expect(gearEffects(withDeck({}, { gear: { level: 50 } })).perfectHalf).toBeCloseTo(0.12);
+    expect(gearEffects(max).perfectHalf).toBe(DECK_PERFECT_HALF_HARD_MAX);
+    expect(DECK_PERFECT_HALF_HARD_MAX).toBe(0.125);
+    const z = chargeZoneAt(0.5, gearEffects(max).perfectHalf);
+    expect(z.perfect[1] - z.perfect[0]).toBeCloseTo(0.25);
+    expect(chargeZoneAt(0.5, 0.2).perfect[1] - chargeZoneAt(0.5, 0.2).perfect[0]).toBeCloseTo(0.24);
+  });
+  it('C4: 급소 탭 수 x1.5, 급소 간격 x0.85', () => {
+    const base = withDeck({}, { gear: { awl: 2 } });
+    const s = withDeck({ slots: [slot('C4')] }, { gear: { awl: 2 } });
+    expect(gearEffects(s).weakTaps).toBe(Math.round(gearEffects(base).weakTaps * 1.5));
+    expect(gearEffects(s).weakDelayMult).toBeCloseTo(gearEffects(base).weakDelayMult * 0.85);
+  });
+  it('S3: 특별 상자 확률 x1.7', () => {
+    const base = withDeck({});
+    const s = withDeck({ slots: [slot('S3')] });
+    expect(perkEffects(s).specialRateMult).toBeCloseTo(perkEffects(base).specialRateMult * 1.7);
+    expect(gearEffects(s).specialRate).toBeCloseTo(gearEffects(base).specialRate * 1.7);
+  });
+  it('F1: 피버 충전 +50%, F2: 피버 +8초', () => {
+    const base = withDeck({});
+    expect(perkEffects(withDeck({ slots: [slot('F1')] })).feverCharge).toBeCloseTo(perkEffects(base).feverCharge + 0.5);
+    expect(perkEffects(withDeck({ slots: [slot('F2')] })).feverSec).toBe(perkEffects(base).feverSec + 8);
+    expect(perkEffects(withDeck({ slots: [slot('F1'), slot('F2')] })).feverSec).toBe(perkEffects(base).feverSec + 8);
+  });
+  const goldBox = (deck: Partial<DeckState>): GameState => {
+    for (let salt = 0; salt < 2000; salt++) {
+      const b = withDeck(deck, { moves: 1 });
+      for (const box of [200, 201, 202, 203, 204, 205]) {
+        const u = { ...b.unpack, salt, box, roomDone: true };
+        const s = { ...b, unpack: { ...u, hp: endlessHp({ ...b, unpack: u }, box) } };
+        if (boxSpecial(s) === 'gold') return s;
+      }
+    }
+    throw new Error('황금 상자를 못 찾음');
+  };
+  it('S1: 황금 상자 보상 배율 10 -> 25', () => {
+    const base = goldBox({});
+    const s = { ...base, deck: { ...base.deck, slots: [slot('S1')] } };
+    const a = hitBox(base, { crit: false, damped: false, feverMult: 1, force: true }).burst!;
+    const b = hitBox(s, { crit: false, damped: false, feverMult: 1, force: true }).burst!;
+    expect(a.special).toBe('gold');
+    expect(b.gain / a.gain).toBeCloseTo(2.5);
+  });
+  it('S4: 황금 상자 2개면 미발동, 3개면 황금 수 x 탭 1회 x150(한 줄, times는 황금 수)', () => {
+    const s = withDeck({ slots: [slot('S4'), slot('C3')] });
+    expect(deckEvent(s, { chain: 500, gold: 2 }).map((f) => f.id)).toEqual(['C3']);
+    expect(deckEvent(s, { chain: 500 }).map((f) => f.id)).toEqual(['C3']);
+    expect(deckEvent(s, { chain: 500, gold: 3 })).toEqual([{ id: 'S4', times: 3, taps: 450 }, { id: 'C3', times: 5, taps: 150 }]);
+    expect(deckEvent(s, { chain: 40, gold: 4 })).toEqual([{ id: 'S4', times: 4, taps: 600 }]);
+    expect(deckEvent(withDeck({}), { chain: 40, gold: 4 })).toEqual([]);
+  });
+  it('S4: heavyHit이 황금 수를 세어 보상을 P·누적에 더한다', () => {
+    const endless = (deck: Partial<DeckState>, salt: number): GameState => {
+      const b = withDeck(deck, { moves: 1 });
+      const u = { ...b.unpack, salt, box: 100, roomDone: true };
+      return { ...b, unpack: { ...u, hp: endlessHp({ ...b, unpack: u }, 100) } };
+    };
+    let tested = 0;
+    for (let salt = 1; salt < 60 && tested < 2; salt++) {
+      const a = heavyHit(endless({ mark: 6 }, salt), never, 3000);
+      const gold = a.bursts.filter((b) => b.special === 'gold').length;
+      const b = heavyHit(endless({ slots: [slot('S4')], mark: 6 }, salt), never, 3000);
+      if (gold < 3) {
+        expect(b.deckFires).toEqual([]);
+        continue;
+      }
+      tested++;
+      expect(b.deckFires).toHaveLength(1);
+      const f = b.deckFires[0];
+      expect(f).toMatchObject({ id: 'S4', times: gold, taps: gold * 150 });
+      expect(f.gain).toBeGreaterThan(0);
+      expect(b.state.points - a.state.points).toBeCloseTo(f.gain!, -3);
+      expect(b.state.earned - a.state.earned).toBeCloseTo(f.gain!, -3);
+      expect(b.state.stats.totalEarned - a.state.stats.totalEarned).toBeCloseTo(f.gain!, -3);
+    }
+    expect(tested).toBeGreaterThan(0);
+  });
+  it('F3: 피버 중 퍼펙트 강타만 피버 +2초(기록은 times 1, sec 2)', () => {
+    const s = withDeck({ slots: [slot('F3')] });
+    const fever = { ...s.fever, activeSec: 5 };
+    expect(deckFeverFires({ deck: s.deck, fever }, 'perfect')).toEqual({ sec: 2, fires: [{ id: 'F3', times: 1, sec: 2 }] });
+    expect(deckFeverFires({ deck: s.deck, fever }, 'good').sec).toBe(0);
+    expect(deckFeverFires({ deck: s.deck, fever: { ...s.fever, activeSec: 0 } }, 'perfect')).toEqual({ sec: 0, fires: [] });
+    expect(deckFeverFires({ deck: emptyDeck(), fever }, 'perfect').sec).toBe(0);
+  });
+  it('F3: releaseCharge가 피버 시간을 더하고 피버 밖에서는 건드리지 않는다', () => {
+    const inFever = (deck: Partial<DeckState>): GameState => {
+      const s = withDeck(deck, { earned: 1 });
+      return { ...s, fever: { ...s.fever, activeSec: 5 } };
+    };
+    const a = releaseCharge(inFever({}), never, 0.83, 0, 1);
+    const b = releaseCharge(inFever({ slots: [slot('F3')] }), never, 0.83, 0, 1);
+    expect(b.state.fever.activeSec - a.state.fever.activeSec).toBe(2);
+    expect(b.deckFires[0]).toEqual({ id: 'F3', times: 1, sec: 2 });
+    const g = releaseCharge(inFever({ slots: [slot('F3')] }), never, 0.1, 0, 1);
+    expect(g.state.fever.activeSec).toBe(5);
+    expect(g.deckFires).toEqual([]);
+    const outside = withDeck({ slots: [slot('F3')] }, { earned: 1 });
+    const o = releaseCharge(outside, never, 0.83, 0, 1);
+    expect(o.state.fever.activeSec).toBe(outside.fever.activeSec);
+    expect(o.deckFires.find((f) => f.id === 'F3')).toBeUndefined();
+  });
+});
+
+describe('공구함 덱: 성능', () => {
+  it('3,000연쇄 강타 한 번의 계산 시간이 덱이 없을 때와 비슷하다(상자마다 도는 경로의 카드 포함)', () => {
+    const endless = (deck: Partial<DeckState>): GameState => {
+      const b = withDeck(deck, { moves: 1 });
+      const u = { ...b.unpack, box: 100, roomDone: true };
+      return { ...b, unpack: { ...u, hp: endlessHp({ ...b, unpack: u }, 100) } };
+    };
+    const full = endless({ slots: [slot('C1'), slot('S1'), slot('S3'), slot('F2')], mark: 6 });
+    const none = endless({ mark: 6 });
+    const time = (s: GameState) => {
+      let best = Infinity;
+      for (let i = 0; i < 5; i++) {
+        const t0 = performance.now();
+        const r = heavyHit(s, never, 20000);
+        best = Math.min(best, performance.now() - t0);
+        expect(r.chain).toBeGreaterThan(1000);
+      }
+      return best;
+    };
+    time(none);
+    time(full);
+    const a = time(none);
+    const b = time(full);
+    expect(b).toBeLessThan(a * 1.5 + 20);
   });
 });

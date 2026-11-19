@@ -54,7 +54,7 @@
 
 이중 태그 카드(정밀+러시, 정밀+피버, 특별+연쇄, 피버+연쇄)는 두 태그 모두에 센다. 원형 두 개를 잇는 다리 역할을 한다.
 
-## 5. 카드 목록 초안 (28장)
+## 5. 카드 목록 초안 (28장, 2단계까지 12장이 구현됨. 값은 시뮬로 맞춘 최종값이고 "초안"은 처음 값)
 연결 지점 표기:
 - `D.x` = 새 함수 `deckEffects(state)`의 필드. 상시 효과다. `perkEffects`·`gearEffects`가 이 값을 합쳐 돌려주므로 읽는 쪽 코드는 그대로 둔다.
 - `S(...)` = 새 함수 `deckStrikeMult(state, grade, streak)`. `charge.ts:131`의 탭 수 곱에 하나를 더 곱한다.
@@ -63,29 +63,29 @@
 
 | # | 이름 | 희귀 | 태그 | 효과(★1) | 연결 | 아이콘(재사용) |
 |---|---|---|---|---|---|---|
-| P1 | 수평 맞추기 | 일반 | 정밀 | 퍼펙트 반폭 +0.008. 상한은 ★·공명과 상관없이 고정 0.125(굿 반폭 0.13보다 작게) | `D.perfectHalfAdd` → `gearEffects.perfectHalf`, 새 상수 `DECK_PERFECT_HALF_HARD_MAX` | tool/level |
-| P2 | 먹줄 튕기기 | 레어 | 정밀 | 연속 퍼펙트 계수 +0.25 | `D.streakBonus` → `perkEffects.streakBonus` | perk-streak_coef |
+| P1 | 수평 맞추기 | 일반 | 정밀 | 퍼펙트 반폭 +0.01(초안 +0.008). 상한은 ★·공명과 상관없이 고정 0.125(굿 반폭 0.13보다 작게) | `D.perfectHalfAdd` → `gearEffects.perfectHalf`, 새 상수 `DECK_PERFECT_HALF_HARD_MAX`(`data/cards.ts`. `chargeZoneAt`도 이 값까지 받는다) | tool/level |
+| P2 | 먹줄 튕기기 | 레어 | 정밀 | 연속 퍼펙트 계수 +0.3(초안 +0.25) | `D.streakBonus` → `perkEffects.streakBonus` | perk-streak_coef |
 | P3 | 줄자 감기 | 일반 | 정밀 | [발동] 연속 퍼펙트가 10의 배수인 강타의 탭 수 ×3 | `S(perfect, streak)` | tool/cutter |
 | P4 | 여분 안전모 | 레어 | 정밀 | 실드 +1칸, 충전 8 → 6퍼펙트 | `D.shieldAdd`, `SHIELD_CHARGE_PERFECTS` → `resolveStreak` 인자 | tool/hardhat |
 | P5 | 장인의 호흡 | 전설 | 정밀 | [발동] 퍼펙트 강타마다 탭 1회 × (연속 수 × 2) 보상 | `E:strike` | perk-tap_crit_power |
 | C1 | 긴 빠루 | 일반 | 연쇄 | 연쇄 보너스 상한 +30 | `D.chainCapAdd` → `gearEffects.chainCap` | tool/crowbar |
 | C2 | 도미노 쌓기 | 레어 | 연쇄 | 연쇄 보너스 계수 0.1 → 0.15 | `D.chainStep` → `chainBonus(i, cap, step)`(`unpack.ts:345`) | box/normal-1 |
-| C3 | 줄줄이 짐 | 일반 | 연쇄 | [발동] 한 강타의 100연쇄마다 탭 1회 ×20 | `E:strike.chain` | bundle |
-| C4 | 뚫어뻥 | 레어 | 연쇄 | 급소 탭 수 +50%, 급소 간격 ×0.85 | `D.weakTapsMult` → `gearEffects.weakTaps·weakDelayMult` | tool/awl |
+| C3 | 줄줄이 짐 | 일반 | 연쇄 | [발동] 한 강타의 100연쇄마다 탭 1회 ×30(초안 ×20) | `E:strike.chain` | bundle |
+| C4 | 뚫어뻥 | 레어 | 연쇄 | 급소 탭 수 +50%, 급소 간격 ×0.85 | `D.weakTapsMult·weakDelayMult` → `gearEffects.weakTaps·weakDelayMult` | tool/awl |
 | C5 | 이삿짐 행렬 | 전설 | 연쇄 | [발동] 1,000연쇄 이상이면 다음 강타 탭 수 ×2(1회, 쌓이지 않음) | `E:strike` → 실행 중 값 `deck.buff.nextStrike` → `S` | tool/sledge |
-| S1 | 금박 포장지 | 일반 | 특별 | 황금 배율 10 → 15 | `D.goldMult` → `unpack.ts:214`의 `GOLD_GAIN_MULT` 자리 | box/gold-small-1 |
+| S1 | 금박 포장지 | 일반 | 특별 | 황금 배율 10 → 25(초안 15) | `D.goldMultAdd` → `hitBox`의 `GOLD_GAIN_MULT` 자리(황금 상자일 때만 읽음) | box/gold-small-1 |
 | S2 | 큰 폭죽 | 레어 | 특별·연쇄 | 폭탄이 함께 터뜨리는 수 5 → 8 | `D.bombBlast` → `hitChained`의 `BOMB_BLAST` | box/bomb-small-1 |
-| S3 | 눈썰미 | 일반 | 특별 | 특별 상자 확률 ×1.3 | `D.specialRateMult` → `perkEffects.specialRateMult` | tool/magnifier |
-| S4 | 황금 손잡이 | 레어 | 특별 | [발동] 한 강타에서 황금 상자 3개 이상이면 황금 수 × 탭 1회 ×50 | `E:strike.gold` | coin-pile |
+| S3 | 눈썰미 | 일반 | 특별 | 특별 상자 확률 ×1.7(초안 ×1.3) | `D.specialRateMult` → `perkEffects.specialRateMult` | tool/magnifier |
+| S4 | 황금 손잡이 | 레어 | 특별 | [발동] 한 강타에서 황금 상자 3개 이상이면 황금 수 × 탭 1회 ×150(초안 ×50) | `E:strike.gold` → `deckEvent(state, {chain, gold})` | coin-pile |
 | S5 | 폭탄 공장 | 전설 | 특별·연쇄 | [발동] 퍼펙트 강타 5번마다 다음 일반 상자 1개를 폭탄으로 바꿈 | `E:strike` → `deck.buff.forceBomb` → `hitBox`의 특별 상자 판정 | box/bomb-normal-1 |
 | R1 | 손목시계 | 일반 | 러시 | 시계 상자 러시 +5 → +7초 | `D.rushSec` → `unpack.ts:230`의 `RUSH_SEC` | box/clock-small-1 |
 | R2 | 박자 맞추기 | 레어 | 러시·정밀 | [발동] 러시 중 퍼펙트 강타마다 러시 +2초 | `E:strike`(러시 중) → `unpack.rushSec` | perk-fever_long |
 | R3 | 초침 장단 | 일반 | 러시 | 러시 탭 수익 ×1.5 | `D.rushGainMult` → `rushTap`의 comboMult에 곱함(`app.ts:1507`) | ui/wall-phone |
 | R4 | 알람 시계 | 레어 | 러시 | [발동] 러시가 끝날 때 러시 동안 번 P의 30% | `E:rushEnd`(화면이 러시 합계를 넘김) | box/clock-normal-1 |
 | R5 | 느린 초침 | 전설 | 러시·정밀 | 러시 중 게이지 왕복 속도 ×0.7(퍼펙트가 쉬워짐), 러시 중 퍼펙트는 연속 +2 | `D.rushSpeedMult` → `chargeSpeed` 호출부(`chargeUi.ts:268`), `resolveStreak` 뒤 +1 | tool/drill |
-| F1 | 불쏘시개 | 일반 | 피버 | 피버 게이지 충전 +30% | `D.feverCharge` → `perkEffects.feverCharge` | perk-fever_charge |
-| F2 | 숯불 유지 | 일반 | 피버 | 피버 +5초 | `D.feverSec` → `perkEffects.feverSec` | fever |
-| F3 | 풀무질 | 레어 | 피버·정밀 | [발동] 피버 중 퍼펙트 강타마다 피버 +1초 | `E:strike`(피버 중) → `fever.activeSec` | tool/hammer |
+| F1 | 불쏘시개 | 일반 | 피버 | 피버 게이지 충전 +50%(초안 +30%) | `D.feverCharge` → `perkEffects.feverCharge` | perk-fever_charge |
+| F2 | 숯불 유지 | 일반 | 피버 | 피버 +8초(초안 +5초) | `D.feverSec` → `perkEffects.feverSec` | fever |
+| F3 | 풀무질 | 레어 | 피버·정밀 | [발동] 피버 중 퍼펙트 강타마다 피버 +2초(초안 +1초) | `deckFeverFires` → `releaseCharge`가 `fever.activeSec`에 더함(`DeckFire.sec`) | tool/hammer |
 | F4 | 불꽃 축제 | 레어 | 피버 | 피버 배율 ×3 → ×4 | `D.feverMult` → `feverMultOf(fever, mult)`(`fever.ts:24`, 호출 7곳: `economy.ts` 4곳, `unpack.ts` 214·299·309) | perk-tap_power |
 | F5 | 용광로 | 전설 | 피버·연쇄 | [발동] 피버가 끝날 때 피버 동안 터진 상자 수 × 탭 1회 ×2 | `E:feverEnd` | crit |
 | X1 | 급한 성격 | 레어 | 정밀(양날) | 게이지 속도 ×1.25(어려워짐), 연속 계수 +0.5 | `D.chargeSpeedMult`, `D.streakBonus` | tool/robot-arm |
@@ -137,7 +137,7 @@
 - 덱이 다 찬 상태(공명 포함)의 이 집 수익은 덱이 없을 때의 **×2~×4**를 목표로 한다. 수익이 지수로 크므로 이사 시각은 **15~35% 단축**에 해당한다.
 - 원형 5개 사이의 이사 시각 차이는 ±20% 안이어야 한다.
 - 첫 집은 덱이 열리지 않으므로 지금 곡선과 같아야 한다(차이 0).
-- 성능: `perkEffects`는 `hitChained` → `gearEffects`를 거쳐 터지는 상자마다 불린다(`unpack.ts:277`). `deckEffects`는 `state.deck` 객체를 키로 하는 WeakMap에 캐시하고, 계산은 칸 수만큼만 도는 산술로 끝낸다. `D.goldMult`·`D.bombBlast`는 강타 시작에 한 번 읽어 `HitOptions`로 넘긴다.
+- 성능: `perkEffects`는 `hitChained` → `gearEffects`를 거쳐 터지는 상자마다 불린다(`unpack.ts:277`). `deckEffects`는 `state.deck` 객체를 키로 하는 WeakMap에 캐시하고, 계산은 칸 수만큼만 도는 산술로 끝낸다. `D.goldMultAdd`는 `hitBox`가 황금 상자일 때만 캐시된 `deckEffects`에서 읽는다(HitOptions는 쓰지 않았다). `D.bombBlast`(3단계)는 강타 시작에 한 번 읽어 넘긴다.
 - 시뮬(`tools/box-sim.mjs`)에 `DECK=없음|정밀|연쇄|특별|러시|피버` 정책을 더한다.
   - 문턱마다 그 원형 우선순위로 고른다. 결과 표에 원형별 이사 시각을 보여 준다.
   - 특전 상자·`PERK_PRIO` 로직은 건드리지 않는다(43행).
@@ -173,7 +173,7 @@
 | 단계 | 이름 | 고칠 파일 | 테스트 | 완료 조건 |
 |---|---|---|---|---|
 | 1 | 공구함 3칸과 카드 4장(P2·C1·P3·C3) | 새 파일 `src/data/cards.ts`. 새 파일 `src/logic/deck.ts`(`deckSlots`·`deckEffects`·`deckStrikeMult`·`deckEvent`(strike만)·`chooseCard`·`checkMarks`). 그 밖에 `state.ts`(deck, `CURRENT_VERSION` 12), `save.ts`(`MIGRATIONS[11]`·sanitize), `perks.ts:46`(P2), `gear.ts`(C1 chainCap), `charge.ts:131`(P3 곱), `prestige.ts`(덱 초기화), `unlock.ts`와 `unlockUi.ts`의 id 표(31·40·45행 근처, 'deck'), 새 파일 `src/ui/deckUi.ts`(카드 줄 + 드래프트는 `openPerkPick` 모양 복사 + 연출은 `fx.edge`와 ×N만), `app.ts`(`guideHit` 호출부 옆에 `deckHit`. `guideHit`은 가이드가 끝나면 바로 돌아가므로 따로 둔다), 새 파일 `src/ui/m13-deck.css` | 새 파일 `deck.test.ts`(문턱·교체·발동 횟수 묶음·이사 초기화). `save.test.ts`(v11 → v12, 모르는 id 버리기) | 3,000연쇄 강타 한 번에 C3가 ×30으로 한 번만 터진다. 첫 집과 시뮬 기본 출력이 이전과 같다. 2번째 집과 5번째 이후 집에서 문턱 k가 몇 분에 넘어가는지 테스트나 짧은 스크립트로 출력한다(한꺼번에 넘지 않는지 확인) |
-| 2 | 카드 8장 추가와 시뮬 | `cards.ts`(P1·C4·S1·S3·S4·F1·F2·F3), `deck.ts`(피버 중·황금 수 조건), `unpack.ts`(황금 배율을 `HitOptions`로 넘김), `weak.ts`·`gear.ts`(C4·P1), `box-sim.mjs`(`DECK=없음|정밀|연쇄|특별|피버` 정책과 문턱 시각 출력), 발동 연출 완성판(7절) | 카드별 연결 값, P1 고정 상한 | `DECK_MARK_DIGITS`를 시뮬로 맞춘다. 덱이 있으면 이사 시각이 15~35% 단축된다 |
+| 2 | 카드 8장 추가와 시뮬 (**로직·시뮬 완료, 발동 연출은 화면 작업자 몫**) | `cards.ts`(P1·C4·S1·S3·S4·F1·F2·F3와 `DECK_PERFECT_HALF_HARD_MAX`), `deck.ts`(`deckEffects` 필드 7개 추가, `deckEvent`에 황금 수·S4, `deckFeverFires`(F3), 3택은 안 낀 카드 우선), `gear.ts`(P1·C4는 `gearEffects`에서), `perks.ts`(S3·F1·F2), `charge.ts`(F3 피버 +초, `chargeZoneAt` 상한), `unpack.ts`(`hitBox` 황금 배율·`settleDeck`이 황금 수를 셈), `tools/box-sim.mjs`(`DECK=없음\|정밀\|연쇄\|특별\|피버`·`고정:P2+P3` 정책, 원형별 이사 시각 표·문턱 통과 시점·문턱 d 후보 출력, 시드 20개까지·`SEED_FROM`·`DECK_DUMP`/`DECK_LOAD`) | 카드별 연결 값, P1 고정 상한, S4 조건(2개 미발동·3개 발동), F3(피버 밖 미발동), 3택에 낀 카드 안 나옴, 3,000연쇄 성능 | `DECK_MARK_DIGITS`를 시뮬(원형 4개 평균)로 다시 잡았다. 현실 정책 시드 20개 중앙값. 원형 4개 평균으로 집 2~6의 집별 시간은 없음 대비 -20·-23·-2·-32·-32%(4번째 집만 앞 집이 빨라져 특전이 덜 쌓여 약함), 첫 이사 뒤 누적은 -20·-22·-14·-26·-27%. 원형 사이 집별 시간 차이는 x1.4 이하. 시뮬 잡음이 커서 한 집의 원형 값은 ±10%p 흔들린다 |
 | 3 | 희귀도·태그 공명·★ 강화 | `cards.ts`(P4·P5·C2·C5·S2·S5·F4·F5), `deck.ts`(희귀도 추첨·공명·★·buff), `unpack.ts`(`chainBonus` step, 폭탄 수, 폭탄 예약), `fever.ts`(`feverMultOf` mult 인자, 호출 7곳), `deckUi.ts`(확률 보기·★·공명 깜박임), 칸 4개로 | 공명 단계, ★ 배수, 확률 합 100%, 성능(3,000연쇄 강타 시간) | 원형 4개 시뮬의 이사 시각 차이가 ±20% 안 |
 | 4 | 시계 박자와 양날 카드, 다시 받기 | `cards.ts`(R1~R5, X1~X3), `deck.ts`(rushEnd·feverEnd 사건, 다시 받기·건너뛰기, X2·X3 공명 규칙), `chargeUi.ts:268`(속도 배율), `rushUi.ts`(러시 합계 → `E:rushEnd`), `app.ts:1507`(R3) | 러시 중 퍼펙트 발동, X3 조건, 다시 받기 횟수 | 시뮬에서 러시 원형이 방치 정책(강타 안 함)보다 확실히 빠르다. 러시만 쌓는 덱이 1위가 아니다 |
 | 5 | 가보·칸 확장·카드 도감 | `deck.ts`(keep·seen·5·6칸), `prestige.ts`, 공구 강화 탭 "공구함" 카드(`app.ts` `buildTapPanel`), 이사 확인 창에 가보 고르기, (선택) 전설 아이콘 6장 | 가보가 ★1로 넘어감, 칸 수 | 이사 확인 창에서 가보를 고를 수 있다. 카드 도감에 본 카드가 쌓인다 |

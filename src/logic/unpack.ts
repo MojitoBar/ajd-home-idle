@@ -30,7 +30,7 @@ import type { BoxResult } from './gacha';
 import { tapBase, tapValue } from './economy';
 import { gearEffects } from './gear';
 import { featureOpen } from './guide';
-import { checkMarks, deckEvent, type DeckFire } from './deck';
+import { checkMarks, deckEffects, deckEvent, type DeckFire } from './deck';
 import { chargeFever, feverMultOf } from './fever';
 import { perkEffects, seededRng, tapPowerMult } from './perks';
 import { HOME_SLOTS, type GameState } from './state';
@@ -212,7 +212,7 @@ export function hitBox(state: GameState, o: HitOptions): { state: GameState; bur
   const kind = boxKind(k);
   const special = boxSpecial(state);
   const gain =
-    (tapValue(state) / feverMultOf(state.fever)) * BOX_KINDS[kind].k * (k < ROOM_BOXES ? 1 : ENDLESS_K_MULT) * (o.gainMult ?? 1) * (special === 'gold' ? GOLD_GAIN_MULT : 1);
+    (tapValue(state) / feverMultOf(state.fever)) * BOX_KINDS[kind].k * (k < ROOM_BOXES ? 1 : ENDLESS_K_MULT) * (o.gainMult ?? 1) * (special === 'gold' ? GOLD_GAIN_MULT + deckEffects(state).goldMultAdd : 1);
   const inRoom = k < ROOM_BOXES;
   const slot = inRoom ? Math.floor(k / BOX_PATTERN.length) : undefined;
   const within = k % BOX_PATTERN.length;
@@ -316,7 +316,7 @@ function tapCore(state: GameState, rng: () => number, damped: boolean, comboMult
   const p = chainPrize(state, next, chain);
   let out = p.state;
   if (chain > 1 && chain > out.bestChain) out = { ...out, bestChain: chain };
-  const d = settleDeck(state, out, 0);
+  const d = settleDeck(state, out, 0, bursts);
   return { ...r, state: d.state, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize: p.prize, deckFires: [], deckOffered: d.offered };
 }
 
@@ -348,9 +348,9 @@ export interface HeavyResult extends TapResult {
 }
 
 /** 공구함 정산: 강타 사건의 보상 카드(탭 1회 수익 x taps, 연쇄 상금과 같은 방식)를 P·누적에 더하고, 진행 문턱을 판정한다. 일반 탭은 chain을 0으로 넘겨 문턱만 본다 */
-function settleDeck(start: GameState, state: GameState, chain: number): { state: GameState; fires: DeckFire[]; offered: boolean } {
+function settleDeck(start: GameState, state: GameState, chain: number, bursts: readonly BoxBurst[]): { state: GameState; fires: DeckFire[]; offered: boolean } {
   let out = state;
-  const fires = chain > 0 ? deckEvent(out, { chain }) : [];
+  const fires = chain > 0 ? deckEvent(out, { chain, gold: out.deck.slots.length > 0 ? bursts.reduce((n, b) => n + (b.special === 'gold' ? 1 : 0), 0) : 0 }) : [];
   if (fires.length > 0) {
     const unit = tapValue(start) / feverMultOf(start.fever);
     let gain = 0;
@@ -395,7 +395,7 @@ export function heavyHit(state: GameState, rng: () => number, taps: number, comb
   next = p.state;
   const prize = p.prize;
   if (chain > next.bestChain) next = { ...next, bestChain: chain };
-  const d = settleDeck(state, next, chain);
+  const d = settleDeck(state, next, chain, bursts);
   return { ...r, state: d.state, burst: chain > 0 ? bursts[chain - 1] : null, bursts, chain, prize, deckFires: d.fires, deckOffered: d.offered };
 }
 

@@ -17,6 +17,7 @@ import {
 } from '../data/gear';
 import type { ChargeGrade } from './charge';
 import { GUIDE_SPECIAL_RATE, featureOpen, guideAt, guideEnded, type GuideFeature } from './guide';
+import { DECK_PERFECT_HALF_HARD_MAX } from '../data/cards';
 import { deckEffects } from './deck';
 import { houseInfo } from './house';
 import { perkEffects } from './perks';
@@ -69,12 +70,13 @@ export interface GearEffects {
 
 export function gearEffects(state: GameState): GearEffects {
   const lv = (id: GearId) => gearLevel(state, id);
+  const dk = deckEffects(state);
   return {
-    perfectHalf: Math.min(GEAR_PERFECT_HALF_MAX, GEAR_PERFECT_HALF_BASE + GEAR_PERFECT_HALF_STEP * lv('level')),
+    perfectHalf: Math.min(DECK_PERFECT_HALF_HARD_MAX, Math.min(GEAR_PERFECT_HALF_MAX, GEAR_PERFECT_HALF_BASE + GEAR_PERFECT_HALF_STEP * lv('level')) + dk.perfectHalfAdd),
     shieldMax: lv('helmet'),
-    chainCap: GEAR_CHAIN_CAP_BASE + GEAR_CHAIN_CAP_STEP * lv('crowbar') + deckEffects(state).chainCapAdd,
-    weakTaps: GEAR_WEAK_TAPS_BASE + GEAR_WEAK_TAPS_STEP * lv('awl'),
-    weakDelayMult: 1 - GEAR_WEAK_DELAY_STEP * lv('awl'),
+    chainCap: GEAR_CHAIN_CAP_BASE + GEAR_CHAIN_CAP_STEP * lv('crowbar') + dk.chainCapAdd,
+    weakTaps: Math.round((GEAR_WEAK_TAPS_BASE + GEAR_WEAK_TAPS_STEP * lv('awl')) * dk.weakTapsMult),
+    weakDelayMult: (1 - GEAR_WEAK_DELAY_STEP * lv('awl')) * dk.weakDelayMult,
     specialRate: Math.max(GEAR_SPECIAL_RATE_BASE + GEAR_SPECIAL_RATE_STEP * lv('loupe'), guideAt(state, 'special') ? GUIDE_SPECIAL_RATE : 0) * perkEffects(state).specialRateMult,
   };
 }

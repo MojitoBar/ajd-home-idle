@@ -1,4 +1,4 @@
-/** 공구함 덱(설계 DESIGN-DECK.md): 이 집에서만 쓰는 카드. 칸 수는 이사 횟수, 카드는 진행 문턱마다 무료 3택. 이사하면 초기화(prestige.ts). 1단계는 카드 4장·3칸 */
+/** 공구함 덱(설계 DESIGN-DECK.md): 이 집에서만 쓰는 카드. 칸 수는 이사 횟수, 카드는 진행 문턱마다 무료 3택. 이사하면 초기화(prestige.ts). 2단계는 카드 12장·3칸 */
 import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, DECK_MARK_DIGITS, cardDef } from '../data/cards';
 import { houseInfo } from './house';
 import type { ChargeGrade } from './charge';
@@ -36,9 +36,23 @@ export interface DeckEffects {
   streakBonus: number;
   /** 연쇄 보너스 상한에 더하는 값(`gearEffects.chainCap`이 합친다) */
   chainCapAdd: number;
+  /** 퍼펙트 구간 반폭에 더하는 값(`gearEffects.perfectHalf`가 합치고 고정 상한으로 자른다) */
+  perfectHalfAdd: number;
+  /** 급소 탭 수 배율(`gearEffects.weakTaps`) */
+  weakTapsMult: number;
+  /** 급소 간격 배율(`gearEffects.weakDelayMult`) */
+  weakDelayMult: number;
+  /** 황금 배율에 더하는 값(`hitBox`) */
+  goldMultAdd: number;
+  /** 특별 상자 확률 배율(`perkEffects.specialRateMult`) */
+  specialRateMult: number;
+  /** 피버 충전 배율에 더하는 값(`perkEffects.feverCharge`) */
+  feverChargeAdd: number;
+  /** 피버 시간에 더하는 초(`perkEffects.feverSec`) */
+  feverSecAdd: number;
 }
 
-const NO_EFFECTS: DeckEffects = { streakBonus: 0, chainCapAdd: 0 };
+const NO_EFFECTS: DeckEffects = { streakBonus: 0, chainCapAdd: 0, perfectHalfAdd: 0, weakTapsMult: 1, weakDelayMult: 1, goldMultAdd: 0, specialRateMult: 1, feverChargeAdd: 0, feverSecAdd: 0 };
 const effectCache = new WeakMap<DeckState, DeckEffects>();
 
 /** 상시 효과 합. 터지는 상자마다 불리므로 `state.deck` 객체를 키로 캐시한다 */
@@ -47,12 +61,19 @@ export function deckEffects(state: { deck?: DeckState }): DeckEffects {
   if (!deck || deck.slots.length === 0) return NO_EFFECTS;
   let fx = effectCache.get(deck);
   if (!fx) {
-    fx = { streakBonus: 0, chainCapAdd: 0 };
+    fx = { ...NO_EFFECTS };
     for (const s of deck.slots) {
       const d = cardDef(s.id);
       if (!d) continue;
       fx.streakBonus += d.streakBonus ?? 0;
       fx.chainCapAdd += d.chainCapAdd ?? 0;
+      fx.perfectHalfAdd += d.perfectHalfAdd ?? 0;
+      fx.weakTapsMult *= d.weakTapsMult ?? 1;
+      fx.weakDelayMult *= d.weakDelayMult ?? 1;
+      fx.goldMultAdd += d.goldMultAdd ?? 0;
+      fx.specialRateMult *= d.specialRateMult ?? 1;
+      fx.feverChargeAdd += d.feverChargeAdd ?? 0;
+      fx.feverSecAdd += d.feverSecAdd ?? 0;
     }
     effectCache.set(deck, fx);
   }
@@ -70,6 +91,8 @@ export interface DeckFire {
   taps?: number;
   /** 보상 P(`taps`를 P로 바꾼 값. heavyHit이 채운다) */
   gain?: number;
+  /** 피버에 더한 초(F3). 뗀 순간 터진다 */
+  sec?: number;
 }
 
 /** 강타 탭 수에 곱하는 카드 배율(P3). 퍼펙트가 아니면 1. streak은 이번 강타를 포함한 연속 퍼펙트 수 */
@@ -99,6 +122,24 @@ export function deckMultFires(state: { deck?: DeckState }, grade: ChargeGrade, s
 export interface StrikeEvent {
   /** 이번 강타로 터진 상자 수 */
   chain: number;
+  /** 이번 강타로 터진 황금 상자 수(생략하면 0) */
+  gold?: number;
+}
+
+/** 퍼펙트 강타가 피버 중에 쳐졌으면 피버에 더할 초와 발동 기록(F3). `releaseCharge`가 부른다 */
+export function deckFeverFires(state: { deck?: DeckState; fever: { activeSec: number } }, grade: ChargeGrade): { sec: number; fires: DeckFire[] } {
+  const deck = state.deck;
+  if (!deck || grade !== 'perfect' || state.fever.activeSec <= 0) return { sec: 0, fires: [] };
+  let sec = 0;
+  const fires: DeckFire[] = [];
+  for (const s of deck.slots) {
+    const add = cardDef(s.id)?.feverPerfectSec;
+    if (add) {
+      sec += add;
+      fires.push({ id: s.id, times: 1, sec: add });
+    }
+  }
+  return { sec, fires };
 }
 
 /** 강타 1회 정산(strike 사건). 카드 하나당 한 줄로 묶어 돌려준다. 칸 수만큼만 도는 산술이라 3,000연쇄도 한 번이다 */
@@ -106,11 +147,15 @@ export function deckEvent(state: { deck?: DeckState }, ev: StrikeEvent): DeckFir
   const deck = state.deck;
   if (!deck || deck.slots.length === 0 || ev.chain <= 0) return [];
   const out: DeckFire[] = [];
+  const gold = ev.gold ?? 0;
   for (const s of deck.slots) {
-    const e = cardDef(s.id)?.chainEvery;
-    if (!e) continue;
-    const times = Math.floor(ev.chain / e.per);
-    if (times > 0) out.push({ id: s.id, times, taps: times * e.taps });
+    const d = cardDef(s.id);
+    if (!d) continue;
+    if (d.chainEvery) {
+      const times = Math.floor(ev.chain / d.chainEvery.per);
+      if (times > 0) out.push({ id: s.id, times, taps: times * d.chainEvery.taps });
+    }
+    if (d.goldEvery && gold >= d.goldEvery.min) out.push({ id: s.id, times: gold, taps: gold * d.goldEvery.taps });
   }
   return out;
 }
@@ -139,7 +184,7 @@ function hashRng(seed: number): () => number {
   };
 }
 
-/** 3택 묶음: 아직 안 낀 카드를 먼저, 모자라면 낀 카드로 채워 서로 다른 3장(1단계의 단순 규칙. 희귀도 추첨은 3단계) */
+/** 3택 묶음: 서로 다른 3장. 안 낀 카드가 3장 이상이면 낀 카드는 나오지 않고, 모자랄 때만 낀 카드로 채운다(희귀도 추첨은 3단계) */
 export function rollCardOffer(slots: readonly DeckSlot[], seed: number): string[] {
   const r = hashRng(seed);
   const shuffle = (a: string[]) => {

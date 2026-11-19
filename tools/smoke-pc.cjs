@@ -320,6 +320,17 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
       check(`덱(PC ${size.width}): 교체 결과`, (await gs(page)).deck.slots.map((x) => x.id).join() === 'P2,C3,C1' || (await gs(page)).deck.slots.map((x) => x.id).join() === 'P2,C1,C3');
       await ctx.close();
     }
+    // 2단계: 특전 알림과 카드 고르기 알림이 같이 떠도 1440x900에서 세로 스크롤이 없고 이사 줄과 안 겹친다
+    for (const size of [{ width: 1440, height: 900 }, { width: 1440, height: 940 }]) {
+      const { ctx, page } = await open(size);
+      await page.waitForTimeout(500);
+      await deckSet(page, ['P2', 'P3'], [['C1', 'C3', 'P1']], 1);
+      await page.evaluate(() => { const s = window.__ajd.get(); window.__ajd.set({ ...s, perkOffers: [['crit', 'fever_long', 'strike_power']] }); });
+      await page.waitForTimeout(700);
+      const a = await page.evaluate(() => { const b = (q) => document.querySelector(q)?.getBoundingClientRect(); const pa = b('.perk-alert:not(.deck-alert)'); const da = b('.deck-alert'); const mv = b('.move-row'); const ch = b('.charge'); return { both: !!pa && !!da && pa.width > 0 && da.width > 0, sh: document.documentElement.scrollHeight, ih: innerHeight, hs: document.documentElement.scrollWidth > document.documentElement.clientWidth, apart: !!pa && !!da && pa.left >= da.right, aboveMove: !!pa && !!da && Math.max(pa.bottom, da.bottom) <= mv.top, belowCharge: !!da && da.top >= ch.bottom }; });
+      check(`덱(PC ${size.width}x${size.height}): 알림 2개가 한 줄에 떠도 세로 스크롤이 없고 이사 줄·게이지와 안 겹친다`, a.both && a.sh <= a.ih && !a.hs && a.apart && a.aboveMove && a.belowCharge, JSON.stringify(a));
+      await ctx.close();
+    }
   }
 
   check('콘솔 오류 0건', errors.length === 0, errors.slice(0, 3).join(' | '));

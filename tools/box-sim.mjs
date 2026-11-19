@@ -7,7 +7,9 @@
 // 첫 가이드(src/logic/guide.ts): 새 게임은 가이드 1단계라 잠긴 요소(콤보·강타·급소·피버·연쇄·연속 배수·특별 상자·영구 공구)는 못 쓰고,
 // 지금 단계의 목표를 우선 수행한다(강타 단계는 강타만, 급소가 떠 있으면 맞힘). 상자·영구 공구 단계는 첫 구매가 가능해지면 바로 산다.
 // 출력: 가이드 단계별 완료 시각, 첫 집에서 누적 P가 1e3·1e6·1e9·1e12·1e15를 넘는 시각, J 커브(초반 1/3 vs 마지막 1/3 자릿수 증가 속도), 1분 최대 배수(누적 P 1e3 이후 시작하는 1분 창).
-// 환경변수: POLICY=현실,고수,가볍게 · SEED_N=시드 수 · MAX_MOVES · MAX_SEC · TARGETS
+// 환경변수: POLICY=현실,고수,가볍게 · SEED_N=시드 수(최대 20) · SEED_FROM=시작 번호(기본 0, 시드를 나눠 돌릴 때) · MAX_MOVES · MAX_SEC · TARGETS
+// 공구함 덱 정책: DECK=없음,정밀,연쇄,특별,피버 (쉼표로 여럿). 문턱마다 그 원형 태그 카드를 우선 고르고(없으면 칸이 비었을 때만 아무 카드), 칸이 차면 원형 밖 카드부터 바꾼다.
+//   출력은 원형별 이사 시각 표와 문턱 k별 통과 시점(집 시간 대비 %)뿐이다. DECK_DUMP=파일.json이면 결과를 저장하고, DECK_LOAD=a.json,b.json이면 돌리지 않고 합쳐서 표만 낸다(원형별로 나눠 병렬로 돌릴 때). DECK을 안 주면 위의 기본 출력 그대로다.
 import { createServer } from 'vite';
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
@@ -27,6 +29,31 @@ const { move, canMove } = await ld('/src/logic/prestige.ts');
 const { tierOf } = await ld('/src/logic/unpack.ts');
 const guide = await ld('/src/logic/guide.ts');
 const { HOUSES, MOON_STAGE } = await ld('/src/data/houses.ts');
+const { chooseCard, deckFull } = await ld('/src/logic/deck.ts');
+const { houseInfo } = await ld('/src/logic/house.ts');
+const { CARDS } = await ld('/src/data/cards.ts');
+
+const DECKS = process.env.DECK ? process.env.DECK.split(',') : process.env.DECK_LOAD ? [] : undefined;
+const ARCH = { 정밀: 'precise', 연쇄: 'chain', 특별: 'special', 피버: 'fever' };
+/** 같은 원형 카드끼리는 이 순서로 고른다(레어·효과가 큰 것 먼저) */
+const DECK_PRIO = ['P2', 'P3', 'C3', 'C4', 'S4', 'F3', 'S1', 'F1', 'F2', 'C1', 'S3', 'P1'];
+const inArch = (id, tag) => CARDS.find((c) => c.id === id)?.tags.includes(tag);
+/** 대기 중인 카드 묶음을 전부 처리한다: 원형 카드가 있으면 낀다(칸이 차면 원형 밖 카드를 바꾸고, 바꿀 칸이 없으면 건너뜀), 없으면 빈 칸일 때만 아무 카드 */
+function takeCards(s, name) {
+  if (name.startsWith('고정:')) { // 시험용: DECK=고정:P2+P3 이면 이사마다 그 카드들을 낀 채 시작한다(묶음은 무시)
+    return s.deck.slots.length === 0 || s.deck.offers.length > 0 ? { ...s, deck: { ...s.deck, slots: name.slice(3).split('+').map((id) => ({ id, star: 1 })), offers: [] } } : s;
+  }
+  const tag = ARCH[name];
+  while (s.deck.offers.length > 0) {
+    const offer = s.deck.offers[0];
+    const mine = offer.filter((id) => inArch(id, tag)).sort((a, b) => DECK_PRIO.indexOf(a) - DECK_PRIO.indexOf(b))[0];
+    let n = null;
+    if (mine) n = deckFull(s) ? (s.deck.slots.findIndex((x) => !inArch(x.id, tag)) >= 0 ? chooseCard(s, 0, mine, s.deck.slots.findIndex((x) => !inArch(x.id, tag))) : null) : chooseCard(s, 0, mine);
+    else if (!deckFull(s)) n = chooseCard(s, 0, offer[0]);
+    s = n ?? chooseCard(s, 0, null);
+  }
+  return s;
+}
 
 // 가이드 단계 누적 P 문턱 시험용: GATES=0,0,1e3,... (13개) node tools/box-sim.mjs
 if (process.env.GATES) process.env.GATES.split(',').forEach((v, i) => { guide.GUIDE_STEPS[i].gate = Number(v); });
@@ -51,14 +78,14 @@ function takePerks(s) {
 /** 상자·영구 공구 가이드 단계: 목표 가격이 보유 P의 이 배수 안이면 강화를 멈추고 모은다 */
 const SAVE_RATIO = Number(process.env.SAVE_RATIO ?? 4);
 const MAX_MOVES = Number(process.env.MAX_MOVES ?? 6), MAX_SEC = Number(process.env.MAX_SEC ?? 5 * 3600);
-const SEEDS = [12345, 777, 4242, 90210, 31337, 555, 8080, 2024, 6061, 1357].slice(0, Number(process.env.SEED_N ?? 5));
+const SEEDS = [12345, 777, 4242, 90210, 31337, 555, 8080, 2024, 6061, 1357, 9001, 271, 1618, 4096, 65537, 2718, 1414, 7777, 123, 999].slice(Number(process.env.SEED_FROM ?? 0), Number(process.env.SEED_FROM ?? 0) + Number(process.env.SEED_N ?? 5));
 const POLICIES = [
   { name: '가볍게', tps: 2.5, strike: 0.05, perfect: 0.15, good: 0.35, sSec: 0.9, maxMoves: Number(process.env.REF_MOVES ?? 1) },
   { name: '현실', tps: 3, strike: 0.1, perfect: 0.25, good: 0.4, sSec: 0.9 },
   { name: '고수', tps: 4, strike: 0.2, perfect: 0.5, good: 0.35, sSec: 0.9, maxMoves: Number(process.env.REF_MOVES ?? 1) },
 ].filter((p) => (process.env.POLICY ? process.env.POLICY.split(',').includes(p.name) : true));
 
-function run(pol, seed) {
+function run(pol, seed, dk) {
   const DT = 1 / pol.tps;
   const rng = seededRng(seed);
   let s = defaultState(0, 1);
@@ -68,6 +95,8 @@ function run(pol, seed) {
   const stepAt = []; // 첫 집에서 가이드 단계를 끝낸 시각(초)
   const crossAt = {}; // 첫 집에서 누적 P가 10^k를 넘은 시각(초)
   let firstPerkAt, boxesInHouse = 0;
+  let trT = [], trV = []; // 이 집의 (시각, log10 이 집에서 번 P): 문턱 자릿수 d를 구할 때 쓴다
+  let markT = [], markSeen = 0; // 이 집에서 진행 문턱 k(1~5)를 넘은 시각(DECK 시험 때만)
   const logT = [], logV = []; // 첫 집 행동마다 (시각, log10(누적 P))
   const ev = (e) => {
     const r = guide.guideEvent(s, e);
@@ -114,6 +143,11 @@ function run(pol, seed) {
       acted = 'tap';
     }
     s = r.state;
+    if (dk !== undefined && rows.length > 0) {
+      if (dk) s = takeCards(s, dk);
+      while (markSeen < s.deck.mark - 1) { markT.push(t); markSeen++; }
+      trT.push(t); trV.push(Math.log10(Math.max(1, s.earned)));
+    }
     if (acted === 'strike' && pol.sSec) { t += pol.sSec; s = eco.tick(s, pol.sSec, rng); }
     // 가이드 사건(화면이 알리는 것과 같은 것)
     ev({ type: 'tick' });
@@ -193,6 +227,13 @@ function run(pol, seed) {
       if (rows.length === 0) row.stepAt = stepAt.slice();
       shield = gear.initialShield(gear.gearEffects(s).shieldMax);
       s = takePerks(s);
+      if (dk !== undefined) {
+        row.marks = markT.map((x) => (x - (t - row.sec)) / row.sec);
+        const t0 = t - row.sec, lgt = Math.log10(houseInfo(s.moves - 1).target);
+        row.dig = [0.15, 0.3, 0.5, 0.7, 0.85].map((q) => { const x = t0 + q * row.sec; let lo = 0, hi = trT.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (trT[m] <= x) lo = m; else hi = m - 1; } return lgt - trV[lo]; });
+        markT = []; markSeen = 0; trT = []; trV = [];
+        if (dk) s = takeCards(s, dk);
+      }
       rows.push(row);
     }
   }
@@ -286,6 +327,48 @@ if (process.env.PROBE) {
 const fx = (x) => (x >= 1e4 ? x.toExponential(1) : x.toFixed(1));
 const min = (sec) => (sec / 60).toFixed(1);
 const med = (a) => { const b = [...a].sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+if (DECKS !== undefined) {
+  const fs = await import('node:fs');
+  /** { 정책: { 덱: [시드별 rows([{sec, marks}])] } } */
+  const data = {};
+  for (const f of (process.env.DECK_LOAD ?? '').split(',').filter(Boolean)) for (const [pn, byDeck] of Object.entries(JSON.parse(fs.readFileSync(f, 'utf8')))) for (const [dn, runs] of Object.entries(byDeck)) ((data[pn] ??= {})[dn] ??= []).push(...runs);
+  for (const pol of POLICIES) for (const name of DECKS) (data[pol.name] ??= {})[name] = SEEDS.map((sd) => run(pol, sd, name === '없음' ? null : name).map((r) => ({ sec: r.sec, total: r.total, marks: r.marks, dig: r.dig })));
+  if (process.env.DECK_DUMP) fs.writeFileSync(process.env.DECK_DUMP, JSON.stringify(data));
+  const allNames = [...new Set(POLICIES.flatMap((p) => Object.keys(data[p.name] ?? {})))];
+  const names = ['없음', ...Object.keys(ARCH), ...allNames.filter((n) => n !== '없음' && !ARCH[n])].filter((n) => allNames.includes(n));
+  const archs = names.filter((n) => ARCH[n]);
+  for (const pol of POLICIES) {
+    const d = data[pol.name] ?? {};
+    const secAt = (n, i) => (d[n] ?? []).map((r) => r[i]?.sec).filter((v) => v !== undefined);
+    console.log(`\n[${pol.name}] 덱 정책별 집마다 걸린 분 중앙(없음 대비 증감 %, 음수가 단축) | 시드 ${SEEDS.length}개 | 원형 평균 = 원형 4개 중앙값의 평균 | 차이 = 가장 느린 원형 / 가장 빠른 원형`);
+    console.log(['이사', ...names, '원형 평균', '차이'].join(' | '));
+    const maxI = Math.max(...names.map((n) => Math.max(0, ...(d[n] ?? []).map((r) => r.length))));
+    for (let i = 1; i < maxI; i++) {
+      const base = secAt('없음', i);
+      const bm = base.length ? med(base) : undefined;
+      const cell = (n) => { const v = secAt(n, i); if (!v.length) return '-'; const m = med(v); return n === '없음' || bm === undefined ? `${min(m)}` : `${min(m)} (${((m / bm - 1) * 100).toFixed(0)}%)`; };
+      const am = archs.map((n) => secAt(n, i)).filter((v) => v.length).map(med);
+      const avg = am.length && bm !== undefined ? am.reduce((x, y) => x + y, 0) / am.length : undefined;
+      console.log([`${i + 1}회 ${HOUSES[i - 1 + 1]?.name ?? ''}`.trim(), ...names.map(cell), avg === undefined ? '-' : `${min(avg)} (${((avg / bm - 1) * 100).toFixed(0)}%)`, am.length > 1 ? `x${(Math.max(...am) / Math.min(...am)).toFixed(2)}` : '-'].join(' | '));
+    }
+    // 집별 시간은 앞 집 결과에 끌려가므로, 첫 이사(덱이 열리기 전, 모든 정책에서 같음) 뒤부터 센 누적 분을 따로 낸다
+    const post = (n, i) => (d[n] ?? []).map((r) => (r[i] && r[0] ? r[i].total - r[0].total : undefined)).filter((v) => v !== undefined);
+    console.log(`첫 이사 뒤 누적 분 중앙(없음 대비 %): ${Array.from({ length: maxI - 1 }, (_, q) => q + 1).map((i) => { const b = post('없음', i); return `${i + 1}회까지 ${names.map((n) => { const v = post(n, i); return v.length && b.length ? (n === '없음' ? min(med(v)) : `${((med(v) / med(b) - 1) * 100).toFixed(0)}%`) : '-'; }).join('/')}`; }).join(' | ')}`);
+    console.log(`\n[${pol.name}] 문턱 자릿수 d 후보(원형 4개 x 시드 중앙값. 집 시간 15·30·50·70·85% 시점의 log10(목표) - log10(번 P))`);
+    for (let i = 1; i < maxI; i++) {
+      const v = archs.flatMap((n) => (d[n] ?? []).map((r) => r[i]?.dig)).filter(Boolean);
+      if (v.length) console.log(`  [${[0, 1, 2, 3, 4].map((k) => med(v.map((x) => x[k])).toFixed(2)).join(', ')}], // ${i + 1}번째 집(moves ${i}), ${v.length}개`);
+    }
+    console.log(`\n[${pol.name}] 문턱 k=1..5 통과 시점(집 시간 대비 %, 중앙(최소~최대)). 원형 = 원형 4개 x 시드 전체를 합쳐서 / 없음은 참고`);
+    for (let i = 1; i < maxI; i++) {
+      const at = (ns, k) => ns.flatMap((n) => (d[n] ?? []).map((r) => r[i]?.marks?.[k])).filter((v) => v !== undefined).map((v) => v * 100);
+      const f = (v) => (v.length ? `${med(v).toFixed(0)}(${Math.min(...v).toFixed(0)}~${Math.max(...v).toFixed(0)})` : '-');
+      console.log(`${i + 1}회 원형: ${[0, 1, 2, 3, 4].map((k) => f(at(archs, k))).join(' | ')}   / 없음: ${[0, 1, 2, 3, 4].map((k) => f(at(['없음'], k))).join(' | ')}`);
+    }
+  }
+  await vite.close();
+  process.exit(0);
+}
 const results = POLICIES.map((pol) => ({ pol, runs: SEEDS.map((sd) => run(pol, sd)) }));
 const polMax = (pol) => Math.min(MAX_MOVES, pol.maxMoves ?? MAX_MOVES);
 for (const { pol, runs } of results) {

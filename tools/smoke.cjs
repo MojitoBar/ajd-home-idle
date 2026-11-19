@@ -892,6 +892,115 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         check('덱: 3,000연쇄 강타 한 번에 C3 발동 표시가 ×30으로 한 번만 뜬다', xs.length === 1 && xs[0] === '×30', JSON.stringify(xs));
         await ctx.close();
       }
+      // ---- 공구함 덱 2단계(화면): 카드 12장 · 발동 연출 · 피버 띠 ----
+      const DECK2 = [...DECK_ALL, 'special', 'fever'];
+      const deck2Set = (page, slots, offers = []) => page.evaluate(([sl, of, un]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: un, deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1 })), offers: of } }); }, [slots, offers, DECK2]);
+      const observeX = (page) => page.evaluate(() => { window.__xs = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('deck-x')) window.__xs.push(n.textContent); }).observe(document.querySelector('.deck-row'), { childList: true, subtree: true }); });
+      {
+        const { ctx, page } = await newPage(browser, { version: 12, unlocked: DECK2, moves: 1, guide: GUIDE_DONE });
+        await page.waitForTimeout(500);
+        const bundles = [['P2', 'C1', 'P3'], ['C3', 'P1', 'C4'], ['S1', 'S3', 'S4'], ['F1', 'F2', 'F3']];
+        await deck2Set(page, [], bundles);
+        await page.waitForTimeout(400);
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        const bad = [];
+        const seen = [];
+        for (let b = 0; b < bundles.length; b++) {
+          await page.waitForTimeout(1300);
+          const r = await page.evaluate(() => {
+            const out = { ids: [], over: [], fb: document.querySelectorAll('.deck-pick .ico-fb').length, notLoaded: [...document.querySelectorAll('.deck-pick .pcard img.ico')].filter((i) => !(i.complete && i.naturalWidth > 0)).length, hs: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+            const body = document.querySelector('.deck-pick .modal-body');
+            if (body && body.scrollWidth > body.clientWidth + 1) out.over.push('body');
+            for (const c of document.querySelectorAll('.deck-pick .pcard')) {
+              out.ids.push(c.dataset.card);
+              const f = c.querySelector('.pface').getBoundingClientRect();
+              for (const n of c.querySelectorAll('.pface *')) { const q = n.getBoundingClientRect(); if (q.width && (q.right > f.right + 1 || q.left < f.left - 1 || q.bottom > f.bottom + 1)) out.over.push(c.dataset.card + ':' + n.className); }
+            }
+            return out;
+          });
+          seen.push(...r.ids);
+          if (r.over.length || r.fb || r.notLoaded || r.hs) bad.push(JSON.stringify(r));
+          if (b < bundles.length - 1) await page.locator('.deck-pick .modal-actions .btn', { hasText: '건너뛰기' }).click();
+        }
+        check('덱 2단계: 카드 12장이 고르기 창에 잘림·가로 넘침 없이 그려지고 아이콘이 다 뜬다', new Set(seen).size === 12 && bad.length === 0, bad.slice(0, 2).join(' | ') + ' ' + seen.join());
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 12, unlocked: DECK2, moves: 1, guide: GUIDE_DONE });
+        await page.waitForTimeout(500);
+        await deck2Set(page, ['P2', 'C1', 'P3']);
+        const clash = await page.evaluate(() => { const own = new Set(window.__ajd.get().deck.slots.map((x) => x.id)); let hit = 0; for (let i = 0; i < 40; i++) { window.__ajd.offer(); } const offers = window.__ajd.get().deck.offers; for (const o of offers) for (const id of o) if (own.has(id)) hit++; return { hit, n: offers.length, uniq: offers.every((o) => new Set(o).size === o.length) }; });
+        check('덱 2단계: 안 낀 카드가 3장 이상이면 묶음에 낀 카드가 없다', clash.hit === 0 && clash.n >= 40 && clash.uniq, JSON.stringify(clash));
+        await ctx.close();
+      }
+      for (const [golds, want] of [[3, ['×3']], [2, []]]) {
+        const { ctx, page } = await newPage(browser, { version: 12, unlocked: DECK2, moves: 1, guide: GUIDE_DONE });
+        await page.waitForTimeout(500);
+        await deck2Set(page, ['S4']);
+        await setS(page, { points: 1e6, earned: 1e5, tapLevel: 200, unpack: { box: 30, damage: 0, hp: 1 } });
+        const ok = await page.evaluate(() => window.__ajd.special('gold', 0, { 5: 'gold', 10: 'gold' }));
+        await observeX(page);
+        await page.evaluate((n) => window.__ajd.chain(n), golds === 3 ? 11 : 10);
+        for (let i = 0; i < 300; i++) { await page.waitForTimeout(100); const w = await page.evaluate(() => ({ p: window.__ajd.getChain().playing, n: window.__xs.length })); if (i > 5 && !w.p && (w.n > 0 || golds === 2)) break; }
+        await page.waitForTimeout(1500);
+        const xs = await page.evaluate(() => window.__xs);
+        check(`덱 2단계: S4 황금 ${golds}개 강타에서 ${want.length ? '×3이 한 번 뜬다' : '발동 글자가 안 뜬다'}`, ok && JSON.stringify(xs) === JSON.stringify(want), JSON.stringify(xs));
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 12, unlocked: DECK2, moves: 1, guide: GUIDE_DONE });
+        await page.waitForTimeout(500);
+        await deck2Set(page, ['F3']);
+        await page.evaluate(() => window.__ajd.fever());
+        await page.waitForTimeout(300);
+        const before = await page.evaluate(() => window.__ajd.get().fever.activeSec);
+        await observeX(page);
+        await page.evaluate(() => { window.__ajd.zone(0.5); window.__ajd.charge(0.5); });
+        for (let i = 0; i < 60 && (await page.evaluate(() => window.__xs.length)) === 0; i++) await page.waitForTimeout(50);
+        await page.waitForTimeout(100);
+        const after = await page.evaluate(() => ({ t: window.__ajd.get().fever.activeSec, xs: window.__xs, color: document.querySelector('.deck-x') ? getComputedStyle(document.querySelector('.deck-x')).color : '' }));
+        check('덱 2단계: F3 피버 중 퍼펙트에 +2초가 한 번 뜨고 피버 남은 시간이 늘어난다', after.xs.length === 1 && after.xs[0] === '+2초' && after.t > before + 1, JSON.stringify({ before, after }));
+        const tagTxt = await text(page, '.fever-tag');
+        check('덱 2단계: 피버 칩이 늘어난 시간을 바로 보인다', num(tagTxt.split('·')[1]) >= Math.ceil(after.t) - 1, tagTxt);
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 12, unlocked: DECK2, moves: 1, guide: GUIDE_DONE });
+        await page.waitForTimeout(500);
+        await deck2Set(page, ['F3']);
+        await setS(page, { settings: { ...(await gs(page)).settings, reduceMotion: true } });
+        await page.evaluate(() => window.__ajd.fever());
+        await page.waitForTimeout(300);
+        await page.evaluate(() => { window.__ajd.zone(0.5); window.__ajd.charge(0.5); });
+        const t0 = Date.now();
+        let lit = false; let still = false; let anim = -1; let litGone = 0; let markGone = 0; let particles = 0;
+        for (let i = 0; i < 40; i++) {
+          const st = await page.evaluate(() => { const m = document.querySelector('.deck-x'); const sl = document.querySelector('.deck-slot.on'); return { mark: !!m, still: !!m?.classList.contains('still'), lit: !!sl?.classList.contains('lit'), anim: (m?.getAnimations().length ?? 0) + (sl?.getAnimations().length ?? 0) }; });
+          if (st.mark) { still = st.still; if (anim < 0 || st.anim > anim) anim = st.anim; }
+          if (st.lit) lit = true;
+          if (lit && !st.lit && !litGone) litGone = Date.now() - t0;
+          if (still && !st.mark && !markGone) { markGone = Date.now() - t0; break; }
+          await page.waitForTimeout(50);
+        }
+        check('덱 2단계: 움직임 줄이기에서 발동은 테두리 색 300ms + 제자리 글자 1초(튐·움직임 없음)', lit && still && anim === 0 && litGone >= 250 && litGone <= 700 && markGone >= 900 && markGone <= 1500, JSON.stringify({ lit, still, anim, litGone, markGone }));
+        await ctx.close();
+      }
+      {
+        const { ctx, page } = await newPage(browser, { version: 12, unlocked: DECK2, moves: 1, guide: GUIDE_DONE });
+        await page.waitForTimeout(500);
+        await deck2Set(page, ['F3']);
+        await setS(page, { fever: { gauge: 0, activeSec: 25, cooldownSec: 0 } });
+        await page.waitForTimeout(400);
+        const g = await page.evaluate(() => { const bar = document.querySelector('.fv-bar').getBoundingClientRect(); const cells = [...document.querySelectorAll('.fv-cell')]; const on = cells.filter((c) => c.classList.contains('on')).length; const maxR = Math.max(...cells.map((c) => c.getBoundingClientRect().right)); const tag = document.querySelector('.fever-tag').getBoundingClientRect(); const room = document.querySelector('.room, .room-wrap')?.getBoundingClientRect(); return { n: cells.length, on, over: maxR > bar.right + 1, tagOver: !!room && tag.right > room.right + 1, hs: document.documentElement.scrollWidth > document.documentElement.clientWidth }; });
+        check('덱 2단계: 피버 남은 시간이 피버 길이보다 길어도 띠가 넘치지 않고 가득 찬다', g.on === g.n && !g.over && !g.tagOver && !g.hs, JSON.stringify(g));
+        await deck2Set(page, ['F2']);
+        await setS(page, { fever: { gauge: 0, activeSec: 9, cooldownSec: 0 } });
+        await page.waitForTimeout(400);
+        const h = await page.evaluate(() => { const cells = [...document.querySelectorAll('.fv-cell')]; return { n: cells.length, on: cells.filter((c) => c.classList.contains('on')).length }; });
+        check('덱 2단계: 숯불 유지(+8초)를 끼면 피버 띠가 18초 기준으로 줄어든다(9초 = 절반)', Math.abs(h.on - h.n / 2) <= 1, JSON.stringify(h));
+        await ctx.close();
+      }
       {
         const { ctx, page } = await newPage(browser, { version: 11, unlocked: ALL, moves: 2, earned: 1e6, points: 1e6, guide: GUIDE_DONE });
         await page.waitForTimeout(800);
