@@ -8,7 +8,9 @@ let unlocked = false;
 let lastTap = 0;
 let lastRush = 0;
 let lastCoin = 0;
+let lastStack = 0;
 let pitch = 1;
+let tierShift = 0;
 
 function create(): void {
   if (ctx) return;
@@ -83,6 +85,19 @@ function noteFreq(base: number, step: number): number {
 }
 
 export const sfx = {
+  /** 스택이 오른 순간: 스택이 높을수록 음이 오르되 12단계에서 멈춘다. 10의 배수를 넘으면(big) 화음이 더 붙는다 */
+  stackUp(stacks: number, big = false): void {
+    const now = performance.now();
+    if (now - lastStack < 50) return;
+    lastStack = now;
+    const f = noteFreq(330, Math.min(Math.max(stacks, 0), 12));
+    tone(f, 0.08, 'square', 0.14, 0, f * 1.25);
+    tone(f * 1.5, 0.12, 'triangle', 0.18, 0.05);
+    if (!big) return;
+    tone(f * 2, 0.18, 'sine', 0.16, 0.1);
+    tone(f * 3, 0.26, 'triangle', 0.14, 0.16);
+    noise(0.12, 0.1, 0.1, 5000);
+  },
   /** 피버 중 탭 음높이 배율(1이면 평소) */
   setPitch(v: number): void {
     pitch = v;
@@ -204,11 +219,24 @@ export const sfx = {
     [1047, 1568, 2093].forEach((f, i) => tone(f, 0.12, 'square', 0.16, i * 0.035));
     tone(2637, 0.3, 'sine', 0.14, 0.12);
   },
-  /** 연쇄 j번째(0부터) 터짐: 한 단계씩 올라가는 짧은 음(12단계에서 상한) */
+  /** 연쇄 j번째(0부터) 터짐: 반음씩 오르다 12단계에서 머문다(귀 아프지 않게 음량 고정). 문턱을 넘을 때마다 기준음이 2반음 올라 있다. 낮은 쿵을 깔아 파편이 터지는 몸을 준다 */
   chainStep(j: number): void {
-    const f = noteFreq(440, Math.min(j, 12)) * pitch;
-    tone(f, 0.07, 'square', 0.14);
-    noise(0.03, 0.1, 0, 2800);
+    const f = noteFreq(440, Math.min(j, 12) + tierShift) * pitch;
+    tone(f, 0.07, 'square', 0.12);
+    tone(95 + Math.min(j, 12) * 3, 0.06, 'sine', 0.16, 0, 60);
+    noise(0.04, 0.1, 0, 2400);
+  },
+  /** 연쇄 문턱(10·50·100·500·1000단) 돌파: 기준음이 한 단계 오르고 올라가는 음 + 쿵. tier 1~5 */
+  chainTier(tier: number): void {
+    const t = Math.max(1, Math.min(tier, 5));
+    tierShift = t * 2;
+    tone(110, 0.16 + t * 0.02, 'sawtooth', 0.26, 0, 50);
+    noise(0.1 + t * 0.02, 0.18, 0, 1600 + t * 500);
+    for (let i = 0; i < 2 + Math.min(t, 3); i++) tone(noteFreq(523, i * 3 + t * 2) * pitch, 0.1 + t * 0.015, 'square', 0.11, 0.02 + i * 0.045);
+  },
+  /** 새 연쇄가 시작될 때 기준음을 처음으로 돌린다 */
+  chainReset(): void {
+    tierShift = 0;
   },
   /** 연쇄 마무리: 쾅 + 올라가는 화음. tier 0~3(상금이 클수록 길고 높다) */
   chainEnd(tier: number): void {
@@ -308,12 +336,14 @@ export const sfx = {
     lastRush = now;
     tone(1760 * pitch, 0.02, 'square', 0.05, 0);
   },
-  /** 폭탄 상자 터짐: 낮은 쿵 + 거친 잡음 */
+  /** 폭탄 상자 터짐: 아주 낮은 쿵(45Hz까지 내려감) + 거친 저음 잡음 + 뒤따르는 우르릉 */
   bombBlast(): void {
-    tone(70, 0.4, 'sawtooth', 0.5, 0, 28);
-    tone(140, 0.2, 'square', 0.22, 0, 50);
-    noise(0.35, 0.4, 0, 1400);
-    noise(0.15, 0.2, 0.05, 4000);
+    tone(62, 0.55, 'sawtooth', 0.4, 0, 24);
+    tone(38, 0.5, 'sine', 0.4, 0, 22);
+    tone(130, 0.22, 'square', 0.2, 0, 46);
+    noise(0.45, 0.42, 0, 900);
+    noise(0.18, 0.2, 0.04, 3200);
+    noise(0.3, 0.16, 0.16, 500);
   },
   newItem(): void {
     tone(988, 0.1, 'sine', 0.16);

@@ -1,5 +1,5 @@
 /** 공구함 덱(설계 DESIGN-DECK.md): 이 집에서만 쓰는 카드. 칸 수는 이사 횟수, 카드는 진행 문턱마다 무료 3택. 이사하면 초기화(prestige.ts). 2단계는 카드 12장·3칸 */
-import { AMP_DEX_MAX, CARDS, CARD_CHARGE_NEED, CARD_MULT_CAP_BASE, CARD_OFFER_SIZE, CARD_STAR_MAX, CHARGE_NEED_SCALE, CHARGE_RULES, DECK_MARKS, DECK_MARK_DIGITS, DECK_SLOTS, DECK_TARGET_SCALE, RARITY_ODDS, RESONANCE_SPEED, cardDef, type CardDef, type CardRarity, type CardTag } from '../data/cards';
+import { AMP_DEX_MAX, CARDS, CARD_CHARGE_NEED, CARD_MULT_CAP_BASE, CARD_OFFER_SIZE, CARD_STAR_MAX, CHARGE_NEED_SCALE, CHARGE_RULES, DECK_MARKS, DECK_MARK_DIGITS, DECK_SLOTS, DECK_TARGET_SCALE, RARITY_ODDS, RESONANCE_SPEED, STACK_BOOST, STACK_DUP, STACK_NEED_GROWTH, STACK_PICK_EVERY, STACK_STEP, cardDef, type CardDef, type CardRarity, type CardTag } from '../data/cards';
 import { completedSetCount } from './collection';
 import { BOMB_BLAST, CHAIN_BONUS_STEP } from '../data/unpack';
 import { SHIELD_CHARGE_PERFECTS } from '../data/gear';
@@ -13,6 +13,8 @@ export interface DeckSlot {
   star: number;
   /** 충전 눈금(0~필요 눈금). 강타 정산 때만 찬다. 카드를 바꾸면 0. 저장됨 */
   charge: number;
+  /** 넘침 스택(정수, 0~). 눈금이 다음 필요량에 닿을 때마다 오른다. 이사하면 사라지고, 교체하면 절반(내림)을 새 카드가 이어받는다. 저장됨 */
+  stacks: number;
 }
 
 export interface DeckBuff {
@@ -43,9 +45,15 @@ export interface DeckState {
   buff: DeckBuff;
   /** 이 집의 목표 배수(이사할 때 `DECK_TARGET_SCALE`에서 고정. `houseTarget`이 곱한다). 저장됨 */
   targetScale: number;
+  /** 이 집에서 충전(넘침)으로 얻은 스택 누계. 고르기·중복·이어받기로 얻은 스택은 안 센다. 줄지 않는다. 저장됨 */
+  chargedStacks: number;
+  /** 대기 중인 강화 고르기 묶음 수. 저장됨 */
+  boostPacks: number;
+  /** 이 집에서 만들어진 강화 고르기 묶음 수(후보 추첨 시드. 줄지 않는다). 저장됨 */
+  boostMade: number;
 }
 
-export const emptyDeck = (): DeckState => ({ slots: [], offers: [], rerolls: 2, mark: 0, seen: [], buff: emptyBuff(), targetScale: 1 });
+export const emptyDeck = (): DeckState => ({ slots: [], offers: [], rerolls: 2, mark: 0, seen: [], buff: emptyBuff(), targetScale: 1, chargedStacks: 0, boostPacks: 0, boostMade: 0 });
 
 /** 이사 횟수 moves인 집에 적용할 목표 배수(표 값. 첫 집은 1) */
 export function deckTargetScale(moves: number): number {
@@ -57,14 +65,33 @@ export function cardChargeNeed(moves: number, rarity: CardRarity = 'common'): nu
   return CARD_CHARGE_NEED[rarity] * CHARGE_NEED_SCALE[Math.min(Math.max(moves, 0), CHARGE_NEED_SCALE.length - 1)];
 }
 
-/** 낀 카드 하나의 필요 눈금 */
+/** 낀 카드 하나의 필요 눈금(스택 0일 때의 값. 완성 기준) */
 export function slotNeed(slot: Pick<DeckSlot, 'id'>, moves: number): number {
   return cardChargeNeed(moves, cardDef(slot.id)?.rarity);
 }
 
-/** 카드 하나의 배수 = 1 + (상한 - 1) x min(1, 눈금/필요). 상한 = ★1 x4, ★ 하나당 +1, 증폭 전설은 bonus(상한 보너스)를 더한다 */
-export function cardMult(star: number, charge: number, need: number, bonus = 0): number {
-  return 1 + (CARD_MULT_CAP_BASE + star + bonus - 1) * Math.min(1, charge / need);
+/** 지금 스택에서 다음 스택까지 필요한 눈금 = 필요 눈금 x `STACK_NEED_GROWTH`^스택 수 */
+export function stackNeed(need: number, stacks: number): number {
+  return need * STACK_NEED_GROWTH ** stacks;
+}
+
+/** 스택 몫 배수 = 1 + `STACK_STEP` x 스택 수 */
+export function stackMult(stacks: number): number {
+  return 1 + STACK_STEP * stacks;
+}
+
+/** 꽉 찼는가: 눈금이 필요 눈금에 닿았거나 스택이 1 이상(넘친 적이 있다) */
+export function slotFull(sl: Pick<DeckSlot, 'id' | 'charge' | 'stacks'>, moves: number): boolean {
+  return sl.stacks > 0 || sl.charge >= slotNeed(sl, moves);
+}
+
+/**
+ * 카드 하나의 배수 = (1 + (상한 - 1) x min(1, 눈금/필요)) x (1 + `STACK_STEP` x 스택). 상한 = ★1 x4, ★ 하나당 +1, 증폭 전설은 bonus(상한 보너스)를 더한다.
+ * 스택이 1 이상이면 앞 식은 꽉 찬 값(상한)으로 고정한다(넘쳐서 눈금이 0으로 돌아가도 배수가 떨어지지 않는다)
+ */
+export function cardMult(star: number, charge: number, need: number, bonus = 0, stacks = 0): number {
+  const cap = CARD_MULT_CAP_BASE + star + bonus;
+  return (1 + (cap - 1) * (stacks > 0 ? 1 : Math.min(1, charge / need))) * stackMult(stacks);
 }
 
 type DeckCtx = Pick<GameState, 'deck' | 'moves' | 'collection'>;
@@ -77,7 +104,7 @@ export function slotCapBonuses(state: DeckCtx): number[] {
     const amp = cardDef(sl.id)?.amp;
     if (amp === 'dex') return sets;
     if (amp !== 'tool') return 0;
-    return slots.reduce((n, o, j) => n + (j !== i && o.charge >= slotNeed(o, state.moves) ? 1 : 0), 0);
+    return slots.reduce((n, o, j) => n + (j !== i && slotFull(o, state.moves) ? 1 : 0), 0);
   });
 }
 
@@ -119,7 +146,7 @@ export function deckMult(state: DeckCtx): number {
   if (hit && hit.sets === sets) return hit.m;
   const bonus = slotCapBonuses(state);
   let m = 1;
-  deck.slots.forEach((sl, i) => { m *= cardMult(sl.star, sl.charge, slotNeed(sl, state.moves), bonus[i]); });
+  deck.slots.forEach((sl, i) => { m *= cardMult(sl.star, sl.charge, slotNeed(sl, state.moves), bonus[i], sl.stacks); });
   multCache.set(deck, { sets, m });
   return m;
 }
@@ -136,8 +163,16 @@ export interface DeckSlotView {
   capBonus: number;
   /** 이 카드의 배수 */
   mult: number;
-  /** 눈금이 꽉 찼는가 */
+  /** 눈금이 꽉 찼는가(스택이 1 이상이어도 꽉 찬 것) */
   full: boolean;
+  /** 넘침 스택 수 */
+  stacks: number;
+  /** 지금 스택에서 다음 스택까지 필요한 눈금(`charge`가 여기에 닿으면 스택 +1) */
+  stackNeed: number;
+  /** 스택 몫 배수(1 + `STACK_STEP` x 스택. `mult`에 이미 곱해져 있다) */
+  stackMult: number;
+  /** 다음 스택이 오르면 이 카드의 배수(지금 `mult`보다 항상 크다. 화면의 "다음 +x") */
+  nextStackMult: number;
   /** 이 카드의 공명 단계(이중 태그면 높은 쪽. 0 = 없음) */
   resonance: number;
   /** 충전 속도 배율(이중 태그면 태그별 배율 중 큰 쪽) */
@@ -155,15 +190,22 @@ export function deckSlotViews(state: DeckCtx): DeckSlotView[] {
     return {
       id: sl.id, rarity: d?.rarity ?? 'common', star: sl.star, charge: sl.charge, need,
       cap: CARD_MULT_CAP_BASE + sl.star + bonus[i], capBonus: bonus[i],
-      mult: cardMult(sl.star, sl.charge, need, bonus[i]), full: sl.charge >= need,
+      mult: cardMult(sl.star, sl.charge, need, bonus[i], sl.stacks), full: slotFull(sl, state.moves),
+      stacks: sl.stacks, stackNeed: stackNeed(need, sl.stacks), stackMult: stackMult(sl.stacks),
+      nextStackMult: cardMult(sl.star, sl.charge, need, bonus[i], sl.stacks + 1),
       resonance: Math.max(0, ...mine.map((r) => r.level)), speed: Math.max(1, ...mine.map((r) => r.speed)),
     };
   });
 }
 
+/** 덱 전체 스택 합(고르기·중복·이어받기로 얻은 것까지 센다) */
+export function deckStackSum(state: Pick<GameState, 'deck'>): number {
+  return state.deck.slots.reduce((n, sl) => n + sl.stacks, 0);
+}
+
 /** 덱이 칸까지 다 차고 모든 카드가 꽉 찼는가 */
 export function deckAllFull(state: Pick<GameState, 'deck' | 'moves'>): boolean {
-  return state.deck.slots.length >= deckSlots(state.moves) && state.deck.slots.every((sl) => sl.charge >= slotNeed(sl, state.moves));
+  return state.deck.slots.length >= deckSlots(state.moves) && state.deck.slots.every((sl) => slotFull(sl, state.moves));
 }
 
 /** 강타 정산의 충전 결과(`HeavyResult.deckCharge`) */
@@ -175,16 +217,37 @@ export interface DeckChargeResult {
   after: number;
   /** 덱 전체가 이번에 처음 꽉 찼는가 */
   allFull: boolean;
+  /** "방금 스택이 올랐다" 사건: 이번 정산에서 스택이 오른 칸(칸 번호, 카드 id, 이전·이후 스택). 없으면 빈 배열 */
+  stacked: StackEvent[];
+  /** 이번 정산으로 새로 쌓인 강화 고르기 묶음 수 */
+  boostPacks: number;
+  /** 정산 뒤 덱 스택 합 */
+  stackSum: number;
+}
+
+export interface StackEvent {
+  slot: number;
+  id: string;
+  from: number;
+  to: number;
 }
 
 /** 정산 전·후 state를 비교해 충전 결과를 만든다 */
 export function deckChargeResult(before: GameState, after: GameState): DeckChargeResult {
-  const full = after.deck.slots.filter((sl) => sl.charge >= slotNeed(sl, after.moves) && !(before.deck.slots.find((b) => b.id === sl.id)?.charge! >= slotNeed(sl, before.moves))).map((sl) => sl.id);
-  return { full, before: deckMult(before), after: deckMult(after), allFull: full.length > 0 && deckAllFull(after) && !deckAllFull(before) };
+  const full = after.deck.slots.filter((sl) => slotFull(sl, after.moves) && !before.deck.slots.some((b) => b.id === sl.id && slotFull(b, before.moves))).map((sl) => sl.id);
+  const stacked = after.deck.slots.flatMap((sl, i): StackEvent[] => {
+    const b = before.deck.slots[i];
+    return b && b.id === sl.id && sl.stacks > b.stacks ? [{ slot: i, id: sl.id, from: b.stacks, to: sl.stacks }] : [];
+  });
+  return {
+    full, before: deckMult(before), after: deckMult(after), allFull: full.length > 0 && deckAllFull(after) && !deckAllFull(before),
+    stacked, boostPacks: Math.max(0, after.deck.boostPacks - before.deck.boostPacks), stackSum: deckStackSum(after),
+  };
 }
 
 /**
- * 낀 카드마다 태그별 충전량 gain(tag)을 더한다(필요 눈금에서 멈춤). 이중 태그 카드는 태그별 충전량에 그 태그의 공명 배율을 곱해 합친다.
+ * 낀 카드마다 태그별 충전량 gain(tag)을 더한다. 이중 태그 카드는 태그별 충전량에 그 태그의 공명 배율을 곱해 합친다.
+ * 눈금이 `stackNeed`(필요 눈금 x STACK_NEED_GROWTH^스택)에 닿을 때마다 스택 +1, 남은 눈금은 이어서 다시 찬다(한 번에 여러 스택 가능). 충전으로 얻은 스택은 누계에 더하고, 누계가 `STACK_PICK_EVERY`의 배수를 넘을 때마다 강화 고르기 묶음이 쌓인다.
  * 태그가 없는 증폭 전설은 어떤 태그 조건이든 일어나면 차고(태그별 충전량 중 최댓값), 공명은 받지 않는다. 바뀐 게 없으면 같은 state
  */
 export function addCharge(state: GameState, gain: (tag: CardTag) => number): GameState {
@@ -195,17 +258,31 @@ export function addCharge(state: GameState, gain: (tag: CardTag) => number): Gam
   const best = Math.max(...base);
   if (best <= 0) return state;
   let changed = false;
+  let gained = 0;
   const slots = deck.slots.map((sl) => {
     const d = cardDef(sl.id);
     const need = slotNeed(sl, state.moves);
     const tags = d?.tags ?? [];
     const g = tags.length === 0 ? best : tags.reduce((n, t) => n + gain(t) * (speed.get(t) ?? 1), 0);
-    if (g <= 0 || sl.charge >= need) return sl;
+    if (g <= 0) return sl;
     changed = true;
-    return { ...sl, charge: Math.min(need, sl.charge + g) };
+    let charge = sl.charge + g;
+    let stacks = sl.stacks;
+    for (let t = stackNeed(need, stacks); charge >= t && stacks - sl.stacks < MAX_STACKS_PER_HIT; t = stackNeed(need, stacks)) {
+      charge -= t;
+      stacks++;
+    }
+    gained += stacks - sl.stacks;
+    return { ...sl, charge, stacks };
   });
-  return changed ? { ...state, deck: { ...deck, slots } } : state;
+  if (!changed) return state;
+  const chargedStacks = deck.chargedStacks + gained;
+  const packs = Math.floor(chargedStacks / STACK_PICK_EVERY) - Math.floor(deck.chargedStacks / STACK_PICK_EVERY);
+  return { ...state, deck: { ...deck, slots, chargedStacks, boostPacks: deck.boostPacks + packs, boostMade: deck.boostMade + packs } };
 }
+
+/** 한 번의 충전으로 한 카드가 넘을 수 있는 스택 수의 안전 상한(무한 루프 방지) */
+const MAX_STACKS_PER_HIT = 50;
 
 /** 강타(강타·급소) 정산 때 연쇄·특별·피버 조건 충전. feverBefore는 강타 직전 피버 중이었는가, feverAfter는 직후 */
 export function chargeOnStrike(state: GameState, ev: { chain: number; specials: number; feverBefore: boolean; feverAfter: boolean }): GameState {
@@ -477,9 +554,10 @@ function hashRng(seed: number): () => number {
   };
 }
 
-/** 지금 뽑을 수 있는 카드(★3 카드는 뺀다) */
+/** 지금 뽑을 수 있는 카드(22장 전부. ★3 카드는 고르면 스택 +3 중복이다) */
 function offerPool(slots: readonly DeckSlot[]): CardDef[] {
-  return CARDS.filter((c) => (slots.find((s) => s.id === c.id)?.star ?? 0) < CARD_STAR_MAX);
+  void slots;
+  return [...CARDS];
 }
 
 /** 희귀도별 실제 확률. 뽑을 카드가 하나도 없는 희귀도는 빠지고 나머지가 비율대로 늘어난다(합 1). 화면은 이 값을 그대로 보여 준다 */
@@ -490,6 +568,11 @@ export function deckOfferOdds(state: Pick<GameState, 'deck'>): Record<CardRarity
   return { common: w('common') / sum, rare: w('rare') / sum, legend: w('legend') / sum };
 }
 
+/** 고르기 후보 카드가 이미 ★3으로 낀 카드라서 "스택 +3 중복"인가(칸을 안 쓴다) */
+export function isStackDup(state: Pick<GameState, 'deck'>, cardId: string): boolean {
+  return state.deck.slots.some((s) => s.id === cardId && s.star >= CARD_STAR_MAX);
+}
+
 /** 고르기 후보 카드가 이미 낀 카드라서 "★ 올리기"인가(칸을 안 쓴다) */
 export function isStarUp(state: Pick<GameState, 'deck'>, cardId: string): boolean {
   return state.deck.slots.some((s) => s.id === cardId && s.star < CARD_STAR_MAX);
@@ -498,7 +581,7 @@ export function isStarUp(state: Pick<GameState, 'deck'>, cardId: string): boolea
 /**
  * 3택 묶음: 서로 다른 3장. 세 칸 모두 희귀도를 `RARITY_ODDS`(일반 60·레어 32·전설 8)로 따로 굴리고, 칸마다 역할이 다르다.
  * 첫 칸은 가진 태그 카드(낀 카드면 ★ 올리기 후보), 둘째 칸은 아직 없는 태그 카드(태그가 없는 증폭 전설 포함), 셋째 칸은 아무 카드다.
- * 조건에 맞는 카드가 없으면 같은 희귀도의 아무 카드, 그 희귀도에 카드가 없으면 다른 희귀도에서 채운다. ★3 카드는 나오지 않는다.
+ * 조건에 맞는 카드가 없으면 같은 희귀도의 아무 카드, 그 희귀도에 카드가 없으면 다른 희귀도에서 채운다. ★3 카드도 나온다(고르면 스택 +3 중복).
  * 난수는 seed로만 만들어(호출자의 rng를 안 쓴다) 시뮬 난수열을 건드리지 않는다
  */
 export function rollCardOffer(slots: readonly DeckSlot[], seed: number): string[] {
@@ -530,7 +613,7 @@ export function offerSeed(state: Pick<GameState, 'moves' | 'stats'>, mark: numbe
 /** 이사 직후의 덱: 빈 칸·첫 묶음·문턱 1(다시 받기 2, 카드 도감은 이어받음) */
 export function deckAfterMove(prev: Pick<GameState, 'moves' | 'stats' | 'deck'>): DeckState {
   const moves = prev.moves + 1;
-  return { slots: [], offers: [rollCardOffer([], offerSeed({ moves, stats: prev.stats }, 1))], rerolls: 2, mark: 1, seen: prev.deck.seen, buff: emptyBuff(), targetScale: deckTargetScale(moves) };
+  return { slots: [], offers: [rollCardOffer([], offerSeed({ moves, stats: prev.stats }, 1))], rerolls: 2, mark: 1, seen: prev.deck.seen, buff: emptyBuff(), targetScale: deckTargetScale(moves), chargedStacks: 0, boostPacks: 0, boostMade: 0 };
 }
 
 /**
@@ -555,11 +638,23 @@ export function deckFull(state: GameState): boolean {
   return state.deck.slots.length >= deckSlots(state.moves);
 }
 
+/** 카드를 덱에 넣는다: 낀 ★3 미만이면 ★+1, ★3이면 스택 +`STACK_DUP`(둘 다 칸을 안 쓴다), 아니면 빈 칸에 끼우거나 replaceSlot 칸과 바꾼다(스택 절반 이어받기, 눈금 0). 안 되면 null */
+function placeCard(state: GameState, cardId: string, replaceSlot?: number): DeckState | null {
+  const deck = state.deck;
+  const heldAt = deck.slots.findIndex((s) => s.id === cardId);
+  if (heldAt >= 0) {
+    return { ...deck, slots: deck.slots.map((s, i) => (i !== heldAt ? s : s.star >= CARD_STAR_MAX ? { ...s, stacks: s.stacks + STACK_DUP } : { ...s, star: s.star + 1 })) };
+  }
+  if (!deckFull(state)) return { ...deck, slots: [...deck.slots, { id: cardId, star: 1, charge: 0, stacks: 0 }] };
+  if (replaceSlot === undefined || !Number.isInteger(replaceSlot) || replaceSlot < 0 || replaceSlot >= deck.slots.length) return null;
+  return { ...deck, slots: deck.slots.map((s, i) => (i === replaceSlot ? { id: cardId, star: 1, charge: 0, stacks: Math.floor(s.stacks / 2) } : s)) };
+}
+
 /**
  * offerIndex번째 대기 묶음에서 카드를 고른다.
  * - cardId가 null이면 건너뛰기(묶음만 버린다).
- * - 빈 칸이 있으면 뒤에 끼운다. 칸이 다 찼으면 replaceSlot(바꿀 칸 번호)을 줘야 하고, 원래 카드는 버려진다.
- * - 이미 낀 카드를 고르면 칸을 쓰지 않고 ★이 올라 상한 +1(최대 ★3, 눈금은 그대로. replaceSlot은 무시). ★3 카드는 null.
+ * - 빈 칸이 있으면 뒤에 끼운다. 칸이 다 찼으면 replaceSlot(바꿀 칸 번호)을 줘야 하고, 원래 카드는 버려진다. 바꾸면 눈금은 0, 스택은 절반(내림)을 새 카드가 이어받는다.
+ * - 이미 낀 카드를 고르면 칸을 쓰지 않고 ★이 올라 상한 +1(눈금은 그대로. replaceSlot은 무시). ★3 카드를 고르면 스택 +`STACK_DUP`(중복).
  * - 묶음에 없는 카드, 잘못된 칸 번호는 null.
  */
 export function chooseCard(state: GameState, offerIndex: number, cardId: string | null, replaceSlot?: number): GameState | null {
@@ -568,17 +663,59 @@ export function chooseCard(state: GameState, offerIndex: number, cardId: string 
   const offers = state.deck.offers.filter((_, i) => i !== offerIndex);
   if (cardId === null) return { ...state, deck: { ...state.deck, offers } };
   if (!offer.includes(cardId) || !cardDef(cardId)) return null;
-  const heldAt = state.deck.slots.findIndex((s) => s.id === cardId);
-  if (heldAt >= 0) {
-    if (state.deck.slots[heldAt].star >= CARD_STAR_MAX) return null;
-    return { ...state, deck: { ...state.deck, slots: state.deck.slots.map((s, i) => (i === heldAt ? { ...s, star: s.star + 1 } : s)), offers } };
+  const deck = placeCard(state, cardId, replaceSlot);
+  return deck ? { ...state, deck: { ...deck, offers } } : null;
+}
+
+/** 강화 고르기 후보 하나: 낀 칸에 스택 +`STACK_BOOST`(boost, 칸 번호) 또는 카드 하나(card, 일반 고르기와 같은 규칙으로 끼운다) */
+export type BoostOption = { kind: 'boost'; slot: number; stacks: number } | { kind: 'card'; id: string };
+
+/** 대기 중인 강화 고르기 묶음 수 */
+export function deckBoostPacks(state: Pick<GameState, 'deck'>): number {
+  return state.deck.boostPacks;
+}
+
+/** 다음 강화 고르기 묶음까지 더 얻어야 할 충전 스택 수(1~`STACK_PICK_EVERY`) */
+export function deckBoostIn(state: Pick<GameState, 'deck'>): number {
+  return STACK_PICK_EVERY - (state.deck.chargedStacks % STACK_PICK_EVERY);
+}
+
+/**
+ * 맨 앞 대기 묶음의 강화 고르기 3택(대기가 없으면 빈 배열). 낀 카드 둘(낀 카드가 1장이면 하나)에 각각 boost +2, 나머지는 안 끼인 새 카드(`rollCardOffer`의 `RARITY_ODDS` 뽑기에서 안 끼인 것을 먼저, 모자라면 남은 카드)다.
+ * 낀 카드가 없으면 카드 3장이다. 시드는 (이사 횟수, 만들어진 묶음 번호)라 같은 묶음의 후보는 슬롯이 그대로인 동안 바뀌지 않는다
+ */
+export function boostOffer(state: Pick<GameState, 'deck' | 'moves'>): BoostOption[] {
+  const deck = state.deck;
+  if (deck.boostPacks <= 0) return [];
+  const seed = state.moves * 7919 + (deck.boostMade - deck.boostPacks + 1) * 130363 + 5;
+  const r = hashRng(seed);
+  const idx = deck.slots.map((_, i) => i);
+  for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+  const out: BoostOption[] = idx.slice(0, 2).sort((a, b) => a - b).map((slot) => ({ kind: 'boost', slot, stacks: STACK_BOOST }));
+  const rolled = rollCardOffer(deck.slots, seed ^ 0x5bd1e995);
+  const spare = CARDS.map((c) => c.id).filter((id) => !rolled.includes(id) && !deck.slots.some((s) => s.id === id));
+  for (let i = spare.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [spare[i], spare[j]] = [spare[j], spare[i]]; }
+  const fresh = rolled.filter((id) => !deck.slots.some((s) => s.id === id));
+  for (const id of [...fresh, ...spare]) {
+    if (out.length >= CARD_OFFER_SIZE) break;
+    out.push({ kind: 'card', id });
   }
-  const card: DeckSlot = { id: cardId, star: 1, charge: 0 };
-  let slots: DeckSlot[];
-  if (!deckFull(state)) slots = [...state.deck.slots, card];
-  else {
-    if (replaceSlot === undefined || !Number.isInteger(replaceSlot) || replaceSlot < 0 || replaceSlot >= state.deck.slots.length) return null;
-    slots = state.deck.slots.map((s, i) => (i === replaceSlot ? card : s));
+  return out;
+}
+
+/**
+ * 강화 고르기: 맨 앞 묶음의 optionIndex번째 후보를 고른다. null이면 묶음만 버린다.
+ * boost는 그 칸에 스택 +2, card는 `chooseCard`와 같다(빈 칸이면 끼움, 다 찼으면 replaceSlot 필요, ★3 카드는 스택 +3). 고르기로 얻은 스택은 충전 스택 누계에 안 들어간다. 묶음이 없거나 잘못된 후보·칸이면 null
+ */
+export function chooseBoost(state: GameState, optionIndex: number | null, replaceSlot?: number): GameState | null {
+  if (state.deck.boostPacks <= 0) return null;
+  const rest = { boostPacks: state.deck.boostPacks - 1 };
+  if (optionIndex === null) return { ...state, deck: { ...state.deck, ...rest } };
+  const opt = boostOffer(state)[optionIndex];
+  if (!opt) return null;
+  if (opt.kind === 'boost') {
+    return { ...state, deck: { ...state.deck, ...rest, slots: state.deck.slots.map((s, i) => (i === opt.slot ? { ...s, stacks: s.stacks + opt.stacks } : s)) } };
   }
-  return { ...state, deck: { ...state.deck, slots, offers } };
+  const deck = placeCard(state, opt.id, replaceSlot);
+  return deck ? { ...state, deck: { ...deck, ...rest } } : null;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, DECK_PERFECT_HALF_HARD_MAX } from '../data/cards';
+import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, DECK_MARK_DIGITS, DECK_PERFECT_HALF_HARD_MAX } from '../data/cards';
 import { chooseCard, checkMarks, deckAfterMove, deckEffects, deckEvent, deckFeverFires, deckFull, deckPicksLeft, deckNextMark, deckSlots, deckStrikeMult, emptyDeck, markThreshold, marksPassed, rollCardOffer, type DeckState } from './deck';
 import { deckMult } from './deck';
 import { gearEffects } from './gear';
@@ -17,7 +17,7 @@ const withDeck = (over: Partial<DeckState>, extra: Partial<GameState> = {}): Gam
   return { ...s, moves: 1, ...extra, deck: { ...s.deck, ...over } };
 };
 const mt = (moves: number, k: number) => markThreshold({ moves, deck: emptyDeck() }, k);
-const slot = (id: string) => ({ id, star: 1, charge: 0 });
+const slot = (id: string) => ({ id, star: 1, charge: 0, stacks: 0 });
 
 describe('공구함 덱: 칸·효과', () => {
   it('1단계는 3칸', () => {
@@ -93,8 +93,8 @@ describe('공구함 덱: 문턱·묶음', () => {
   it('문턱은 목표 쪽 자릿수 표이고 커진다', () => {
     const t = [1, 2, 3, 4, 5, 6].map((k) => mt(1, k));
     for (let i = 1; i < t.length; i++) expect(t[i]).toBeGreaterThan(t[i - 1]);
-    expect(t[5]).toBeCloseTo(houseInfo(1).target * 10 ** -0.53, -3);
-    expect(mt(9, 1)).toBeCloseTo(houseInfo(9).target * 10 ** -3.73, -3);
+    expect(t[5]).toBeCloseTo(houseInfo(1).target * 10 ** -DECK_MARK_DIGITS[0][5], -3);
+    expect(mt(9, 1)).toBeCloseTo(houseInfo(9).target * 10 ** -DECK_MARK_DIGITS[8][0], -3);
   });
   it('첫 집은 문턱을 보지 않고 같은 상태를 돌려준다', () => {
     const s = { ...defaultState(), earned: 1e30 };
@@ -139,14 +139,16 @@ describe('공구함 덱: 문턱·묶음', () => {
     expect(o).not.toContain('P2');
     expect(o).not.toContain('C1');
   });
-  it('묶음은 서로 다른 3장이고 ★3 카드는 나오지 않는다', () => {
+  it('묶음은 서로 다른 3장이고 ★3 카드도 나온다(중복 후보)', () => {
     const held = [{ ...slot('P2'), star: 3 }, slot('C1'), slot('F3')];
+    let dup = 0;
     for (let seed = 0; seed < 300; seed++) {
       const o = rollCardOffer(held, seed);
       expect(o).toHaveLength(CARD_OFFER_SIZE);
       expect(new Set(o).size).toBe(CARD_OFFER_SIZE);
-      expect(o).not.toContain('P2');
+      if (o.includes('P2')) dup++;
     }
+    expect(dup).toBeGreaterThan(0);
   });
   it('tapAndHit·heavyHit 안에서도 문턱이 처리된다', () => {
     const s = withDeck({ mark: 1 }, { earned: mt(1, 1) });
@@ -164,10 +166,9 @@ describe('공구함 덱: 고르기·교체·건너뛰기', () => {
     expect(r.deck.slots).toEqual([slot('C1')]);
     expect(r.deck.offers).toEqual([]);
   });
-  it('묶음에 없는 카드·없는 묶음·★3 카드는 null', () => {
+  it('묶음에 없는 카드·없는 묶음은 null', () => {
     expect(chooseCard(offer(['P2', 'C1', 'P3']), 0, 'C3')).toBeNull();
     expect(chooseCard(offer(['P2', 'C1', 'P3']), 1, 'P2')).toBeNull();
-    expect(chooseCard(offer(['P2', 'C1', 'P3'], [{ ...slot('P2'), star: 3 }]), 0, 'P2')).toBeNull();
   });
   it('칸이 차면 바꿀 칸을 줘야 하고 원래 카드는 버려진다', () => {
     const full = offer(['C3', 'C1', 'P3'], [slot('P2'), slot('C1'), slot('P3'), slot('S1')]);

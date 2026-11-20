@@ -1,6 +1,6 @@
 // 공구함 덱 화면(1단계): 카드 줄 · 공구함 창 · 카드 고르기 창 · 발동 연출. 로직은 logic/deck.ts, 설계는 DESIGN-DECK.md 7·8절.
 import { cardDef, type CardDef, type CardTag } from '../data/cards';
-import { chooseCard, deckFull, deckMult, deckNextMark, deckOfferOdds, deckPicksLeft, deckResonance, deckSlotViews, deckSlots, isStarUp, type DeckChargeResult, type DeckFire, type DeckSlotView } from '../logic/deck';
+import { boostOffer, chooseBoost, chooseCard, deckBoostIn, deckBoostPacks, deckFull, deckMult, deckNextMark, deckOfferOdds, deckPicksLeft, deckResonance, deckSlotViews, deckSlots, deckStackSum, isStarUp, type DeckChargeResult, type DeckFire, type DeckSlotView, type StackEvent } from '../logic/deck';
 import { formatNumber } from '../logic/format';
 import type { GameState } from '../logic/state';
 import type { UiCtx } from './collectUi';
@@ -51,29 +51,33 @@ const chip = (t: CardTag, cls: string): HTMLElement => {
 const row = el('div', { cls: 'deck-row', attrs: { role: 'group', 'aria-label': '공구함' } });
 const rowLabel = el('span', { cls: 'deck-label' });
 const multEl = el('b', { cls: 'deck-mult calm' });
-const side = el('div', { cls: 'deck-side' }, el('span', { cls: 'deck-title', text: '공구함' }), multEl, rowLabel);
+const sumEl = el('span', { cls: 'deck-ss', attrs: { hidden: '' } });
+const side = el('div', { cls: 'deck-side' }, el('span', { cls: 'deck-title' }, '공구함', sumEl), multEl, rowLabel);
 const multRoll = fx.roller(multEl, (v) => `×${fmtMult(v)}`);
 interface Cell {
   slot: HTMLElement;
   fill: HTMLElement | null;
   bar: HTMLElement | null;
+  badge: HTMLElement | null;
 }
 let cells: Cell[] = [];
 /** 연쇄 재생이 끝날 때까지 공구함 숫자를 강타 전 값으로 붙든다 */
 let heldMult: number | null = null;
 /** 알림: 대기 묶음이 있을 때 이사 줄 위에 뜨는 노란 버튼 */
 export const alertBtn = el('button', { cls: 'btn gold perk-alert deck-alert', attrs: { type: 'button', hidden: '' } });
+
 let rowKey = '';
 
 export function initDeck(hooks: DeckHooks): void {
   H = hooks;
   row.addEventListener('click', () => H.ctx.goto('deck'));
-  alertBtn.addEventListener('click', () => openPick());
+  alertBtn.addEventListener('click', () => (pendingCount(H.ctx.get()) > 0 ? openPick() : openBoost()));
 }
 
 export const pendingCount = (s: GameState): number => s.deck?.offers.length ?? 0;
 /** 공구 강화 탭 알림 점용: 대기 묶음이 있는가 */
-export const hasPending = (): boolean => !!H && pendingCount(H.ctx.get()) > 0;
+export const hasPending = (): boolean => !!H && (pendingCount(H.ctx.get()) > 0 || boostCount(H.ctx.get()) > 0);
+const boostCount = (s: GameState): number => (s.deck ? deckBoostPacks(s) : 0);
 
 /** 매 update 끝에서 호출. 이사 전(moves 0)에는 줄을 만들지 않는다 */
 export function sync(state: GameState): void {
@@ -82,6 +86,7 @@ export function sync(state: GameState): void {
     if (row.isConnected) row.remove();
     alertBtn.hidden = true;
     rowKey = '';
+    resetStacks();
     heldMult = null;
     lastRes = null;
     lastBoxes = 0;
@@ -105,6 +110,7 @@ export function sync(state: GameState): void {
       const b = el('button', { cls: `deck-slot${d ? ` on r-${d.rarity}` : ''}`, attrs: { type: 'button', 'aria-label': d ? `${d.name}: ${d.desc}` : '빈 칸' } });
       let fill: HTMLElement | null = null;
       let bar: HTMLElement | null = null;
+      let badge: HTMLElement | null = null;
       if (d) {
         b.dataset.card = d.id;
         if (d.tags.length > 0) b.style.setProperty('--tc', tagVar(d));
@@ -112,8 +118,10 @@ export function sync(state: GameState): void {
         b.append(cardIcon(d, 32), starDots(slotState.star, 'stars deck-stars'));
         fill = el('i');
         bar = el('span', { cls: 'deck-bar' }, fill);
+        badge = el('span', { cls: 'deck-stack', attrs: { hidden: '' } });
+        b.append(badge);
       }
-      cells.push({ slot: b, fill, bar });
+      cells.push({ slot: b, fill, bar, badge });
     }
     row.replaceChildren(...cells.map((c) => el('div', { cls: 'deck-cell' }, c.slot, ...(c.bar ? [c.bar] : []))), side);
   }
@@ -123,13 +131,15 @@ export function sync(state: GameState): void {
     const c = cells[i];
     if (!c?.fill || !c.bar) return;
     c.fill.style.width = `${barPx(v)}px`;
-    c.bar.classList.toggle('full', v.full);
+    c.bar.classList.toggle('full', v.full && v.stacks === 0);
+    c.bar.classList.toggle('ov', v.stacks > 0);
     c.bar.classList.toggle('res', v.resonance > 0);
     c.bar.dataset.charge = `${v.charge}/${v.need}`;
     c.slot.classList.toggle('armed', (v.id === 'C5' && !!buff?.nextStrike) || (v.id === 'S5' && !!buff?.forceBomb));
     const stars = c.slot.querySelector<HTMLElement>('.deck-stars');
     if (stars && stars.dataset.n !== String(v.star)) stars.replaceWith(starDots(v.star, 'stars deck-stars'));
   });
+  watchStacks(views);
   watchResonance(state);
   watchFurnace(state, views);
   const m = heldMult ?? deckMult(state);
@@ -139,12 +149,16 @@ export function sync(state: GameState): void {
   const label = filled >= n ? '칸 가득' : `빈 칸 ${n - filled}`;
   if (rowLabel.textContent !== label) rowLabel.textContent = label;
   const pend = pendingCount(state);
-  alertBtn.hidden = pend === 0;
+  /** 알림 버튼 하나가 둘 다 맡는다: 카드 묶음이 먼저, 없으면 강화 고르기 묶음 */
+  const bst = boostCount(state);
+  alertBtn.hidden = pend === 0 && bst === 0;
   if (pend > 0) setLabel(alertBtn, 'ui-tools', 32, `카드 고르기${pend > 1 ? ` ${pend}` : ''}`);
+  else if (bst > 0) setLabel(alertBtn, 'ui-tools', 32, `강화 고르기${bst > 1 ? ` ${bst}` : ''}`);
 }
 
 /** 충전 막대 채움: 1도트(2px) 단위, 막대 48px = 24도트 */
 function barPx(v: DeckSlotView): number {
+  if (v.stacks > 0) return v.charge <= 0 ? 0 : Math.min(46, Math.max(2, Math.floor((v.charge / v.stackNeed) * 24) * 2));
   if (v.full) return 48;
   return v.charge <= 0 ? 0 : Math.max(2, Math.floor((v.charge / v.need) * 24) * 2);
 }
@@ -199,6 +213,164 @@ function watchFurnace(state: GameState, views: DeckSlotView[]): void {
   fx.coinShower(slot, H.pts(), 8);
 }
 
+// ---------- 스택 배지 · 오르는 순간 연출 ----------
+interface StackPend {
+  slot: number;
+  id: string;
+  from: number;
+  to: number;
+  timer: number | null;
+}
+/** 아직 연출을 안 한 스택 상승(칸 번호별). 연출이 나올 때까지 배지는 `from`을 보여 준다 */
+const stackPend = new Map<number, StackPend>();
+/** 칸별로 마지막에 본 스택(줄을 처음 만들 때·불러오기는 조용히 기록만 한다) */
+let stackSeen: { id: string; n: number }[] = [];
+const stackFxAt = new Map<number, number>();
+/** 카드 하나당 연출은 이 간격에 한 번(그 사이 오른 스택은 합친다) */
+const STACK_FX_GAP_MS = 150;
+const STACK_ORDER_MS = 60;
+
+function resetStacks(): void {
+  stackPend.forEach((p) => p.timer !== null && clearTimeout(p.timer));
+  stackPend.clear();
+  stackSeen = [];
+  stackFxAt.clear();
+  sumEl.hidden = true;
+}
+
+/** 배지 단계: 0~9 = 0, 10~19 = 1, 20~29 = 2, 30+ = 3 */
+const stackTier = (n: number): number => Math.min(3, Math.floor(n / 10));
+
+function paintBadge(c: Cell, n: number): void {
+  const b = c.badge;
+  if (!b) return;
+  b.hidden = n <= 0;
+  if (n <= 0) return;
+  const t = `×${n}`;
+  if (b.textContent !== t) b.textContent = t;
+  b.dataset.tier = String(stackTier(n));
+}
+
+function watchStacks(views: DeckSlotView[]): void {
+  let sum = 0;
+  views.forEach((v, i) => {
+    const c = cells[i];
+    if (!c) return;
+    let p = stackPend.get(i);
+    if (p && p.id !== v.id) {
+      if (p.timer !== null) clearTimeout(p.timer);
+      stackPend.delete(i);
+      p = undefined;
+    }
+    if (p) {
+      paintBadge(c, p.from);
+      sum += p.from;
+      return;
+    }
+    const prev = stackSeen[i];
+    stackSeen[i] = { id: v.id, n: v.stacks };
+    if (prev && prev.id === v.id && v.stacks > prev.n) {
+      enqueueStack({ slot: i, id: v.id, from: prev.n, to: v.stacks });
+      scheduleStack(i, 0);
+      paintBadge(c, prev.n);
+      sum += prev.n;
+      return;
+    }
+    paintBadge(c, v.stacks);
+    sum += v.stacks;
+  });
+  stackSeen.length = views.length;
+  paintSum(sum);
+}
+
+function paintSum(sum: number): void {
+  sumEl.hidden = sum <= 0;
+  const t = `스택 ${formatNumber(sum)}`;
+  if (sumEl.textContent !== t) sumEl.textContent = t;
+}
+
+function enqueueStack(ev: StackEvent): void {
+  const p = stackPend.get(ev.slot);
+  if (p && p.id === ev.id) p.to = Math.max(p.to, ev.to);
+  else stackPend.set(ev.slot, { slot: ev.slot, id: ev.id, from: ev.from, to: ev.to, timer: null });
+}
+
+function scheduleStack(slot: number, order: number): void {
+  const p = stackPend.get(slot);
+  if (!p || p.timer !== null) return;
+  const wait = Math.max(0, (stackFxAt.get(slot) ?? -1e9) + STACK_FX_GAP_MS - performance.now()) + order * STACK_ORDER_MS;
+  p.timer = window.setTimeout(() => playStack(p), ms(wait));
+}
+
+/** 칸 위로 떠오르는 작은 글자(+N). 움직임 줄이기에서는 제자리 */
+function plusMark(slot: HTMLElement, text: string): void {
+  const mark = el('b', { cls: 'deck-x stack-plus', text });
+  slot.append(mark);
+  if (fx.isReduced()) {
+    mark.classList.add('still');
+    window.setTimeout(() => mark.remove(), 800);
+    return;
+  }
+  fx.pxFrames(mark, [{ translate: '-50% 0' }, { translate: '-50% -4px' }, { translate: '-50% -10px' }, { translate: '-50% -14px' }, { translate: '-50% -14px' }, { translate: '-50% -14px' }, { translate: '-50% -14px', visibility: 'hidden' }, { translate: '-50% -14px' }, { translate: '-50% -14px', visibility: 'hidden' }], 80).onfinish = () => mark.remove();
+  window.setTimeout(() => mark.remove(), 1000);
+}
+
+/** 스택이 오른 순간: 카드가 튀고 배지 숫자가 번쩍이며 올라가고 노란 네모 입자 · 상승음. 10의 배수를 넘으면 줄 전체 번쩍 + 입자 2배 */
+function playStack(p: StackPend): void {
+  if (rowHold) {
+    p.timer = window.setTimeout(() => playStack(p), 100);
+    return;
+  }
+  stackPend.delete(p.slot);
+  stackFxAt.set(p.slot, performance.now());
+  const state = H.ctx.get();
+  if (!state.deck || !row.isConnected) return;
+  const v = deckSlotViews(state)[p.slot];
+  const c = cells[p.slot];
+  if (!v || !c?.badge || v.id !== p.id) return sync(state);
+  const to = Math.max(p.to, v.stacks);
+  const gain = to - p.from;
+  const big = Math.floor(to / 10) > Math.floor(p.from / 10);
+  stackSeen[p.slot] = { id: p.id, n: v.stacks };
+  const badge = c.badge;
+  const slot = c.slot;
+  sync(state);
+  sfx.stackUp(to, big);
+  vibrate(big ? [10, 20, 10] : 8);
+  slot.classList.add('stack-up');
+  badge.classList.add('up');
+  window.setTimeout(() => {
+    slot.classList.remove('stack-up');
+    badge.classList.remove('up');
+  }, ms(420));
+  if (gain > 1) {
+    plusMark(slot, `+${gain}`);
+    if (!fx.isReduced()) {
+      const mid = p.from + Math.ceil(gain / 2);
+      badge.textContent = `×${p.from}`;
+      window.setTimeout(() => (badge.textContent = `×${mid}`), ms(60));
+      window.setTimeout(() => (badge.textContent = `×${to}`), ms(120));
+    }
+  }
+  sumEl.classList.add('pop');
+  multEl.classList.add('pop');
+  window.setTimeout(() => {
+    sumEl.classList.remove('pop');
+    multEl.classList.remove('pop');
+  }, ms(420));
+  if (fx.isReduced()) return;
+  fx.pxFrames(slot, big ? [{ translate: '0 -12px' }, { translate: '0 -14px' }, { translate: '0 -8px' }, { translate: '0 -2px' }, { translate: '0 0' }] : [{ translate: '0 -8px' }, { translate: '0 -10px' }, { translate: '0 -4px' }, { translate: '0 0' }], ms(60));
+  const r = slot.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  const opt = { n: 10, kind: 'dot' as const, colors: ['g2', 'g3', 'g1', 'k5'], speed: 210, size: 8, gravity: 300, life: 0.6, ring: true };
+  fx.burst(cx, cy, opt);
+  if (big) {
+    fx.burst(cx, cy, { ...opt, speed: 320, ring: false });
+    fx.edge(row, 'g3', [1, 0, 1, 0, 1, 1]);
+  }
+}
+
 // ---------- 모달 공통 ----------
 function setActions(box: Element, actions: { label: string; quiet?: boolean; primary?: boolean; onClick: () => void }[]): void {
   const rowEl = box.querySelector('.modal-actions');
@@ -230,8 +402,17 @@ function cardRow(d: CardDef, v?: DeckSlotView): HTMLElement {
   const body = el('div', { cls: 'pr-main' }, main, el('div', { cls: 'pr-desc', text: d.desc }), el('div', { cls: 'pr-how', text: how }));
   if (v) {
     const fill = el('i');
-    fill.style.width = v.full ? '100%' : `${Math.min(100, Math.round(barPx(v) / 0.48))}%`;
-    body.append(el('span', { cls: `deck-bar${v.full ? ' full' : ''}${v.resonance > 0 ? ' res' : ''}` }, fill));
+    fill.style.width = v.stacks > 0 || !v.full ? `${Math.min(100, Math.round(barPx(v) / 0.48))}%` : '100%';
+    body.append(el('span', { cls: `deck-bar${v.full && v.stacks === 0 ? ' full' : ''}${v.stacks > 0 ? ' ov' : ''}${v.resonance > 0 ? ' res' : ''}` }, fill));
+    body.append(
+      el(
+        'div',
+        { cls: 'pr-stack' },
+        el('b', { cls: v.stacks > 0 ? 'has' : '', text: `스택 ${formatNumber(v.stacks)}` }),
+        el('span', { text: `다음 스택까지 ${formatNumber(Math.max(1, Math.ceil(v.stackNeed - v.charge)))}` }),
+        el('span', { text: `다음 ×${fmtMult(v.nextStackMult)}` }),
+      ),
+    );
   }
   const r = el(
     'div',
@@ -255,12 +436,13 @@ export function syncPanel(state: GameState, force = false): void {
   if (!state.deck) return;
   const views = deckSlotViews(state);
   const pend = pendingCount(state);
+  const boosts = boostCount(state);
   const next = deckNextMark(state);
   const left = deckPicksLeft(state);
   const n = deckSlots(state.moves);
   const prog = next ? Math.floor(next.progress * 25) * 4 : 0;
   const res = deckResonance(state);
-  const key = `${n}|${views.map((v) => `${v.id}${v.star}:${v.full ? 'F' : barPx(v)}:${Math.round(v.mult * 10)}:${v.cap}:${v.speed}`).join(',')}|${res.map((r) => `${r.tag}${r.count}`).join(',')}|${pend}|${left}|${prog}`;
+  const key = `${n}|${views.map((v) => `${v.id}${v.star}:${v.full ? 'F' : barPx(v)}:${Math.round(v.mult * 10)}:${v.cap}:${v.speed}:${v.stacks}:${Math.ceil(v.stackNeed - v.charge)}`).join(',')}|${res.map((r) => `${r.tag}${r.count}`).join(',')}|${pend}|${boosts}|${left}|${prog}`;
   const m = deckMult(state);
   if (force) panelRoll.snap(m);
   else panelRoll.set(m);
@@ -269,6 +451,14 @@ export function syncPanel(state: GameState, force = false): void {
   panelKey = key;
   const top = el('div', { cls: 'dp-top' }, el('div', { cls: 'dp-lbl' }, el('span', { text: '공구함 배율' }), el('span', { cls: 'dp-sub', text: '낀 카드의 배수를 모두 곱해요' })), panelMult);
   const body: HTMLElement[] = [top];
+  const sum = deckStackSum(state);
+  body.push(el('div', { cls: 'pf dp-stack' }, el('b', { text: `스택 합 ${formatNumber(sum)}` }), el('span', { text: `다음 강화 고르기까지 스택 ${deckBoostIn(state)}개` })));
+  if (boosts > 0) {
+    const b = el('button', { cls: 'btn gold perk-pick-btn dp-pick', attrs: { type: 'button' } });
+    setLabel(b, 'ui-tools', 32, `강화 고르기${boosts > 1 ? ` ${boosts}` : ''}`);
+    b.addEventListener('click', () => openBoost());
+    body.push(b);
+  }
   if (pend > 0) {
     const b = el('button', { cls: 'btn gold perk-pick-btn dp-pick', attrs: { type: 'button' } });
     setLabel(b, 'ui-tools', 32, `카드 고르기${pend > 1 ? ` ${pend}` : ''}`);
@@ -304,6 +494,8 @@ let busy = false;
 let playing = false;
 let swallow = false;
 let introToken = 0;
+/** 지금 열린 고르기 창이 카드 고르기(pick)인가 강화 고르기(boost)인가 */
+let mode: 'pick' | 'boost' = 'pick';
 let introStop: (() => void) | null = null;
 /** 고른 카드가 칸에 꽂히기 전까지 카드 줄을 옛 모습으로 붙든다 */
 let rowHold = false;
@@ -459,6 +651,7 @@ function guardIntro(): void {
 export function openPick(): void {
   const state = H.ctx.get();
   if (!state.deck || state.deck.offers.length === 0) return;
+  mode = 'pick';
   busy = false;
   H.ctx.showModal(
     'x',
@@ -523,7 +716,7 @@ function afterChoice(wait: number): void {
   window.setTimeout(() => {
     busy = false;
     if (!document.querySelector('.overlay .modal.deck-pick')) return;
-    if (pendingCount(H.ctx.get()) > 0) renderPick();
+    if (mode === 'boost' ? boostCount(H.ctx.get()) > 0 : pendingCount(H.ctx.get()) > 0) (mode === 'boost' ? renderBoost() : renderPick());
     else H.ctx.dismissModal();
   }, wait);
 }
@@ -540,7 +733,7 @@ function pickCard(d: CardDef, card: HTMLElement, all: HTMLElement[]): void {
 }
 
 /** 카드를 골랐다: 고른 카드 튐·번쩍, 나머지는 뒷면으로 뒤집혀 아래로 빠지고, 창이 닫히며 아이콘이 카드 줄 칸으로 날아가 꽂힌다 */
-function commit(next: GameState, card: HTMLElement, all: HTMLElement[], d: CardDef, slotIdx: number, iconEl: Element | null, starUp = false): void {
+function commit(next: GameState, card: HTMLElement, all: HTMLElement[], d: CardDef, slotIdx: number, iconEl: Element | null, starUp = false, boost = false): void {
   const reduced = fx.isReduced();
   rowHold = !reduced;
   H.ctx.set(next);
@@ -571,20 +764,20 @@ function commit(next: GameState, card: HTMLElement, all: HTMLElement[], d: CardD
   const from = iconEl?.getBoundingClientRect() ?? r;
   window.setTimeout(() => {
     H.ctx.dismissModal();
-    flyToSlot(d, from, slotIdx, starUp);
+    flyToSlot(d, from, slotIdx, starUp, boost);
   }, ms(360));
 }
 
 /** 닫히는 창에서 고른 카드 아이콘이 카드 줄 칸으로 날아간다(6걸음, 위로 솟았다 내려앉는 계단 경로). 도착하면 칸에 꽂힌다 */
-function flyToSlot(d: CardDef, from: DOMRect, idx: number, starUp = false): void {
+function flyToSlot(d: CardDef, from: DOMRect, idx: number, starUp = false, boost = false): void {
   const slot = row.querySelectorAll<HTMLElement>('.deck-slot')[idx];
   const finish = (): void => {
     rowHold = false;
     busy = false;
     if (!H.ctx.get().deck) return;
     sync(H.ctx.get());
-    landSlot(d, starUp);
-    if (pendingCount(H.ctx.get()) > 0) window.setTimeout(() => openPick(), ms(260));
+    if (!boost) landSlot(d, starUp);
+    if (mode === 'boost' ? boostCount(H.ctx.get()) > 0 : pendingCount(H.ctx.get()) > 0) window.setTimeout(() => (mode === 'boost' ? openBoost() : openPick()), ms(260));
   };
   if (!slot || !row.isConnected) return finish();
   const to = slot.getBoundingClientRect();
@@ -638,7 +831,7 @@ function landSlot(d: CardDef, starUp = false): void {
 }
 
 /** 칸이 차 있을 때: 같은 창 안에서 바꿀 칸을 고른다 */
-function renderReplace(d: CardDef): void {
+function renderReplace(d: CardDef, choose: (slot: number) => GameState | null = (slot) => chooseCard(H.ctx.get(), 0, d.id, slot), back: () => void = () => renderPick(false)): void {
   introStop?.();
   const state = H.ctx.get();
   const views = deckSlotViews(state);
@@ -647,19 +840,100 @@ function renderReplace(d: CardDef): void {
   const cards = views.map((v, i) => {
     const sd = cardDef(v.id);
     if (!sd) return null;
-    const c = deckCard(sd, i, { lv: `지금 ×${fmtMult(v.mult)}`, btn: '바꾸기' });
+    const c = deckCard(sd, i, { lv: `지금 ×${fmtMult(v.mult)}|스택 ${v.stacks} → ${Math.floor(v.stacks / 2)}`, btn: '바꾸기' });
     c.addEventListener('click', () => {
       if (busy || playing) return;
-      const next = chooseCard(H.ctx.get(), 0, d.id, i);
+      const next = choose(i);
       if (next) commit(next, c, cards.filter((x): x is HTMLButtonElement => !!x), d, i, incoming.querySelector('.pr-emoji .ico'));
     });
     return c;
   });
   setModal(
     '바꿀 칸 고르기',
-    [el('p', { cls: 'dim', text: '새 카드를 끼울 칸을 골라요. 고른 칸의 카드는 사라지고, 바꾸면 이 카드의 충전이 사라져요.' }), incoming, el('div', { cls: 'pcards' }, ...cards.filter((c): c is HTMLButtonElement => !!c))],
-    [{ label: '돌아가기', quiet: true, onClick: () => renderPick(false) }],
+    [el('p', { cls: 'dim', text: '새 카드를 끼울 칸을 골라요. 고른 칸의 카드는 사라지고, 바꾸면 이 카드의 충전이 사라져요. 스택은 절반만 이어받아요(칸 스택 → 새 카드).' }), incoming, el('div', { cls: 'pcards' }, ...cards.filter((c): c is HTMLButtonElement => !!c))],
+    [{ label: '돌아가기', quiet: true, onClick: back }],
   );
+}
+
+// ---------- 강화 고르기 ----------
+export function openBoost(): void {
+  const state = H.ctx.get();
+  if (!state.deck || boostCount(state) === 0) return;
+  mode = 'boost';
+  busy = false;
+  H.ctx.showModal(
+    'x',
+    [],
+    [
+      { label: '나중에 고르기', quiet: true, onClick: H.ctx.dismissModal },
+      { label: '건너뛰기', onClick: skipBoost },
+    ],
+    { chip: '강화', cls: 'perk-pick deck-pick deck-boostpick', icon: titleIcon() },
+  );
+  guardIntro();
+  renderBoost();
+}
+
+function renderBoost(replay = true): void {
+  introStop?.();
+  swallow = false;
+  const state = H.ctx.get();
+  const opts = boostOffer(state);
+  if (opts.length === 0) return H.ctx.dismissModal();
+  const pend = boostCount(state);
+  const views = deckSlotViews(state);
+  const defs: CardDef[] = [];
+  const cards = opts.map((o, k) => {
+    const d = cardDef(o.kind === 'boost' ? (views[o.slot]?.id ?? '') : o.id) as CardDef;
+    defs.push(d);
+    let c: HTMLButtonElement;
+    if (o.kind === 'boost') {
+      const v = views[o.slot];
+      c = deckCard(d, k, { lv: `스택 ${v.stacks} → ${v.stacks + o.stacks}|지금 ×${fmtMult(v.mult)}`, btn: `스택 +${o.stacks}` });
+      c.classList.add('boostopt');
+      c.addEventListener('click', () => pickBoost(k, o, d, c, cards));
+    } else {
+      c = deckCard(d, k, { lv: `${RARITY_NAME[d.rarity]} 카드`, btn: '고르기' });
+      c.addEventListener('click', () => pickBoost(k, o, d, c, cards));
+    }
+    return c;
+  });
+  const play = replay && !fx.isReduced();
+  if (play) cards.forEach((c) => c.classList.add('pre', 'back'));
+  const full = deckFull(state);
+  setModal(
+    `강화 고르기${pend > 1 ? ` (남은 묶음 ${pend})` : ''}`,
+    [el('div', { cls: 'dk-hint' }, el('p', { cls: 'dim', text: full ? '스택 +2를 줄 카드나 새 카드를 골라요. 새 카드는 바꿀 칸을 골라요.' : '스택 +2를 줄 카드나 새 카드를 골라요.' })), el('div', { cls: 'pcards' }, ...cards)],
+    [
+      { label: '나중에 고르기', quiet: true, onClick: H.ctx.dismissModal },
+      { label: '건너뛰기', onClick: skipBoost },
+    ],
+  );
+  if (play) intro(cards, defs);
+  else playing = false;
+}
+
+function skipBoost(): void {
+  if (busy) return;
+  const next = chooseBoost(H.ctx.get(), null);
+  if (!next) return;
+  H.ctx.set(next);
+  H.ctx.save();
+  H.ctx.update();
+  afterChoice(0);
+}
+
+function pickBoost(k: number, o: ReturnType<typeof boostOffer>[number], d: CardDef, card: HTMLElement, all: HTMLElement[]): void {
+  if (busy || playing) return;
+  const state = H.ctx.get();
+  if (o.kind === 'card') {
+    if (deckFull(state)) return renderReplace(d, (slot) => chooseBoost(H.ctx.get(), k, slot), () => renderBoost(false));
+    const next = chooseBoost(state, k);
+    if (next) commit(next, card, all, d, state.deck.slots.length, card.querySelector('.pc-emoji .ico'));
+    return;
+  }
+  const next = chooseBoost(state, k);
+  if (next) commit(next, card, all, d, o.slot, card.querySelector('.pc-emoji .ico'), false, true);
 }
 
 // ---------- 확률 ----------
@@ -678,6 +952,7 @@ function oddsBody(): HTMLElement[] {
     el('div', { cls: 'od-bars pf' }, ...bars),
     el('p', { cls: 'dim', text: '카드 3장을 따로 뽑아요. 장마다 위 확률로 희귀도를 정해요.' }),
     el('p', { cls: 'dim', text: '이미 낀 카드가 나오면 칸을 쓰지 않고 ★이 올라요.' }),
+    el('p', { cls: 'dim od-stack', text: '눈금이 꽉 차면 넘쳐서 스택 +1 · 스택마다 배수 +15% · 상한 없음 · 스택 6개마다 강화 고르기 · 이사하면 0부터 · 카드를 바꾸면 절반을 이어받아요.' }),
   ];
 }
 
@@ -701,10 +976,16 @@ const CHARGE_AFTER_FIRE_MS = 400;
 /** 강타·탭 결과를 받는다: deckFires는 연출, deckOffered는 새 묶음 알림 점멸. 창은 절대 저절로 열지 않는다 */
 export function hit(fires: readonly DeckFire[] | undefined, offered: boolean | undefined, charge?: DeckChargeResult): void {
   if (offered && row.isConnected && !fx.isReduced()) fx.edge(row, 'or', [1, 0, 1, 0, 1, 1]);
-  if (charge && row.isConnected && (charge.full.length > 0 || charge.after !== charge.before)) {
+  if (charge && row.isConnected && (charge.full.length > 0 || charge.after !== charge.before || charge.stacked.length > 0)) {
     if (heldMult === null) heldMult = charge.before;
+    charge.stacked.forEach(enqueueStack);
     const lead = fires && fires.length > 0 ? CHARGE_AFTER_FIRE_MS : 0;
-    whenChainDone(() => window.setTimeout(() => chargeFx(charge), lead));
+    whenChainDone(() =>
+      window.setTimeout(() => {
+        chargeFx(charge);
+        charge.stacked.forEach((e, k) => scheduleStack(e.slot, k));
+      }, lead),
+    );
   }
   if (!fires || fires.length === 0 || !row.isConnected) return;
   // 탭 수에 곱하는 카드(mult)는 뗀 순간, 보상 카드는 연쇄 재생이 끝나는 순간
@@ -794,5 +1075,6 @@ function chargeFx(c: DeckChargeResult): void {
     multEl.classList.add('pop');
     window.setTimeout(() => multEl.classList.remove('pop'), 500);
   }
+  if (c.boostPacks > 0 && !reduced) fx.edge(row, 'or', [1, 0, 1, 0, 1, 1]);
   if (c.allFull) fx.banner(`공구함 완성 ×${fmtMult(c.after)}`, { tone: 'gold', ms: 1700 });
 }

@@ -8,10 +8,10 @@ import type { GameState } from './state';
 
 const withDeck = (over: Partial<DeckState>, extra: Partial<GameState> = {}): GameState => {
   const s = defaultState();
-  return { ...s, moves: 1, ...extra, deck: { ...s.deck, ...over } };
+  return { ...s, moves: 0, ...extra, deck: { ...s.deck, ...over } };
 };
-const slot = (id: string, charge = 0, star = 1) => ({ id, star, charge });
-const need = (id: string, moves = 1) => cardChargeNeed(moves, CARDS.find((c) => c.id === id)!.rarity);
+const slot = (id: string, charge = 0, star = 1) => ({ id, star, charge, stacks: 0 });
+const need = (id: string, moves = 0) => cardChargeNeed(moves, CARDS.find((c) => c.id === id)!.rarity);
 /** 도감 세트 n개를 완성한 것으로 만든다 */
 const withSets = (s: GameState, n: number): GameState => {
   const collection: GameState['collection'] = { ...s.collection };
@@ -27,11 +27,11 @@ describe('희귀도 추첨', () => {
     expect(o.rare).toBeCloseTo(RARITY_ODDS.rare);
     expect(o.legend).toBeCloseTo(RARITY_ODDS.legend);
   });
-  it('뽑을 카드가 없는 희귀도는 빠지고 나머지가 합 1로 늘어난다', () => {
+  it('전설을 ★3으로 다 껴도 중복 후보가 남아 확률이 그대로 60·32·8이다', () => {
     const all3 = CARDS.filter((c) => c.rarity === 'legend').map((c) => slot(c.id, 0, 3));
     const o = deckOfferOdds(withDeck({ slots: all3 }));
-    expect(o.legend).toBe(0);
-    expect(o.common + o.rare).toBeCloseTo(1);
+    expect(o.legend).toBeCloseTo(RARITY_ODDS.legend);
+    expect(o.common + o.rare + o.legend).toBeCloseTo(1);
   });
   it('세 칸 모두 희귀도를 따로 굴려 분포가 60·32·8에 가깝고 묶음은 서로 다른 3장이다', () => {
     const n = { common: 0, rare: 0, legend: 0 };
@@ -49,28 +49,31 @@ describe('희귀도 추첨', () => {
     expect(n.legend / t).toBeGreaterThan(0.05);
     expect(n.legend / t).toBeLessThan(0.11);
   });
-  it('첫 칸은 가진 태그 카드(낀 카드면 ★ 후보)에서, ★3 카드는 안 나온다', () => {
+  it('첫 칸은 가진 태그 카드(낀 카드면 ★ 후보)에서, ★3 카드도 나온다(중복 후보)', () => {
     const held = [slot('P3'), slot('C1', 0, 3)];
     let star = 0;
+    let dup = 0;
     for (let seed = 0; seed < 400; seed++) {
       const o = rollCardOffer(held, seed);
-      expect(o).not.toContain('C1');
+      if (o.includes('C1')) dup++;
       if (o.some((id) => isStarUp(withDeck({ slots: held }), id))) star++;
     }
     expect(star).toBeGreaterThan(0);
+    expect(dup).toBeGreaterThan(0);
   });
 });
 
 describe('★', () => {
   const offer = (ids: string[], slots: ReturnType<typeof slot>[]) => withDeck({ offers: [ids], slots });
-  it('낀 카드를 또 고르면 칸을 안 쓰고 ★+1, 눈금은 그대로이며 ★3에서 멈춘다', () => {
+  it('낀 카드를 또 고르면 칸을 안 쓰고 ★+1, 눈금은 그대로이며 ★3 뒤에는 스택 +3', () => {
     const full = offer(['P3', 'C3', 'S1'], [slot('P3', 7), slot('C1'), slot('S3'), slot('F1')]);
     const a = chooseCard(full, 0, 'P3')!;
     expect(a.deck.slots.map((s) => [s.id, s.star, s.charge])).toEqual([['P3', 2, 7], ['C1', 1, 0], ['S3', 1, 0], ['F1', 1, 0]]);
     expect(a.deck.offers).toEqual([]);
     const b = chooseCard({ ...a, deck: { ...a.deck, offers: [['P3']] } }, 0, 'P3')!;
     expect(b.deck.slots[0].star).toBe(3);
-    expect(chooseCard({ ...b, deck: { ...b.deck, offers: [['P3']] } }, 0, 'P3')).toBeNull();
+    const c = chooseCard({ ...b, deck: { ...b.deck, offers: [['P3']] } }, 0, 'P3')!;
+    expect([c.deck.slots[0].star, c.deck.slots[0].stacks, c.deck.slots.length]).toEqual([3, 3, 4]);
   });
   it('상한 x4·x5·x6: 꽉 찬 ★1~3 카드의 배수', () => {
     const m = (star: number) => deckMult(withDeck({ slots: [slot('P3', need('P3'), star)] }));
@@ -138,11 +141,11 @@ describe('저장 v14 -> v15', () => {
     const moves = 3;
     const oldNeed = 40 * 1.5;
     const raw = JSON.parse(serialize(defaultState(), 1));
-    const v14 = JSON.stringify({ ...raw, version: 14, moves, deck: { slots: [{ id: 'P2', star: 1, charge: oldNeed / 2 }, { id: 'C1', star: 1, charge: oldNeed }], offers: [], rerolls: 1, mark: 4, seen: [], targetScale: 330 } });
+    const v14 = JSON.stringify({ ...raw, version: 14, moves, deck: { slots: [{ id: 'P2', star: 1, charge: oldNeed / 2, stacks: 0 }, { id: 'C1', star: 1, charge: oldNeed, stacks: 0 }], offers: [], rerolls: 1, mark: 4, seen: [], targetScale: 330 } });
     const r = parseSave(v14);
     expect(r.kind).toBe('ok');
     const s = r.state;
-    expect(s.version).toBe(15);
+    expect(s.version).toBe(16);
     const m = deckMult(s);
     expect(m).toBeCloseTo((1 + 3 * 0.5) * 4);
     expect(s.deck.slots[0].charge).toBeCloseTo(need('P2', moves) / 2);

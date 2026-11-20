@@ -31,7 +31,7 @@ const { move, canMove } = await ld('/src/logic/prestige.ts');
 const { tierOf } = await ld('/src/logic/unpack.ts');
 const guide = await ld('/src/logic/guide.ts');
 const { HOUSES, MOON_STAGE } = await ld('/src/data/houses.ts');
-const { chooseCard, deckFull, deckMult, slotNeed } = await ld('/src/logic/deck.ts');
+const { boostOffer, chooseBoost, chooseCard, deckFull, deckMult, slotNeed } = await ld('/src/logic/deck.ts');
 const { houseTarget } = await ld('/src/logic/house.ts');
 const { CARDS, DECK_TARGET_SCALE, CHARGE_NEED_SCALE, DECK_MARK_DIGITS, CHARGE_RULES } = await ld('/src/data/cards.ts');
 // 시험용: CR='{"precise":2,"preciseTen":5}' 충전 조건 상수를 메모리에서만 덮어쓴다
@@ -50,9 +50,10 @@ const ARCH = { 정밀: 'precise', 연쇄: 'chain', 특별: 'special', 피버: 'f
 const DECK_PRIO = ['P5', 'C5', 'F5', 'S5', 'P2', 'P3', 'C3', 'C4', 'S4', 'F3', 'C2', 'S2', 'F4', 'P4', 'S1', 'F1', 'F2', 'C1', 'S3', 'P1'];
 const inArch = (id, tag) => CARDS.find((c) => c.id === id)?.tags.includes(tag);
 /** 대기 중인 카드 묶음을 전부 처리한다: 원형 카드가 있으면 낀다(칸이 차면 원형 밖 카드를 바꾸고, 바꿀 칸이 없으면 건너뜀), 없으면 빈 칸일 때만 아무 카드 */
+let boostPicks = 0; // 이 집에서 한 강화 고르기 횟수(S1b 측정)
 function takeCards(s, name) {
   if (name.startsWith('고정:')) { // 시험용: DECK=고정:P2+P3 이면 이사마다 그 카드들을 낀 채 시작한다(묶음은 무시)
-    return s.deck.slots.length === 0 || s.deck.offers.length > 0 ? { ...s, deck: { ...s.deck, slots: name.slice(3).split('+').map((id) => ({ id, star: 1, charge: 0 })), offers: [] } } : s;
+    return s.deck.slots.length === 0 || s.deck.offers.length > 0 ? { ...s, deck: { ...s.deck, slots: name.slice(3).split('+').map((id) => ({ id, star: 1, charge: 0, stacks: 0 })), offers: [] } } : s;
   }
   const tag = ARCH[name];
   while (s.deck.offers.length > 0) {
@@ -66,6 +67,14 @@ function takeCards(s, name) {
     if (!n && up) n = chooseCard(s, 0, up);
     if (!n && !mine && !up && !deckFull(s)) n = chooseCard(s, 0, offer.find((id) => !held(id)) ?? offer[0]);
     s = n ?? chooseCard(s, 0, null);
+  }
+  // 넘침 스택(S1a): 강화 고르기 묶음은 낀 카드에 +2(원형 카드 우선)를 고른다. 낀 카드가 없으면 버린다
+  while (s.deck.boostPacks > 0) {
+    const o = boostOffer(s);
+    const bs = o.map((x, i) => [x, i]).filter(([x]) => x.kind === 'boost');
+    const pick = bs.find(([x]) => inArch(s.deck.slots[x.slot].id, tag)) ?? bs[0];
+    boostPicks++;
+    s = chooseBoost(s, pick ? pick[1] : null) ?? chooseBoost(s, null);
   }
   return s;
 }
@@ -112,6 +121,8 @@ function run(pol, seed, dk) {
   let firstPerkAt, boxesInHouse = 0;
   let trT = [], trV = []; // 이 집의 (시각, log10 이 집에서 번 P): 문턱 자릿수 d를 구할 때 쓴다
   let fullAt = {}; // 이 집에서 카드가 꽉 찬 시각(낀 채로)
+  let trS = [], strikeLog = []; // 이 집의 (시각, 덱 스택 합), 강타 기록(시각, 퍼펙트 여부) (S1b 측정)
+  const stackSum = () => s.deck.slots.reduce((n, sl) => n + sl.stacks, 0);
   let markT = [], markSeen = 0, markActs = 0, markMulti = 0; // 이 집에서 진행 문턱 k(1~6)를 넘은 시각, 문턱을 넘긴 행동 수, 그중 2개 이상 한꺼번에 넘긴 행동 수(DECK 시험 때만)
   const logT = [], logV = []; // 첫 집 행동마다 (시각, log10(누적 P))
   const ev = (e) => {
@@ -167,8 +178,10 @@ function run(pol, seed, dk) {
       const held = new Set(s.deck.slots.map((x) => x.id));
       for (const id of Object.keys(fullAt)) if (!held.has(id)) delete fullAt[id];
       for (const sl of s.deck.slots) if (sl.charge >= slotNeed(sl, s.moves) && fullAt[sl.id] === undefined) fullAt[sl.id] = t;
+      trS.push([t, stackSum()]);
       trT.push(t); trV.push(Math.log10(Math.max(1, s.earned)));
     }
+    if (acted === 'strike' && rows.length > 0) strikeLog.push([t, r.grade === 'perfect']);
     if (acted === 'strike' && pol.sSec) { t += pol.sSec; s = eco.tick(s, pol.sSec, rng); }
     // 가이드 사건(화면이 알리는 것과 같은 것)
     ev({ type: 'tick' });
@@ -241,7 +254,16 @@ function run(pol, seed, dk) {
         row.jMid = (lg((2 * T) / 3) - lg(T / 3)) / (T / 3 / 60);
         row.jLate = (Math.log10(s.earned) - lg((2 * T) / 3)) / (T / 3 / 60);
       }
-      row.mult = deckMult(s); row.tgt = houseTarget(s); row.cards = s.deck.slots.map((sl) => ({ id: sl.id, at: fullAt[sl.id] === undefined ? null : (fullAt[sl.id] - last) / row.sec }));
+      if (dk) {
+        const t0 = t - row.sec, at = (x) => { let v = trS.length ? trS[0][1] : 0; for (const [tt, ss] of trS) { if (tt <= x) v = ss; else break; } return v; };
+        row.stackThirds = [0, 1, 2].map((q) => at(t0 + ((q + 1) * row.sec) / 3) - at(t0 + (q * row.sec) / 3));
+        row.cardStacks = s.deck.slots.map((sl) => sl.stacks);
+        row.boosts = boostPicks;
+        const late = strikeLog.filter(([tt]) => tt >= t0 + (2 * row.sec) / 3), span = row.sec / 3;
+        row.strike30 = (late.length / span) * 30; row.perfect30 = (late.filter((x) => x[1]).length / span) * 30;
+      }
+      boostPicks = 0; strikeLog = []; trS = [];
+      row.mult = deckMult(s); row.stacks = s.deck.slots.reduce((n, sl) => n + sl.stacks, 0); row.tgt = houseTarget(s); row.cards = s.deck.slots.map((sl) => ({ id: sl.id, at: fullAt[sl.id] === undefined ? null : (fullAt[sl.id] - last) / row.sec }));
       fullAt = {};
       last = t;
       row.perkBoxes = boxesInHouse; boxesInHouse = 0; row.firstPerkAt = firstPerkAt;
@@ -257,6 +279,7 @@ function run(pol, seed, dk) {
         row.dig = DIG_Q.map((q) => { const x = t0 + q * row.sec; let lo = 0, hi = trT.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (trT[m] <= x) lo = m; else hi = m - 1; } return lgt - trV[lo]; });
         markT = []; markSeen = 0; markActs = 0; markMulti = 0; trT = []; trV = [];
         if (dk) s = takeCards(s, dk);
+        trS.push([t, stackSum()]);
       }
       rows.push(row);
     }
@@ -356,7 +379,7 @@ if (DECKS !== undefined) {
   /** { 정책: { 덱: [시드별 rows([{sec, marks}])] } } */
   const data = {};
   for (const f of (process.env.DECK_LOAD ?? '').split(',').filter(Boolean)) for (const [pn, byDeck] of Object.entries(JSON.parse(fs.readFileSync(f, 'utf8')))) for (const [dn, runs] of Object.entries(byDeck)) ((data[pn] ??= {})[dn] ??= []).push(...runs);
-  for (const pol of POLICIES) for (const name of DECKS) (data[pol.name] ??= {})[name] = SEEDS.map((sd) => run(pol, sd, name === '없음' ? null : name).map((r) => ({ sec: r.sec, total: r.total, marks: r.marks, dig: r.dig, markActs: r.markActs, markMulti: r.markMulti, mult: r.mult, cards: r.cards })));
+  for (const pol of POLICIES) for (const name of DECKS) (data[pol.name] ??= {})[name] = SEEDS.map((sd) => run(pol, sd, name === '없음' ? null : name).map((r) => ({ sec: r.sec, total: r.total, marks: r.marks, dig: r.dig, markActs: r.markActs, markMulti: r.markMulti, mult: r.mult, stacks: r.stacks, cards: r.cards, stackThirds: r.stackThirds, cardStacks: r.cardStacks, boosts: r.boosts, strike30: r.strike30, perfect30: r.perfect30 })));
   if (process.env.DECK_DUMP) fs.writeFileSync(process.env.DECK_DUMP, JSON.stringify(data));
   const allNames = [...new Set(POLICIES.flatMap((p) => Object.keys(data[p.name] ?? {})))];
   const names = ['없음', ...Object.keys(ARCH), ...allNames.filter((n) => n !== '없음' && !ARCH[n])].filter((n) => allNames.includes(n));
@@ -387,9 +410,16 @@ if (DECKS !== undefined) {
         const other = runs.flatMap((r) => r.cards.filter((c) => !CARDS.find((cd) => cd.id === c.id)?.tags.includes(ARCH[n])));
         const at = (v) => (v.length ? med(v.map((c) => (c.at === null ? 999 : c.at * 100))) : NaN);
         const f = (x) => (x >= 999 ? '>100' : Number.isNaN(x) ? '-' : x.toFixed(0));
-        return `${n} x${med(runs.map((r) => r.mult)).toFixed(1)} | ${f(at(mine))}(${mine.filter((c) => c.at !== null).length}/${mine.length}) | ${f(at(other))}(${other.filter((c) => c.at !== null).length}/${other.length})`;
+        return `${n} x${med(runs.map((r) => r.mult)).toFixed(1)} 스택합 ${med(runs.map((r) => r.stacks ?? 0)).toFixed(0)} | ${f(at(mine))}(${mine.filter((c) => c.at !== null).length}/${mine.length}) | ${f(at(other))}(${other.filter((c) => c.at !== null).length}/${other.length})`;
       });
       console.log(`${i + 1}회: ${parts.join('  //  ')}`);
+    }
+    console.log(`\n[${pol.name}] 스택 측정(집별, 원형 4개 x 시드 전체 중앙. 카드당 스택 중앙 · 덱 스택 합 · 구간(앞/가운데/마지막 1/3) 스택 증가 · 강화 고르기 · 공구함 배율 · 후반 30초 강타(퍼펙트))`);
+    for (let i = 1; i < maxI; i++) {
+      const v = archs.flatMap((n) => (d[n] ?? []).map((r) => r[i])).filter((x) => x && x.stackThirds);
+      if (!v.length) continue;
+      const per = archs.map((n) => { const w = (d[n] ?? []).map((r) => r[i]).filter((x) => x && x.stackThirds); return w.length ? med(w.map((x) => x.stackThirds[2])).toFixed(0) : '-'; }).join('/');
+      console.log(`  ${i + 1}회: 카드당 ${med(v.flatMap((x) => x.cardStacks)).toFixed(0)}(최대 ${Math.max(...v.flatMap((x) => x.cardStacks))}) | 합 ${med(v.map((x) => x.stackThirds.reduce((a, b) => a + b, 0))).toFixed(0)} | 구간 ${[0, 1, 2].map((q) => med(v.map((x) => x.stackThirds[q])).toFixed(0)).join('/')} (마지막 구간 원형별 ${per}) | 강화 ${med(v.map((x) => x.boosts)).toFixed(0)} | 배율 x${med(v.map((x) => x.mult)).toFixed(0)} | 30초 강타 ${med(v.map((x) => x.strike30)).toFixed(1)}(퍼펙트 ${med(v.map((x) => x.perfect30)).toFixed(1)})`);
     }
     console.log(`\n[${pol.name}] 문턱 자릿수 d 후보(원형 4개 x 시드 중앙값. 집 시간 DQ(기본 10·22·35·50·66·82%) 시점의 log10(목표) - log10(번 P))`);
     for (let i = 1; i < maxI; i++) {

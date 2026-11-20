@@ -1,7 +1,7 @@
 import { GEARS } from '../data/gear';
 import { PERKS, PERK_OFFER_SIZE } from '../data/perks';
 import { CARDS, CARD_OFFER_SIZE, DECK_MARKS, cardDef } from '../data/cards';
-import { cardChargeNeed, deckSlots, emptyBuff, emptyDeck, marksPassed, rollCardOffer, type DeckSlot, type DeckState } from './deck';
+import { cardChargeNeed, deckSlots, emptyBuff, emptyDeck, marksPassed, rollCardOffer, stackNeed, type DeckSlot, type DeckState } from './deck';
 import { rollPerkOffer, seededRng } from './perks';
 import { BOX_PATTERN, ROOM_BOXES } from '../data/unpack';
 import { boxHp, endlessHp } from './unpack';
@@ -163,6 +163,12 @@ const MIGRATIONS: Migrations = {
       : [];
     return { ...s, version: 15, deck: { ...d, slots, buff: emptyBuff() } };
   },
+  // 15 -> 16: 넘침 스택. 칸마다 stacks 0, 충전 스택 누계·강화 고르기 묶음 0. 눈금·★·targetScale·mark·묶음은 그대로라 공구함 배율이 이전과 같다
+  15: (s) => {
+    const d = isObj(s.deck) ? s.deck : {};
+    const slots = Array.isArray(d.slots) ? d.slots.map((o) => (isObj(o) ? { ...o, stacks: 0 } : o)) : [];
+    return { ...s, version: 16, deck: { ...d, slots, chargedStacks: 0, boostPacks: 0, boostMade: 0 } };
+  },
 };
 
 export type LoadResult =
@@ -238,7 +244,8 @@ export function sanitize(raw: Raw): GameState {
   if (Array.isArray(rawDeck.slots)) {
     for (const o of rawDeck.slots) {
       if (!isObj(o) || typeof o.id !== 'string' || !cardDef(o.id) || slots.some((s) => s.id === o.id) || slots.length >= deckSlotsMax) continue;
-      slots.push({ id: o.id, star: Math.min(3, Math.max(1, num(o.star, 1, true))), charge: Math.min(cardChargeNeed(moves, cardDef(o.id)?.rarity), num(o.charge, 0)) });
+      const stacks = num(o.stacks, 0, true);
+      slots.push({ id: o.id, star: Math.min(3, Math.max(1, num(o.star, 1, true))), charge: Math.min(stackNeed(cardChargeNeed(moves, cardDef(o.id)?.rarity), stacks), num(o.charge, 0)), stacks });
     }
   }
   const cardOffers: string[][] = [];
@@ -255,6 +262,9 @@ export function sanitize(raw: Raw): GameState {
     rerolls: Math.min(9, num(rawDeck.rerolls, d.deck.rerolls, true)),
     mark: Math.min(DECK_MARKS, num(rawDeck.mark, 0, true)),
     targetScale: Math.max(1e-6, num(rawDeck.targetScale, 1)),
+    chargedStacks: num(rawDeck.chargedStacks, 0, true),
+    boostPacks: num(rawDeck.boostPacks, 0, true),
+    boostMade: num(rawDeck.boostMade, 0, true),
     buff: isObj(rawDeck.buff)
       ? { nextStrike: rawDeck.buff.nextStrike === true, forceBomb: rawDeck.buff.forceBomb === true, perfects: Math.min(99, num(rawDeck.buff.perfects, 0, true)), boxesInFever: num(rawDeck.buff.boxesInFever, 0, true) }
       : emptyBuff(),

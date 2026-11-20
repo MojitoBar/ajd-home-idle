@@ -212,6 +212,7 @@ body:has(.overlay) .fx-canvas:not(.in-scene) { visibility: hidden; }
 .fx-float.z0 { font-size: var(--fs-m); }
 .fx-float.z2 { font-family: var(--f-bold); font-size: var(--fs-xl); }
 .fx-edge { position: absolute; inset: 0; box-sizing: border-box; border: 4px solid var(--g2); }
+.fx-flash { position: absolute; inset: 0; z-index: 0; visibility: hidden; pointer-events: none; }
 .fx-edgebox { position: absolute; inset: 0; box-sizing: border-box; border: 4px solid var(--g2); pointer-events: none; z-index: 6; }
 .fx-banner { z-index: 1; position: absolute; left: 50%; top: 40%; text-align: center; white-space: nowrap; }
 .fx-banner-big { font: 700 48px/52px var(--f-bold); color: var(--bcol, var(--g2)); text-shadow: 2px 0 0 var(--k0), -2px 0 0 var(--k0), 0 2px 0 var(--k0), 0 -2px 0 var(--k0); }
@@ -310,3 +311,6 @@ body:has(.overlay) .fx-canvas:not(.in-scene) { visibility: hidden; }
 .gear-card[hidden], .gear-max[hidden], .card .btn.buy[hidden] { display: none; }
 .card > .gear-max { align-self: center; justify-self: center; }
 button.badge { border: 0; background: transparent; cursor: pointer; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 방 안 입자 층: 방 안 글자(z 6)·게이지 아래, 방 그림 위 */
+.fx-canvas-room { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; image-rendering: pixelated; }
+body:has(.overlay) .fx-canvas-room { visibility: hidden; }

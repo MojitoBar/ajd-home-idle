@@ -101,6 +101,10 @@ const FEVER_CONFETTI_COLORS = [TOKENS.or, TOKENS.g2, TOKENS.g3];
 let layer: HTMLDivElement;
 let canvas: HTMLCanvasElement;
 let g2: CanvasRenderingContext2D;
+/** 방 안 입자 층: 방(.room) 안에서 글자(z 6) 바로 아래에 깔린다. 방을 벗어나는 날개 입자만 body 캔버스(canvas)에 그린다 */
+let rcanvas: HTMLCanvasElement | null = null;
+let bg2: CanvasRenderingContext2D;
+let rg2: CanvasRenderingContext2D;
 let dpr = 1;
 let w = 0;
 let h = 0;
@@ -114,7 +118,58 @@ export function hostParticles(scene: HTMLElement): void {
 
 export function clearParticles(): void {
   particles.length = 0;
-  if (canvas) g2.clearRect(0, 0, canvas.width, canvas.height);
+  shards.length = 0;
+  if (canvas) clearSurfaces();
+}
+
+function clearSurfaces(): void {
+  if (!bg2) return;
+  bg2.setTransform(1, 0, 0, 1, 0, 0);
+  bg2.clearRect(0, 0, canvas.width, canvas.height);
+  if (rcanvas) {
+    rg2.setTransform(1, 0, 0, 1, 0, 0);
+    rg2.clearRect(0, 0, rcanvas.width, rcanvas.height);
+  }
+}
+
+/** 방 입자 층을 방 안에 맞춰 두고 방의 화면 사각형을 돌려준다(방이 없거나 입자 캔버스가 장면 안이면 null). 방이 2배로 커진 PC 화면은 배율만큼 해상도를 올린다 */
+function syncRoom(): DOMRect | null {
+  if (!canvas || canvas.classList.contains('in-scene')) return null;
+  const room = document.querySelector<HTMLElement>('.room');
+  if (!room || !room.getClientRects().length || !room.offsetWidth) return null;
+  if (!rcanvas) {
+    rcanvas = document.createElement('canvas');
+    rcanvas.className = 'fx-canvas-room';
+    rcanvas.setAttribute('aria-hidden', 'true');
+    rg2 = rcanvas.getContext('2d')!;
+  }
+  if (room.lastElementChild !== rcanvas) room.append(rcanvas);
+  const r = room.getBoundingClientRect();
+  const sc = r.width / room.offsetWidth;
+  const cw = Math.round(room.offsetWidth * dpr * sc);
+  const ch = Math.round(room.offsetHeight * dpr * sc);
+  if (rcanvas.width !== cw || rcanvas.height !== ch) {
+    rcanvas.width = cw;
+    rcanvas.height = ch;
+  }
+  return r;
+}
+
+/** 방 안(가장자리에서 12px 안쪽)에 있는 점은 방 층에, 그 밖과 방을 가로지르는 날개 입자는 body 캔버스에 그린다 */
+function surfaceAt(rr: DOMRect | null, x: number, y: number): DOMRect | null {
+  return rr && x >= rr.left + 12 && x <= rr.right - 12 && y >= rr.top + 12 && y <= rr.bottom - 12 ? rr : null;
+}
+
+/** 그릴 면을 고른다: 방 사각형(rr)이 있으면 방 층(화면 좌표 그대로 쓰게 옮겨 둔다), 없으면 body 캔버스 */
+function useSurface(rr: DOMRect | null): void {
+  if (rr) {
+    g2 = rg2;
+    g2.setTransform(dpr, 0, 0, dpr, -rr.left * dpr, -rr.top * dpr);
+  } else {
+    g2 = bg2;
+    g2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  g2.imageSmoothingEnabled = false;
 }
 
 function ensure(): void {
@@ -131,7 +186,7 @@ function ensure(): void {
   canvas = document.createElement('canvas');
   canvas.className = 'fx-canvas';
   document.body.append(layer, canvas);
-  g2 = canvas.getContext('2d')!;
+  g2 = bg2 = canvas.getContext('2d')!;
   resize();
   window.addEventListener('resize', resize);
 }
@@ -173,10 +228,9 @@ function frames(total: number, fn: (i: number) => boolean | void, done?: () => v
 // ---------- 루프 ----------
 const particles: Particle[] = [];
 /** 지금 떠 있는 입자 수(성능 점검용) */
-export const particleCount = (): number => particles.length;
+export const particleCount = (): number => particles.length + shards.length;
 let looping = false;
 let last = 0;
-let hadParticles = false;
 const rollers = new Set<Roller>();
 
 function wake(): void {
@@ -187,11 +241,15 @@ function wake(): void {
 }
 
 function loop(now: number): void {
-  const dt = Math.min((now - last) / 1000, 0.05);
+  const real = Math.min((now - last) / 1000, 0.05);
   last = now;
-  for (const r of rollers) r.step(dt);
-  stepParticles(dt);
-  if (particles.length || rollers.size) requestAnimationFrame(loop);
+  const dt = now < freezeUntil ? 0 : real;
+  for (const r of rollers) r.step(real);
+  clearSurfaces();
+  const rr = syncRoom();
+  stepParticles(dt, rr);
+  stepShards(dt, rr);
+  if (particles.length || shards.length || rollers.size) requestAnimationFrame(loop);
   else looping = false;
 }
 
@@ -217,19 +275,8 @@ function roomRect(): DOMRect | null {
   return e.getBoundingClientRect();
 }
 
-function stepParticles(dt: number): void {
-  if (!particles.length) {
-    if (hadParticles) {
-      g2.clearRect(0, 0, canvas.width, canvas.height);
-      hadParticles = false;
-    }
-    return;
-  }
-  hadParticles = true;
-  g2.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g2.imageSmoothingEnabled = false;
-  g2.clearRect(0, 0, w, h);
-  const room = particles.some((p) => p.clip) ? roomRect() : null;
+function stepParticles(dt: number, room: DOMRect | null): void {
+  if (!particles.length) return;
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     if (p.delay > 0) {
@@ -265,6 +312,7 @@ function stepParticles(dt: number): void {
     if (p.clip && room && (p.x < room.left || p.x > room.right || p.y < room.top || p.y > room.bottom)) continue;
     if (p.bounds && (p.x < p.bounds.left || p.x > p.bounds.right || p.y < p.bounds.top || p.y > p.bounds.bottom)) continue;
     if (p.avoid && p.x >= p.avoid.left && p.x <= p.avoid.right && p.y >= p.avoid.top && p.y <= p.avoid.bottom) continue;
+    useSurface(surfaceAt(room, p.x, p.y));
     draw(p, t);
   }
 }
@@ -389,6 +437,274 @@ export function suck(x: number, y: number, r: number, o: { n?: number; colors?: 
     const s = (d / life) * 1.5;
     addParticle(base('dot', x + Math.cos(a) * d, y + Math.sin(a) * d, { vx: -Math.cos(a) * s, vy: -Math.sin(a) * s, g: 0, life, size: even((o.size ?? 4) * rnd(0.8, 1.25), 4), color: colors[(Math.random() * colors.length) | 0] }));
   }
+}
+
+// ---------- 파편·고리·꼬리 점(상자깡 연출) ----------
+// 일반 입자(MAX_PARTICLES 80)와 따로 센다. 파편 종류 합계는 SHARD_MAX(320)를 넘지 않아 화면 전체 입자는 400 이하.
+// 큰 연쇄에서도 DOM을 늘리지 않고 같은 캔버스에 그린다.
+interface Shard {
+  kind: 'shard' | 'smoke' | 'ring' | 'fly';
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  g: number;
+  age: number;
+  life: number;
+  delay: number;
+  size: number;
+  color: string;
+  floor?: number;
+  rest: boolean;
+  ring?: { sizes: number[]; colors: string[]; step: number };
+  fly?: { x0: number; y0: number; cx: number; cy: number; x1: number; y1: number; to: Element; onArrive?: () => void };
+}
+const shards: Shard[] = [];
+/** 파편·연기·고리·꼬리 점을 합친 상한 */
+export const SHARD_MAX = 320;
+/** 파편(위로 튀는 상자 조각)만의 상한 단계: 연쇄 문턱(10·50·100·500·1000)마다 한 단계씩 늘어난다 */
+export const DEBRIS_CAP = [60, 90, 130, 180, 240, 280];
+/** behind: 0.12초 뒤부터 파편이 그 뒤로 숨는 곳(상자). 연쇄 글자는 입자 층 위에 있어 비킬 필요가 없다 */
+let shardAvoid: (() => { behind: DOMRect[] }) | null = null;
+export function setShardAvoid(f: typeof shardAvoid): void {
+  shardAvoid = f;
+}
+const inRect = (r: DOMRect, x: number, y: number): boolean => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+let freezeUntil = 0;
+let lastStop = -1e9;
+
+/** 입자 움직임을 ms 동안 멈춘다(폭탄 정지 0.08초). 연달아 부르면 500ms에 한 번만 먹는다 */
+export function hitStop(ms: number): boolean {
+  const now = performance.now();
+  if (reduced() || now - lastStop < 500) return false;
+  lastStop = now;
+  freezeUntil = now + ms;
+  wake();
+  return true;
+}
+
+/** 상자 파편: 네모 도트(안쪽 4~8px) + 2px 남색 외곽선. 위로 튀었다 중력으로 떨어지고 바닥(floor)에서 한 번 튄 뒤 가만히 있다 작아진다 */
+export function debris(x: number, y: number, o: { n?: number; colors?: string[]; size?: number; speed?: number; gravity?: number; life?: number; floor?: number; cap?: number; up?: boolean } = {}): void {
+  if (reduced()) return;
+  ensure();
+  const cap = Math.min(o.cap ?? DEBRIS_CAP[0], SHARD_MAX);
+  const colors = snapAll(o.colors ?? [TOKENS.p1, TOKENS.p2, TOKENS.w2]);
+  const speed = o.speed ?? 300;
+  const n = o.n ?? 6;
+  for (let i = 0; i < n && shards.length < cap; i++) {
+    const a = o.up === false ? rnd(0, 6.283) : rnd(-Math.PI * 0.94, -Math.PI * 0.06);
+    const sp = rnd(0.4, 1) * speed;
+    shards.push({ kind: 'shard', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - speed * 0.25, g: o.gravity ?? 1100, age: 0, life: o.life ?? rnd(0.7, 1), delay: 0, size: even((o.size ?? 6) * rnd(0.75, 1.3), 4), color: colors[(Math.random() * colors.length) | 0], floor: o.floor, rest: false });
+  }
+  wake();
+}
+
+/** 연기 도트: 테두리 없이 위로 천천히 올라가며 작아진다 */
+export function smoke(x: number, y: number, o: { n?: number; colors?: string[]; size?: number; life?: number } = {}): void {
+  if (reduced()) return;
+  ensure();
+  const colors = snapAll(o.colors ?? [TOKENS.k3, TOKENS.k4, TOKENS.w2]);
+  for (let i = 0; i < (o.n ?? 8) && shards.length < SHARD_MAX; i++) {
+    shards.push({ kind: 'smoke', x: x + rnd(-16, 16), y: y + rnd(-6, 6), vx: rnd(-30, 30), vy: -rnd(70, 140), g: -40, age: 0, life: o.life ?? rnd(0.7, 1.1), delay: rnd(0, 0.12), size: even((o.size ?? 8) * rnd(0.8, 1.3), 4), color: colors[(Math.random() * colors.length) | 0], rest: false });
+  }
+  wake();
+}
+
+/** 네모 테두리 고리: sizes(변 길이)를 step초(기본 0.04)마다 한 칸씩 넘기며 커진다. 4px 테두리만 있다 */
+export function ring(x: number, y: number, sizes: number[], colors: string[], step = 0.04): void {
+  if (reduced() || shards.length >= SHARD_MAX) return;
+  ensure();
+  shards.push({ kind: 'ring', x, y, vx: 0, vy: 0, g: 0, age: 0, life: sizes.length * step, delay: 0, size: 4, color: '', rest: false, ring: { sizes, colors: colors.map(snapHex), step } });
+  wake();
+}
+
+/** 눌렸다 튀는 숫자(연쇄가 끝나 꽂힐 때) */
+function press(el: Element): void {
+  if (reduced() || !gate(el, 90)) return;
+  pxFrames(el, [{ translate: '0 2px', scale: '1 0.92' }, { translate: '0 -4px', scale: '1.04 1.06' }, { translate: '0 0', scale: '1 1' }], 50);
+}
+
+/** 꼬리 단 금 점 n개(상한 40)가 from에서 toEl로 날아가 꽂힌다. 점이 꽂힐 때마다 숫자가 눌렸다 튄다. 반환: 실제로 띄운 개수 */
+export function finale(from: Target, toEl: Element, n: number, o: { ms?: number } = {}): number {
+  if (reduced()) return 0;
+  ensure();
+  const a = center(from);
+  const b = center(toEl);
+  const count = Math.min(40, n);
+  let added = 0;
+  for (let i = 0; i < count && shards.length < SHARD_MAX; i++) {
+    const last = i === count - 1;
+    shards.push({
+      kind: 'fly',
+      x: a.x,
+      y: a.y,
+      vx: 0,
+      vy: 0,
+      g: 0,
+      age: 0,
+      life: (o.ms ?? 520) / 1000 + rnd(0, 0.12),
+      delay: i * 0.012 + rnd(0, 0.04),
+      size: i % 3 === 0 ? 8 : 6,
+      color: TOKENS.g2,
+      rest: false,
+      fly: {
+        x0: a.x,
+        y0: a.y,
+        cx: a.x + rnd(-120, 120),
+        cy: Math.min(a.y, b.y) - rnd(30, 130),
+        x1: b.x + rnd(-10, 10),
+        y1: b.y + rnd(-4, 4),
+        to: toEl,
+        onArrive: () => {
+          sfx.coin();
+          if (last || i % 6 === 0) press(toEl);
+        },
+      },
+    });
+    added++;
+  }
+  if (added) wake();
+  return added;
+}
+
+function stepShards(dt: number, room: DOMRect | null): void {
+  if (!shards.length) return;
+  const av = shardAvoid?.() ?? null;
+  for (let i = shards.length - 1; i >= 0; i--) {
+    const p = shards[i];
+    if (p.delay > 0) {
+      p.delay -= dt;
+      continue;
+    }
+    p.age += dt;
+    const t = p.age / p.life;
+    if (t >= 1) {
+      if (p.fly) {
+        p.fly.onArrive?.();
+      }
+      shards.splice(i, 1);
+      continue;
+    }
+    if (p.fly) {
+      const f = p.fly;
+      const e = t * t * (3 - 2 * t) * 0.3 + t * t * t * 0.7;
+      const u = 1 - e;
+      p.x = u * u * f.x0 + 2 * u * e * f.cx + e * e * f.x1;
+      p.y = u * u * f.y0 + 2 * u * e * f.cy + e * e * f.y1;
+      useSurface(surfaceAt(room, p.x, p.y));
+      drawFly(p, t);
+      continue;
+    }
+    if (p.kind === 'ring') {
+      useSurface(surfaceAt(room, p.x, p.y));
+      drawRing(p);
+      continue;
+    }
+    if (!p.rest) {
+      p.vy += p.g * dt;
+      p.vx *= 1 - 0.9 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (p.floor !== undefined && p.vy > 0 && p.y >= p.floor) {
+        p.y = p.floor;
+        if (p.age < 0.5 && p.vy > 160) {
+          p.vy = -p.vy * 0.42;
+          p.vx *= 0.6;
+        } else {
+          p.rest = true;
+          p.vx = p.vy = 0;
+        }
+      }
+    }
+    if (room && (p.x < room.left || p.x > room.right || p.y < room.top || p.y > room.bottom)) continue;
+    if (av && p.age > 0.12 && av.behind.some((r) => inRect(r, p.x, p.y))) continue;
+    useSurface(surfaceAt(room, p.x, p.y));
+    const s = t < 0.7 ? p.size : even(p.size * (t < 0.82 ? 0.75 : t < 0.92 ? 0.5 : 0.25), 2);
+    const cx = px(p.x - s / 2);
+    const cy = px(p.y - s / 2);
+    if (p.kind === 'shard') {
+      g2.fillStyle = TOKENS.k0;
+      g2.fillRect(cx - 2, cy - 2, s + 4, s + 4);
+      g2.fillStyle = p.color;
+      g2.fillRect(cx, cy, s, s);
+      if (s >= 6) {
+        g2.fillStyle = TOKENS.k5;
+        g2.fillRect(cx, cy, 2, 2);
+      }
+    } else {
+      g2.fillStyle = p.color;
+      g2.fillRect(cx, cy, s, s);
+    }
+  }
+}
+
+function drawRing(p: Shard): void {
+  const r = p.ring!;
+  const f = Math.min(r.sizes.length - 1, Math.floor(p.age / r.step));
+  const sz = px(r.sizes[f]);
+  const x = px(p.x - sz / 2);
+  const y = px(p.y - sz / 2);
+  g2.fillStyle = r.colors[f % r.colors.length];
+  g2.fillRect(x, y, sz, 4);
+  g2.fillRect(x, y + sz - 4, sz, 4);
+  g2.fillRect(x, y + 4, 4, sz - 8);
+  g2.fillRect(x + sz - 4, y + 4, 4, sz - 8);
+}
+
+/** 꼬리 단 점: 머리(2px 외곽선 금색 네모) + 앞서 지나간 자리에 작은 점 둘 */
+function drawFly(p: Shard, t: number): void {
+  const f = p.fly!;
+  const at = (tt: number): Pt => {
+    const e = tt * tt * (3 - 2 * tt) * 0.3 + tt * tt * tt * 0.7;
+    const u = 1 - e;
+    return { x: u * u * f.x0 + 2 * u * e * f.cx + e * e * f.x1, y: u * u * f.y0 + 2 * u * e * f.cy + e * e * f.y1 };
+  };
+  const tails: [number, number, string][] = [
+    [0.1, 4, TOKENS.g3],
+    [0.2, 2, TOKENS.g1],
+  ];
+  for (const [d, sz, col] of tails) {
+    if (t - d < 0) continue;
+    const q = at(t - d);
+    g2.fillStyle = col;
+    g2.fillRect(px(q.x - sz / 2), px(q.y - sz / 2), sz, sz);
+  }
+  const s = p.size;
+  g2.fillStyle = TOKENS.k0;
+  g2.fillRect(px(p.x - s / 2) - 2, px(p.y - s / 2) - 2, s + 4, s + 4);
+  g2.fillStyle = p.color;
+  g2.fillRect(px(p.x - s / 2), px(p.y - s / 2), s, s);
+  g2.fillStyle = TOKENS.k5;
+  g2.fillRect(px(p.x - s / 2), px(p.y - s / 2), 2, 2);
+}
+
+/** 대상을 2px 격자로 흔든다(프레임 40ms, 진폭이 줄어든다). shake는 최대 4px지만 이쪽은 amp까지 간다. 진행 중이면 더 센 쪽으로 다시 시작 */
+const quakes = new WeakMap<Element, { anim: Animation; amp: number }>();
+export function quake(target: Element, amp: number, ms = 240): void {
+  if (reduced()) return;
+  const el = (target.id === 'app' ? (target.querySelector('.page') ?? target) : target) as HTMLElement;
+  const cur = quakes.get(el);
+  if (cur && cur.anim.playState === 'running' && cur.amp > amp) return;
+  cur?.anim.cancel();
+  const n = Math.max(3, Math.round(ms / 40));
+  const kf: Keyframe[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = even(amp * (1 - i / (n + 1)), 2);
+    kf.push({ translate: `${i % 2 ? -a : a}px ${i % 2 ? Math.round(a / 4) * 2 : -Math.round(a / 4) * 2}px`, offset: i / n, easing: 'steps(1, end)' });
+  }
+  kf.push({ translate: '0 0', offset: 1 });
+  quakes.set(el, { anim: el.animate(kf, { duration: n * 40, easing: 'linear' }), amp });
+}
+
+/** 방 배경 번쩍: host 맨 아래 층(상자·글자·게이지 아래)을 colors 순서대로 40ms씩 채우고 지운다 */
+export function layerFlash(host: Element, colors: string[]): void {
+  if (reduced()) return;
+  host.querySelectorAll(':scope > .fx-flash').forEach((q) => q.remove());
+  const e = document.createElement('i');
+  e.className = 'fx-flash';
+  e.setAttribute('aria-hidden', 'true');
+  host.prepend(e);
+  pxFrames(e, colors.map((c) => ({ visibility: 'visible', background: snapHex(c) })), 40).onfinish = () => e.remove();
 }
 
 /** 태그가 붙은 입자를 모두 지운다 */

@@ -252,6 +252,9 @@ export function initUnpack(o: { room: HTMLElement; tapHint?: HTMLElement; toast:
   stage.append(toolEl);
   toolSpans.push(toolEl);
   window.setInterval(ambient, 160);
+  fx.setShardAvoid(() => {
+    return { behind: boxes[0] ? [boxes[0].root.getBoundingClientRect()] : [] };
+  });
 
   const mk = (from: number, side: string): HTMLElement => {
     const g = el('div', { cls: `un-slots un-only ${side}` });
@@ -877,6 +880,24 @@ interface ChainMeta {
   /** 묶음 연쇄에서 이 틱에 묶인 칸 수(점수 날림 개수를 늘린다) */
   sz?: number;
 }
+/** 연쇄 문턱: 10·50·100·500·1000단을 넘을 때마다 한 단계(1~5)씩 오른다. 단계가 오르면 파편 상한·흔들림·소리가 커진다 */
+const CHAIN_TIERS = [10, 50, 100, 500, 1000];
+const chainTierOf = (n: number): number => CHAIN_TIERS.filter((t) => n >= t).length;
+let chainTier = 0;
+/** 이번 칸에서 문턱을 넘었다: 연쇄 숫자가 평소보다 크게 튄다 */
+let chainBoostPop = false;
+/** 폭탄 정지(0.08초)로 다음 칸을 미룰 ms. 연쇄 하나에 세 번까지 */
+let bombStopMs = 0;
+let bombStops = 0;
+let lastQuakeAt = 0;
+const QUAKE_AMP = [4, 4, 6, 8, 10, 12];
+const SHARD_COLS: Record<string, string[]> = {
+  normal: ['#fff3d6', '#ecd3a0', '#d08a4a', '#8a4f24'],
+  gold: ['#ffc83d', '#ffeaa0', '#c98a00', '#ffffff'],
+  clock: ['#5b9bff', '#bcd6ff', '#145ce6', '#ffffff'],
+  bomb: ['#16224a', '#ff8a1f', '#ffc83d', '#8a96b8'],
+};
+const appEl = (): HTMLElement => document.getElementById('app') ?? room;
 let chainRun: { timer: number } | null = null;
 /** 서둘러 끝내기: 남은 빠른 틱 수(0이면 평소 속도), 끝난 뒤 부를 예약, 다음 틱을 당겨 부를 함수 */
 let chainFast = 0;
@@ -908,6 +929,11 @@ export const chainVisible = (): boolean => !!chainBox && !chainBox.hidden;
 /** 연쇄 시작: 머리글을 붙잡고(떠 있던 것은 치움) 판정 줄을 채운다 */
 function startChain(): void {
   window.clearTimeout(chainOff);
+  window.clearTimeout(sweepTimer);
+  chainTier = 0;
+  bombStops = 0;
+  bombStopMs = 0;
+  sfx.chainReset();
   fx.headHold(true);
   const j = chainJudge;
   chainJudge = null;
@@ -993,14 +1019,23 @@ function playChain(i: HeavyHitInput): void {
         cut = at2;
       }
     }
+    let crossed = false;
     try {
       if (at === 0) startChain();
+      const nt = chainTierOf(cut);
+      if (nt > chainTier) {
+        chainTier = nt;
+        crossed = true;
+      }
       if (box) {
         skipBursts(bs, at, cut - 1, i.pointsEl, n);
         const b1 = boxes[0];
         if (b1) boom(b1, bs[cut - 1], i.pointsEl, false, { j: cut - 1, n, sz: cut - at });
       }
+      chainBoostPop = crossed && !fx.isReduced();
       chainShow(cut, cum[cut - 1], cum[n - 1], n);
+      chainBoostPop = false;
+      if (crossed) chainBoost(chainTier);
     } catch (e) {
       chainRun = null;
       chainStep = null;
@@ -1013,7 +1048,9 @@ function playChain(i: HeavyHitInput): void {
     at = cut;
     t++;
     if (at < n) {
-      chainRun = { timer: window.setTimeout(step, grouped || chainFast > 0 ? CHAIN_TICK_MS : Math.max(35, base * (1.3 - (0.6 * at) / n))) };
+      const hold = bombStopMs;
+      bombStopMs = 0;
+      chainRun = { timer: window.setTimeout(step, hold + (grouped || chainFast > 0 ? CHAIN_TICK_MS : Math.max(35, base * (1.3 - (0.6 * at) / n)))) };
       return;
     }
     chainRun = null;
@@ -1138,7 +1175,7 @@ function chainShow(n: number, total: number, finalTotal = total, finalN = n): vo
     if (!fx.isReduced()) popFrames(box.lastElementChild as HTMLElement, [1.4, 1.2, 1.1, 1]);
   }
   if (!fx.isReduced()) {
-    chainPop = popFrames(b, [1.4, 1.2, 1.1, 1]);
+    chainPop = popFrames(b, chainBoostPop ? [2, 1.7, 1.4, 1.2, 1.1, 1] : [1.4, 1.2, 1.1, 1]);
     chainSumPop = popFrames(sum, [1.2, 1.1, 1]);
   }
 }
@@ -1173,6 +1210,32 @@ function chainPrizeChip(text: string, tier: number, pointsEl: Element, reduced: 
   );
 }
 
+/** 연쇄가 끝난 1.5초 뒤: 0.9초 넘게 남은 조각·납작 상자 DOM을 치우고 살아 있는 수를 다시 센다(연쇄 중 settle이 가로채거나 애니메이션이 멈춰 지우지 못한 것). 막 만든 것은 둔다 */
+let sweepTimer = 0;
+function sweepStage(): void {
+  if (chainRun || scene.adv || scene.land) return;
+  const now = performance.now();
+  for (const e of Array.from(stage.querySelectorAll<HTMLElement>('.un-bit, .un-flat'))) {
+    if (now - Number(e.dataset.t ?? 0) > 900) e.remove();
+  }
+  live = stage.querySelectorAll('.un-bit').length;
+}
+
+/** 문턱 돌파: 방 배경 번쩍(흰 → 연노랑 → 노랑 → 주황 → 흰+주황) + 화면 테두리 깜빡 + 네모 고리 + 흔들림 + 한 단계 오른 소리 */
+const TIER_FLASH = [[], ['#ffffff'], ['#ffeaa0'], ['#ffc83d'], ['#ff8a1f'], ['#ffffff', '#ff8a1f']];
+const TIER_EDGE = ['', '#ffffff', '#ffeaa0', '#ffc83d', '#ff8a1f', '#ff8a1f'];
+function chainBoost(t: number): void {
+  if (fx.isReduced()) return;
+  fx.layerFlash(room, TIER_FLASH[t]);
+  fx.edge(room, TIER_EDGE[t], t >= 4 ? [1, 0, 1, 0, 1, 1] : [1, 0, 1, 1, 0]);
+  const c = boxCenter();
+  const k = rs();
+  if (t >= 2) fx.ring(c.x, c.y - 24 * k, [40 * k, 96 * k, 160 * k], [TIER_EDGE[t], TIER_EDGE[t], '#ffffff'], 0.05);
+  fx.quake(appEl(), 6 + t * 2, 200);
+  sfx.chainTier(t);
+  vibrate([20, 20, 30 + t * 10]);
+}
+
 /** 끝: 합계 한 줄 + 상금 칩 + 마무리 연출. 0.6초쯤 머문 뒤 깜빡이며 사라진다 */
 function chainEnd(bs: BoxBurst[], prize: HeavyHitInput['prize'], pointsEl: Element, reduced: boolean, total: number): void {
   const box = chainEl();
@@ -1193,7 +1256,9 @@ function chainEnd(bs: BoxBurst[], prize: HeavyHitInput['prize'], pointsEl: Eleme
     }
     vibrate([30, 40, 60]);
   }
-  fx.absorb({ x: c.x, y: c.y }, pointsEl, Math.min(12, 3 + tier * 3), { delay: 0.06, offset: { x: 0, y: 0 } });
+  // 마침: 연쇄가 길수록(최대 40개) 꼬리 단 금 점이 번 돈 숫자로 날아가 꽂히고 숫자가 눌렸다 튄다
+  const dots = reduced ? 0 : fx.finale({ x: c.x, y: c.y }, pointsEl, Math.min(40, 4 + Math.round(Math.log10(n) * 11)));
+  if (!dots) fx.absorb({ x: c.x, y: c.y }, pointsEl, Math.min(12, 3 + tier * 3), { delay: 0.06, offset: { x: 0, y: 0 } });
   if (prize) {
     chainPrizeChip(`${CHAIN_PRIZES[prize.tier].n}연쇄 상금 +${formatNumber(prize.gain)} P`, prize.tier, pointsEl, reduced);
   }
@@ -1208,6 +1273,8 @@ function chainEnd(bs: BoxBurst[], prize: HeavyHitInput['prize'], pointsEl: Eleme
     fx.pxFrames(box, Array.from({ length: 4 }, (_, k) => ({ visibility: k % 2 ? 'visible' : 'hidden' })), 40).onfinish = hide;
   };
   chainOff = window.setTimeout(off, 600);
+  window.clearTimeout(sweepTimer);
+  sweepTimer = window.setTimeout(sweepStage, 1500);
 }
 
 const WHITE = 'brightness(0) invert(1)';
@@ -1261,6 +1328,7 @@ function bit(cls: string, text?: string): HTMLElement | null {
   if (live >= LIVE_CAP) return null;
   live++;
   const e = el('i', { cls, text });
+  e.dataset.t = String(performance.now());
   stage.append(e);
   return e;
 }
@@ -1487,18 +1555,47 @@ function specialBurst(sp: SpecialBox, c: { x: number; y: number }, s: number, in
     vibrate([20, 30, 20]);
     return;
   }
-  // 폭탄: 흰색 -> 주황 플래시, 방 흔들림(강타보다 세게), 사방으로 정사각형
+  // 폭탄: 흰 테두리 → 0.08초 정지 → 주황·노랑 네모 고리 + 큰 파편 사방으로 + 방 흔들림 + 연기
   fx.edge(room, '#ffffff', [1, 0, 0]);
   fx.edge(room, '#ff8a1f', [0, 1, 1, 0, 1]);
-  if (!blast) {
-    fx.shake(room, 10, 420);
-    fx.shake(app, 10, 420);
-  }
-  pburst(c.x, y, { n: 16, colors: ['or', 'g2', 'k1'], speed: 560, gravity: 0, size: 8, ring: true, life: 0.5 });
-  pburst(c.x, y, { n: 16, colors: ['or', 'g2', 'k1', 'g3'], speed: 420, gravity: 300, size: 6, life: 0.7 });
-  if (!inChain) window.setTimeout(() => pburst(c.x, y, { n: 12, colors: ['g2', 'g3', 'or'], speed: 300, gravity: 0, size: 6, ring: true, life: 0.45 }), 80);
-  sfx.bombBlast();
-  vibrate([40, 30, 70]);
+  const stop = !blast && !chainHurried && bombStops < 3 && fx.hitStop(80);
+  const go = (): void => {
+    if (fx.isReduced()) return;
+    const k2 = rs();
+    if (!blast) {
+      fx.quake(room, 10, 360);
+      fx.quake(app, 8, 360);
+      fx.layerFlash(room, ['#ffffff', '#ff8a1f']);
+      fx.ring(c.x, y, [48 * k2, 104 * k2, 168 * k2], ['#ff8a1f', '#ff8a1f', '#ffc83d'], 0.05);
+      fx.ring(c.x, y, [28 * k2, 68 * k2, 120 * k2], ['#ffc83d', '#ffeaa0', '#ffeaa0'], 0.05);
+      fx.debris(c.x, y, { n: 28, colors: ['#ff8a1f', '#ffc83d', '#16224a', '#8a4f24', '#ffffff'], size: 8 * k2, speed: 560 * k2, gravity: 900 * k2, floor: debrisFloor(), cap: 280, up: false, life: 1 });
+      fx.smoke(c.x, y - 12 * k2, { n: 10, size: 8 * k2 });
+    }
+    pburst(c.x, y, { n: 16, colors: ['or', 'g2', 'k1'], speed: 560, gravity: 0, size: 8, ring: true, life: 0.5 });
+    pburst(c.x, y, { n: 16, colors: ['or', 'g2', 'k1', 'g3'], speed: 420, gravity: 300, size: 6, life: 0.7 });
+    if (!inChain) window.setTimeout(() => pburst(c.x, y, { n: 12, colors: ['g2', 'g3', 'or'], speed: 300, gravity: 0, size: 6, ring: true, life: 0.45 }), 80);
+    sfx.bombBlast();
+    vibrate([40, 30, 70]);
+  };
+  if (stop) {
+    bombStops++;
+    bombStopMs = 80;
+    window.setTimeout(go, 80);
+  } else go();
+}
+
+/** 까지는 상자의 파편: 상자 색 네모 조각이 위로 튀어 바닥에서 한 번 튄다. 연쇄 단계가 오를수록 칸마다 더 많이, 화면에 더 많이 떠 있는다(전체 상한은 fx.DEBRIS_CAP) */
+const SHARD_N = [5, 7, 9, 11, 14, 18];
+function boxShards(burst: BoxBurst, c: { x: number; y: number }, s: number, chain?: ChainMeta): void {
+  const k = rs();
+  const tier = chain ? chainTier : 0;
+  const n = chain ? SHARD_N[tier] + Math.min(8, Math.floor((chain.sz ?? 1) / 6)) : 8;
+  const cols = SHARD_COLS[burst.special ?? 'normal'];
+  const y = c.y - s * 0.28 * k;
+  const floor = debrisFloor();
+  fx.debris(c.x, y, { n, colors: cols, size: 6 * k, speed: (280 + tier * 40) * k, gravity: 1100 * k, floor, cap: fx.DEBRIS_CAP[tier] });
+  if (burst.special === 'gold') fx.twinkle(c.x + (Math.random() - 0.5) * s * k * 0.6, y - 8 * k, '#ffeaa0', 8 * k, 0.3);
+  if (!chain || chain.j % 2 === 0) pburst(c.x, (floor ?? c.y) - 4 * k, { n: 3, colors: ['p2', 'w2', 'p1'], speed: 100, gravity: 260, size: 4, up: true });
 }
 
 function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean, chain?: ChainMeta): void {
@@ -1555,7 +1652,14 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean, ch
   if (burst.special && !reduced) specialBurst(burst.special, c, s, !!chain, burst.blast);
   if (!chain?.skip) fx.absorb({ x: c.x, y: c.y }, pointsEl, burst.special === 'gold' ? (chain ? 4 : 10) : chain ? 1 + Math.min(3, Math.floor((chain.sz ?? 1) / 12)) : 3, { delay: 0.04, offset: { x: 0, y: 0 } });
   if (!chain || chain.j === 0) vibrate([18, 30, 40]);
-  if (chain && !reduced && !chain.instant && chain.j % 3 === 2) fx.shake(document.getElementById('app') ?? room, 4, 160);
+  if (chain && !reduced && !chain.instant) {
+    const now = performance.now();
+    if (chainTier === 0 ? chain.j % 3 === 2 : now - lastQuakeAt > 70) {
+      lastQuakeAt = now;
+      fx.quake(appEl(), QUAKE_AMP[chainTier], 160);
+    }
+  }
+  if (!reduced) boxShards(burst, c, s, chain);
   if (chain && !reduced && !chain.instant) swing(1);
   if (burst.roomDone) roomDone();
   if (burst.freeBoxes.length >= 2) {
@@ -1699,9 +1803,12 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean, ch
     scene.els = scene.els.filter((e) => e !== old.root);
     old.root.remove();
     const flat = el('div', { cls: 'un-flat' }, pxImg('box/flat'));
+    flat.dataset.t = String(performance.now());
     stage.append(flat);
     scene.els.push(flat);
-    if (!fast) dustAt(flat);
+    // 연쇄 중(다음 칸이 곧 와서 서둘러 넘어오는 경우)에도 대기 상자가 당겨져 들어오고 먼지가 난다
+    const pull = fast && !!chain && !chain.instant && !chain.skip;
+    if (!fast || (pull && chain.j % 2 === 0)) dustAt(flat);
     layoutWait();
     const bigMover = mover.kind === 'big';
     boxes.forEach((nb, i) => {
@@ -1712,11 +1819,12 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean, ch
         } else if (fresh.includes(nb)) {
           nb.root.style.visibility = '';
           if (!fast) fx.pxFrames(nb.root, slideIn(), 40);
+          else if (pull) scene.anims.push(fx.pxFrames(nb.root, [{ translate: '110px 0' }, { translate: '36px 0' }], 40));
         } else {
           nb.root.classList.add('jump');
           setBoxPos(nb, 0);
-          if (!fast) {
-            const fr = [1, 2, 3].map((k) => {
+          if (!fast || pull) {
+            const fr = (pull ? [2, 3] : [1, 2, 3]).map((k) => {
               const p = k / 4;
               return { translate: `${g10(moverStart.x * (1 - p))}px ${g10(moverStart.y * (1 - p) - 32 * p * (1 - p))}px` };
             });
@@ -1729,6 +1837,7 @@ function boom(b: BoxEl, burst: BoxBurst, pointsEl: Element, reduced: boolean, ch
         return;
       }
       setBoxPos(nb, i);
+      if (pull && !fresh.includes(nb)) scene.anims.push(fx.pxFrames(nb.root, [{ translate: '18px 0' }, { translate: '6px 0' }], 40));
       if (!fresh.includes(nb)) return;
       nb.root.style.visibility = '';
       if (newK >= ROOM_BOXES) {

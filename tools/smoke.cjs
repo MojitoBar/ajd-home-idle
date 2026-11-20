@@ -228,7 +228,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await page.locator('.modal .btn.primary').click();
       await page.waitForTimeout(400);
       const sv = await save(page);
-      check('안내를 닫으면 notice가 지워지고 현재 version 15로 저장', sv.version === 15 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
+      check('안내를 닫으면 notice가 지워지고 현재 version 16으로 저장', sv.version === 16 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
       await page.reload();
       await page.waitForSelector('.phone');
       await page.waitForTimeout(800);
@@ -370,6 +370,44 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       check('피버: 켜면 피버 표시가 뜬다', (await page.evaluate(() => document.body.classList.contains('fever'))) && (await page.locator('.fever-tag.active').count()) === 1);
       check('가로 스크롤 없음(피버)', await noHScroll(page));
       await ctx.close();
+
+      // 6c. 연쇄 연출 한계: 1000단 재생 중 프레임·입자·DOM 수, 끝난 뒤 연출 DOM 정리
+      {
+        const r = await newPage(browser);
+        await setS(r.page, { unlocked: ALL, points: 1e6, earned: 1e5, tapLevel: 200, unpack: { box: 30, damage: 0, hp: 1 } });
+        await r.page.waitForTimeout(600);
+        await r.page.evaluate(() => window.__ajd.chain(50));
+        await r.page.waitForTimeout(3500);
+        await setS(r.page, { unpack: { box: 30, damage: 0, hp: 1 } });
+        const m = await r.page.evaluate(async () => {
+          const SEL = '.un-bit, .un-flat, .fx-flash, .fx-edge, .fx-edgebox:not(.combo-heat)';
+          let maxGap = 0, maxP = 0, maxDom = 0, n = 0;
+          window.__ajd.chain(1000);
+          let last = performance.now();
+          const t0 = last;
+          await new Promise((res) => {
+            const tick = (now) => {
+              if (n++ > 1) maxGap = Math.max(maxGap, now - last);
+              last = now;
+              maxP = Math.max(maxP, window.__ajd.particles());
+              maxDom = Math.max(maxDom, document.querySelectorAll(SEL).length);
+              if (now - t0 > 5000) return res();
+              requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          });
+          // 시계 상자가 켠 자동 연타가 계속 상자를 터뜨리니 끄고 본다
+          { const s = window.__ajd.get(); window.__ajd.set({ ...s, unpack: { ...s.unpack, rushSec: 0 } }); }
+          await new Promise((q) => setTimeout(q, 2800));
+          const stale = [...document.querySelectorAll(SEL)].filter((e) => !e.classList.contains('un-bit') || performance.now() - Number(e.dataset.t || 0) > 1500).length;
+          return { maxGap: Math.round(maxGap), maxP, maxDom, stale, playing: window.__ajd.getChain().playing };
+        });
+        check('연쇄 1000단: 재생 중 가장 긴 프레임 50ms 이하(첫 두 프레임 제외)', m.maxGap <= 50, JSON.stringify(m));
+        check('연쇄 1000단: 입자 최대 400 이하', m.maxP <= 400 && m.maxP > 100, JSON.stringify(m));
+        check('연쇄 1000단: 연출 DOM 최대 80 이하', m.maxDom <= 80, JSON.stringify(m));
+        check('연쇄 1000단: 연쇄가 끝나고(자동 연타를 끈 뒤) 2.8초 안에 연출 DOM 0개', !m.playing && m.stale === 0, JSON.stringify(m));
+        await r.ctx.close();
+      }
 
       const prep = async (kind) => {
         const r = await newPage(browser);
@@ -816,7 +854,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
     {
       const DECK_ALL = [...ALL, 'deck'];
       const GUIDE_DONE = { step: 18, n: 0, done: true };
-      const deckSet = (page, slots, offers, moves = 1) => page.evaluate(([sl, of, m]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: m, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1, charge: 0 })), offers: of } }); }, [slots, offers, moves]);
+      const deckSet = (page, slots, offers, moves = 1) => page.evaluate(([sl, of, m]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: m, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1, charge: 0, stacks: 0 })), offers: of } }); }, [slots, offers, moves]);
       {
         const { ctx, page } = await newPage(browser, { version: 12, unlocked: ALL, moves: 0, guide: GUIDE_DONE });
         await page.waitForTimeout(700);
@@ -930,7 +968,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       }
       // ---- 공구함 덱 2단계(화면): 카드 12장 · 발동 연출 · 피버 띠 ----
       const DECK2 = [...DECK_ALL, 'special', 'fever'];
-      const deck2Set = (page, slots, offers = []) => page.evaluate(([sl, of, un]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: un, deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1, charge: 0 })), offers: of } }); }, [slots, offers, DECK2]);
+      const deck2Set = (page, slots, offers = []) => page.evaluate(([sl, of, un]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: un, deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1, charge: 0, stacks: 0 })), offers: of } }); }, [slots, offers, DECK2]);
       const observeX = (page) => page.evaluate(() => { window.__xs = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('deck-x')) window.__xs.push(n.textContent); }).observe(document.querySelector('.deck-row'), { childList: true, subtree: true }); });
       {
         const { ctx, page } = await newPage(browser, { version: 12, unlocked: DECK2, moves: 1, guide: GUIDE_DONE });
@@ -1049,14 +1087,15 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
 
     // ---- 공구함 덱 3단계(화면): 충전 막대 · 공구함 ×N · 카드 완성 · 덱 완성 · 배율 내역 · 교체 ----
     {
-      // moves 1의 필요 눈금 = 40 x 0.35 = 14
-      const NEED = 14;
-      const charged = (page, slots, offers = []) => page.evaluate(([sl, of]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck', 'fever', 'special'], deck: { ...s.deck, slots: sl.map((x) => ({ id: x[0], star: 1, charge: x[1] })), offers: of } }); }, [slots, offers]);
+      // moves 5의 필요 눈금: 일반 40 x 0.4 = 16, 레어 50 x 0.4 = 20(눈금이 필요 눈금에 닿으면 바로 넘쳐 스택 +1)
+      const NEED = 16;
+      const RARE = 20;
+      const charged = (page, slots, offers = []) => page.evaluate(([sl, of]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 5, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck', 'fever', 'special'], deck: { ...s.deck, slots: sl.map((x) => ({ id: x[0], star: 1, charge: x[1], stacks: 0 })), offers: of } }); }, [slots, offers]);
       const perfectHit = (page) => page.evaluate(() => { window.__ajd.zone(0.5); window.__ajd.charge(0.5); });
       const watch = (page) => page.evaluate(() => { window.__xs = []; window.__bn = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) { if (n.classList?.contains('deck-x')) window.__xs.push(n.textContent); if (n.classList?.contains('fx-banner')) window.__bn.push(n.textContent); } }).observe(document.body, { childList: true, subtree: true }); });
       const px = (page) => page.evaluate(() => [...document.querySelectorAll('.deck-row .deck-bar i')].map((i) => parseInt(i.style.width || '0', 10)));
       {
-        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
+        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 5, guide: { step: 18, n: 0, done: true } });
         await page.waitForTimeout(500);
         await charged(page, [['P1', 3], ['C1', 0]]);
         await page.waitForTimeout(400);
@@ -1079,7 +1118,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await ctx.close();
       }
       {
-        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
+        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 5, guide: { step: 18, n: 0, done: true } });
         await page.waitForTimeout(500);
         await charged(page, [['P1', NEED - 1], ['C1', 0]]);
         await page.waitForTimeout(400);
@@ -1088,28 +1127,28 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.waitForTimeout(1200);
         const xs = await page.evaluate(() => window.__xs);
         const t = await text(page, '.deck-mult');
-        check('덱 3단계: 카드가 꽉 차면 칸 위에 ×4가 한 번 뜨고 공구함 숫자가 ×4가 된다', xs.filter((x) => x === '×4').length === 1 && t === '×4', JSON.stringify([xs, t]));
-        check('덱 3단계: 막대가 꽉 차면 노랑(full)', (await page.locator('.deck-bar.full').count()) === 1);
+        check('덱 3단계: 눈금이 차 넘치면 칸 위에 ×4.6이 한 번 뜨고 공구함 숫자가 ×4.6이 된다(스택 1)', xs.filter((x) => x === '×4.6').length === 1 && t === '×4.6', JSON.stringify([xs, t]));
+        check('덱 3단계: 넘치면 막대가 노랑 넘침 색(ov)으로 다시 찬다', (await page.locator('.deck-bar.ov').count()) === 1);
         await page.locator('.deck-row').click();
         await page.waitForTimeout(400);
         const tb = await text(page, '.deck-panel');
-        check('덱 3단계: 공구함 탭에 배율 큰 숫자·지금/최대·충전 방법', tb.includes('공구함 배율') && tb.includes('지금 ×4') && tb.includes('최대 ×4') && tb.includes('퍼펙트 강타로 충전') && tb.includes('긴 연쇄로 충전'), tb.replace(/\n/g, ' ').slice(0, 160));
+        check('덱 3단계: 공구함 탭에 배율 큰 숫자·지금/최대·충전 방법', tb.includes('공구함 배율') && tb.includes('지금 ×4.6') && tb.includes('최대 ×4') && tb.includes('퍼펙트 강타로 충전') && tb.includes('긴 연쇄로 충전'), tb.replace(/\n/g, ' ').slice(0, 160));
         await ctx.close();
       }
       {
-        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
+        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 5, guide: { step: 18, n: 0, done: true } });
         await page.waitForTimeout(500);
-        await charged(page, [['P1', NEED - 1], ['P3', NEED], ['F3', NEED], ['C1', NEED]]);
+        await charged(page, [['P1', NEED - 1], ['P3', NEED], ['F3', RARE], ['C1', NEED]]);
         await page.waitForTimeout(400);
         await watch(page);
         await perfectHit(page);
         await page.waitForTimeout(5000);
         const bn = await page.evaluate(() => window.__bn);
-        check('덱 3단계: 덱이 다 차면 큰 글자 "공구함 완성 ×256"가 한 번 뜬다', bn.filter((b) => b.includes('공구함 완성 ×256')).length === 1, JSON.stringify(bn));
+        check('덱 3단계: 덱이 다 차면 큰 글자 "공구함 완성 ×N"이 한 번 뜬다', bn.filter((b) => /공구함 완성 ×\d+/.test(b)).length === 1, JSON.stringify(bn));
         await ctx.close();
       }
       {
-        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 1, guide: { step: 18, n: 0, done: true } });
+        const { ctx, page } = await newPage(browser, { version: 13, unlocked: [...ALL, 'deck', 'special', 'fever'], moves: 5, guide: { step: 18, n: 0, done: true } });
         await page.waitForTimeout(500);
         await charged(page, [['P1', 9], ['P3', 5], ['C1', 7], ['S3', 3]], [['C3', 'F1', 'S1']]);
         await page.waitForTimeout(400);
@@ -1298,6 +1337,170 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         });
         check(`덱 5단계 ${w}폭: 카드 줄 ★ 점·충전 막대·"공구함 ×N"이 겹치지 않고 넘치지 않는다`, g.bad.length === 0 && !g.over && !g.rowOver && g.stars === '3,2,3,3', JSON.stringify(g));
         check(`덱 5단계 ${w}폭: 장전된 C5 칸에 주황 깜빡임(armed)`, g.armed === 1);
+        await ctx.close();
+      }
+    }
+
+
+    // ---- 덱 스택(넘침) 화면 ----
+    {
+      const UN = [...ALL, 'deck', 'fever', 'special'];
+      const GD = { step: 18, n: 0, done: true };
+      const stackSet = (page, slots, ex = {}) => page.evaluate(([sl, ex2, un]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: un, deck: { ...s.deck, offers: [], boostPacks: 0, ...ex2, slots: sl.map(([id, stacks, charge = 0]) => ({ id, star: 1, charge, stacks })) } }); window.__ajd.rush(0); }, [slots, ex, UN]);
+      const badges = (page) => page.evaluate(() => [...document.querySelectorAll('.deck-slot')].map((s) => { const b = s.querySelector('.deck-stack'); return b && !b.hidden ? `${b.textContent}/${b.dataset.tier}` : ''; }));
+      const SH = path.join(SHOTS, 's1-390-');
+      const need = (page, i) => page.evaluate((k) => Number(document.querySelectorAll('.deck-bar')[k].dataset.charge.split('/')[1]), i);
+      {
+        const { ctx, page } = await newPage(browser, { version: 16, unlocked: UN, moves: 1, guide: GD });
+        await page.waitForTimeout(600);
+        await stackSet(page, [['P2', 3], ['P3', 12], ['C1', 27], ['S3', 0, 5]]);
+        await page.waitForTimeout(700);
+        const b = await badges(page);
+        check('스택: 저장에 스택이 있으면 배지 숫자·단계가 맞게 보인다(3·12·27, 0은 없음)', b.join('|') === '×3/0|×12/1|×27/2|', b.join('|'));
+        const ov = await page.evaluate(() => [...document.querySelectorAll('.deck-bar')].map((e) => e.classList.contains('ov')).join());
+        check('스택: 스택이 붙은 막대는 넘침 색(ov), 안 붙은 막대는 아님', ov === 'true,true,true,false', ov);
+        const sum = await text(page, '.deck-ss');
+        check('스택: 덱 줄 옆에 스택 합(42)이 보인다', sum.includes('42'), sum);
+        await page.screenshot({ path: SH + 'row.png' });
+        await stackSet(page, [['P2', 300], ['P3', 99], ['C1', 30], ['S3', 1]]);
+        await page.waitForTimeout(700);
+        const geo = await page.evaluate(() => [...document.querySelectorAll('.deck-slot')].map((s) => { const b = s.querySelector('.deck-stack').getBoundingClientRect(); const r = s.getBoundingClientRect(); const el = s.querySelector('.deck-stack'); return { l: b.left - r.left, r: b.right - r.right, fit: el.scrollWidth <= el.clientWidth + 1, vp: b.right <= innerWidth && b.left >= 0 }; }));
+        check('스택: 스택 300·99도 배지 글자가 안 잘리고 칸 왼쪽으로 나가지 않는다', geo.every((g) => g.vp && g.l >= -2), JSON.stringify(geo));
+        await page.screenshot({ path: SH + 'row-300.png' });
+        await ctx.close();
+      }
+      {
+        // 강타로 스택이 오른다: 배지 숫자 · 연출 클래스 붙었다 떨어짐 · 연속 사진
+        const { ctx, page } = await newPage(browser, { version: 16, unlocked: UN, moves: 1, guide: GD });
+        await page.waitForTimeout(600);
+        await stackSet(page, [['P2', 3], ['P3', 12], ['C1', 27], ['S3', 0, 5]]);
+        await page.waitForTimeout(600);
+        const n0 = await need(page, 0);
+        const nextNeed = n0 * 1.15 ** 3;
+        await stackSet(page, [['P2', 3, Math.floor(nextNeed) - 1], ['P3', 12], ['C1', 27], ['S3', 0, 5]]);
+        await page.waitForTimeout(600);
+        await page.evaluate(() => { window.__deckSlow = 2; window.__cls = []; new MutationObserver((ms) => { for (const m of ms) if (m.attributeName === 'class' && m.target.classList.contains('stack-up') && !m.oldValue?.includes('stack-up')) window.__cls.push(performance.now()); }).observe(document.querySelector('.deck-row'), { attributes: true, subtree: true, attributeOldValue: true }); window.__ajd.zone(0.5); window.__ajd.charge(0.5); });
+        await page.waitForSelector('.deck-slot.stack-up', { timeout: 15000 });
+        for (let i = 1; i <= 8; i++) await page.screenshot({ path: `${SH}up-0${i}.png`, clip: { x: 0, y: 380, width: 390, height: 464 } });
+        await page.waitForTimeout(1500);
+        const st = (await gs(page)).deck.slots;
+        const b = await badges(page);
+        check('스택: 강타로 스택이 오르면 배지 숫자가 오른다', st[0].stacks >= 4 && b[0].startsWith(`×${st[0].stacks}/`), JSON.stringify([st.map((x) => x.stacks), b]));
+        check('스택: 연출 클래스가 붙었다 떨어진다', (await page.evaluate(() => window.__cls.length)) >= 1 && (await page.locator('.deck-slot.stack-up').count()) === 0 && (await page.locator('.deck-stack.up').count()) === 0);
+        // 한꺼번에 여러 스택: +N으로 합쳐 보인다
+        await page.evaluate(() => { window.__xs = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('stack-plus')) window.__xs.push(n.textContent); }).observe(document.querySelector('.deck-row'), { childList: true, subtree: true }); });
+        await stackSet(page, [['P2', st[0].stacks, 0], ['P3', 12], ['C1', 27], ['S3', 0, 5]]);
+        await page.waitForTimeout(300);
+        await page.evaluate((n) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, deck: { ...s.deck, slots: s.deck.slots.map((x, i) => (i === 1 ? { ...x, stacks: x.stacks + n } : x)) } }); window.__ajd.rush(0); }, 3);
+        await page.waitForTimeout(1200);
+        const xs = await page.evaluate(() => window.__xs);
+        check('스택: 한 번에 3 오르면 "+3"으로 합쳐 한 번만 보인다', xs.join() === '+3', xs.join());
+        // 연타해도 카드당 연출은 0.15초에 한 번
+        await page.evaluate(() => { window.__deckSlow = 1; window.__cls.length = 0; });
+        for (let i = 0; i < 10; i++) {
+          await page.evaluate(() => { const s = window.__ajd.get(); window.__ajd.set({ ...s, deck: { ...s.deck, slots: s.deck.slots.map((x, j) => (j === 2 ? { ...x, stacks: x.stacks + 1 } : x)) } }); window.__ajd.rush(0); });
+          await page.waitForTimeout(25);
+        }
+        await page.waitForTimeout(900);
+        const cl = await page.evaluate(() => ({ n: window.__cls.length, t: window.__cls.slice() }));
+        const fin = (await gs(page)).deck.slots[2].stacks;
+        const fb = await badges(page);
+        check('스택: 10번 연속 올라도 연출은 묶여 4번 이하이고 배지는 끝 값에 닿는다', cl.n >= 1 && cl.n <= 4 && fb[2].startsWith(`×${fin}/`), JSON.stringify([cl.n, fin, fb[2]]));
+        await ctx.close();
+      }
+      {
+        // 강화 고르기 + 패널 + 교체 + 규칙 안내
+        const { ctx, page } = await newPage(browser, { version: 16, unlocked: UN, moves: 1, guide: GD });
+        await page.waitForTimeout(600);
+        await stackSet(page, [['P2', 3], ['P3', 12], ['C1', 27], ['S3', 0, 5]], { boostPacks: 1, boostMade: 1, chargedStacks: 6 });
+        await page.waitForTimeout(700);
+        check('강화: 묶음이 있으면 주황 알림 점과 "강화 고르기" 버튼이 뜬다', (await vis(page, '.deck-alert')) && (await text(page, '.deck-alert')).includes('강화 고르기') && (await page.locator('.dock [data-ux="deck"] .dot:visible').count()) === 1);
+        await tab(page, 'deck').click();
+        await page.waitForTimeout(500);
+        const pt = await text(page, '.deck-panel');
+        check('패널: 스택 합·카드별 스택·다음 스택 배수가 보인다', pt.includes('스택 합 42') && (await page.locator('.deck-panel .pr-stack').count()) === 4 && pt.includes('스택 12') && pt.includes('다음 ×') && pt.includes('다음 스택까지'), pt.slice(0, 200));
+        const po = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+        check('패널: 가로 넘침 없음', !po);
+        await page.locator('.deck-panel .dp-list').scrollIntoViewIfNeeded();
+        await page.evaluate(() => document.querySelector('.deck-panel .dp-list').scrollIntoView({ block: 'start' }));
+        await page.waitForTimeout(200);
+        await page.screenshot({ path: SH + 'panel.png', fullPage: false });
+        await page.locator('.deck-panel .dp-pick').first().click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(1400);
+        const bo = await page.evaluate(() => ({ n: document.querySelectorAll('.deck-pick .pcard').length, boost: document.querySelectorAll('.deck-pick .pcard.boostopt').length, title: document.querySelector('.modal-head h2')?.textContent, hs: document.documentElement.scrollWidth > document.documentElement.clientWidth }));
+        check('강화: 3택 창이 뜨고 스택 +2 후보가 둘 있다', bo.n === 3 && bo.boost === 2 && bo.title.includes('강화 고르기') && !bo.hs, JSON.stringify(bo));
+        await page.screenshot({ path: SH + 'boost.png' });
+        const before = (await gs(page)).deck.slots.map((x) => x.stacks);
+        const idx = await page.evaluate(() => [...document.querySelectorAll('.deck-pick .pcard')].findIndex((c) => c.classList.contains('boostopt')));
+        await page.evaluate(() => { window.__cls = []; new MutationObserver((ms) => { for (const m of ms) if (m.attributeName === 'class' && m.target.classList.contains('stack-up') && !m.oldValue?.includes('stack-up')) window.__cls.push(1); }).observe(document.body, { attributes: true, subtree: true, attributeOldValue: true }); });
+        await page.locator('.deck-pick .pcard').nth(idx).click();
+        await page.waitForTimeout(2200);
+        const after = (await gs(page)).deck;
+        const diff = after.slots.map((x, i) => x.stacks - before[i]);
+        check('강화: 고르면 그 카드에 스택 +2, 묶음이 줄고 창이 닫히고 연출이 난다', diff.filter((d) => d === 2).length === 1 && diff.filter((d) => d !== 0 && d !== 2).length === 0 && after.boostPacks === 0 && (await page.locator('.modal').count()) === 0 && (await page.evaluate(() => window.__cls.length)) >= 1, JSON.stringify([diff, after.boostPacks]));
+        // 교체 화면: 이 칸의 스택 N -> 절반
+        await page.evaluate(() => { const s = window.__ajd.get(); window.__ajd.set({ ...s, deck: { ...s.deck, offers: [['C3', 'S1', 'C2']] } }); window.__ajd.rush(0); });
+        await page.waitForTimeout(500);
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(1400);
+        await page.evaluate(() => { const c = [...document.querySelectorAll('.deck-pick .pcard')].find((x) => !x.classList.contains('maxed')); c.click(); });
+        await page.waitForTimeout(600);
+        const rp = await text(page, '.modal.deck-pick');
+        check('교체: 칸마다 "스택 N → N/2"가 보인다', /스택 \d+ → \d+/.test(rp) && rp.includes('절반'), rp.slice(0, 160));
+        await page.screenshot({ path: SH + 'replace.png' });
+        await page.locator('.modal-actions .btn', { hasText: '돌아가기' }).click();
+        await page.waitForTimeout(300);
+        await page.locator('.deck-pick .deck-odds-btn').click();
+        const od = await text(page, '.modal.deck-pick');
+        check('규칙 안내: 확률 창에 스택 규칙 단락이 있다', od.includes('스택 +1') && od.includes('강화 고르기') && od.includes('절반'), od.slice(-120));
+        await ctx.close();
+      }
+      {
+        // 고르기가 여러 개 연달아(v15 저장에서 한꺼번에 열리는 경우)
+        const { ctx, page } = await newPage(browser, { version: 16, unlocked: UN, moves: 1, guide: GD });
+        await page.waitForTimeout(600);
+        await stackSet(page, [['P2', 3], ['P3', 12]], { boostPacks: 4, boostMade: 4, chargedStacks: 24 });
+        await page.waitForTimeout(700);
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(1300);
+        let ok = true; let seen = [];
+        for (let i = 0; i < 4; i++) {
+          const g = await page.evaluate(() => ({ t: document.querySelector('.modal-head h2')?.textContent, n: document.querySelectorAll('.deck-pick .pcard').length, hs: document.documentElement.scrollWidth > document.documentElement.clientWidth, out: [...document.querySelectorAll('.deck-pick .pcard')].some((c) => { const r = c.getBoundingClientRect(); return r.right > innerWidth + 1 || r.left < -1; }) }));
+          seen.push(g.t);
+          ok = ok && g.n === 3 && !g.hs && !g.out;
+          await page.locator('.deck-pick .modal-actions .btn', { hasText: '건너뛰기' }).click();
+          await page.waitForTimeout(i < 3 ? 1500 : 600);
+        }
+        check('강화: 묶음 4개가 연달아 떠도 3택이 깨지지 않고 "남은 묶음 N"이 줄어든다', ok && seen[0].includes('남은 묶음 4') && seen[3].includes('강화 고르기') && !seen[3].includes('남은') && (await page.locator('.modal').count()) === 0 && (await gs(page)).deck.boostPacks === 0, JSON.stringify(seen));
+        await page.evaluate(() => { const s = window.__ajd.get(); window.__ajd.set({ ...s, deck: { ...s.deck, offers: [['C3', 'C1', 'S1'], ['C3', 'C1', 'S1'], ['C2', 'C1', 'S1']] } }); window.__ajd.rush(0); });
+        await page.waitForTimeout(500);
+        await page.locator('.deck-alert').click();
+        await page.waitForSelector('.modal.deck-pick .pcard');
+        await page.waitForTimeout(1300);
+        const g2 = await page.evaluate(() => ({ t: document.querySelector('.modal-head h2')?.textContent, n: document.querySelectorAll('.deck-pick .pcard').length }));
+        check('카드 고르기: 묶음 3개가 연달아 떠도 3택이 안 깨진다', g2.n === 3 && g2.t.includes('남은 묶음 3'), JSON.stringify(g2));
+        await ctx.close();
+      }
+      {
+        // v15 저장을 불러온다
+        const v15 = { version: 15, unlocked: UN, moves: 1, guide: GD, earned: 1e5, deck: { slots: [{ id: 'P2', star: 1, charge: 6 }, { id: 'P3', star: 2, charge: 14 }], offers: [['C3', 'C1', 'S1']], rerolls: 2, mark: 1, seen: [], buff: { nextStrike: false, forceBomb: false, perfects: 0, boxesInFever: 0 }, targetScale: 1 } };
+        const { ctx, page } = await newPage(browser, v15);
+        await page.waitForTimeout(900);
+        const s = await gs(page);
+        check('v15 저장: 불러오면 스택 0으로 이어지고 줄이 정상으로 뜬다', s.deck.slots.length === 2 && s.deck.slots.every((x) => x.stacks === 0) && (await page.locator('.deck-slot.on').count()) === 2 && (await badges(page)).every((x) => x === ''), JSON.stringify(s.deck.slots));
+        await ctx.close();
+      }
+      for (const w of [360]) {
+        const { ctx, page } = await newPage(browser, { version: 16, unlocked: UN, moves: 1, guide: GD }, '?debug', { ...MOBILE, viewport: { width: w, height: 800 } });
+        await page.waitForTimeout(600);
+        await stackSet(page, [['P2', 3], ['P3', 12], ['C1', 27], ['S3', 0, 5]]);
+        await page.waitForTimeout(700);
+        const g = await page.evaluate(() => { const side = document.querySelector('.deck-side').getBoundingClientRect(); const ss = document.querySelector('.deck-ss').getBoundingClientRect(); const title = document.querySelector('.deck-title'); return { over: document.documentElement.scrollWidth > document.documentElement.clientWidth, ssOut: ss.right > side.right + 1 || ss.left < side.left - 1, tOver: title.scrollWidth > title.clientWidth + 1, hit: [...document.querySelectorAll('.deck-stack')].some((b) => { const r = b.getBoundingClientRect(); return r.right > side.left + 4 && r.left < side.right; }) }; });
+        check(`스택 ${w}폭: 스택 합·배지가 옆 글자와 겹치지 않고 넘치지 않는다`, !g.over && !g.ssOut && !g.tOver, JSON.stringify(g));
+        await page.screenshot({ path: path.join(SHOTS, `s1-${w}-row.png`) });
         await ctx.close();
       }
     }

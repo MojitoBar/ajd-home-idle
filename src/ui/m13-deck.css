@@ -158,3 +158,43 @@ body.reduce-motion .deck-pick .pcard.r-legend .pface { animation: none; }
 
 /* 고르기 창 위에서도 입자가 보이게: 입자 캔버스는 창이 열려 있으면 숨겨지고 창 아래(z 8)에 깔려서, 뒤집힘·고름 입자가 한 번도 안 보였다 */
 body:has(.overlay .deck-pick) .fx-canvas:not(.in-scene) { visibility: visible; z-index: 12; }
+
+/* ---- 스택(넘침) ---- */
+/* 스택 배지: 칸 오른쪽 아래 모서리. 노랑 면 + 남색 2px 테두리, 15px 굵게. 10·20·30을 넘길 때마다 한 단계 화려(테두리 겹·반짝 도트) */
+.deck-stack { position: absolute; right: 0; top: 46px; z-index: 3; box-sizing: border-box; min-width: 24px; height: 20px; padding: 0 2px; display: block; text-align: center; font: 700 var(--fs-m)/16px var(--f-bold); font-synthesis: none; white-space: nowrap; color: var(--k1); background: var(--g2); border: 2px solid var(--k1); pointer-events: none; }
+.deck-stack[hidden] { display: none; }
+.deck-stack[data-tier="1"] { background: var(--g3); box-shadow: 0 0 0 2px var(--g2), 0 0 0 4px var(--k1); }
+.deck-stack[data-tier="2"] { background: var(--g3); box-shadow: 0 0 0 2px var(--or), 0 0 0 4px var(--k1); }
+.deck-stack[data-tier="3"] { background: var(--g3); box-shadow: 0 0 0 2px var(--or), 0 0 0 4px var(--k1), 0 0 0 6px var(--g2); }
+.deck-stack[data-tier="2"]::before, .deck-stack[data-tier="3"]::before, .deck-stack[data-tier="3"]::after { content: ''; position: absolute; width: 4px; height: 4px; background: var(--k5); box-shadow: 0 0 0 2px var(--k1); animation: stk-twinkle 800ms steps(1) infinite; }
+.deck-stack[data-tier="2"]::before, .deck-stack[data-tier="3"]::before { left: -6px; top: -4px; }
+.deck-stack[data-tier="3"]::after { right: -6px; top: -4px; animation-delay: 400ms; }
+/* 배지는 카드 그림 아래(칸 아래 6px 받침과 그림 사이 빈 띠 40~48px부터)에 걸친다. 배지가 하나라도 있으면 줄이 18px 길어지고 모든 칸의 충전 막대가 배지 아래(74px)로 내려간다 */
+.deck-row:has(.deck-stack:not([hidden])) { height: 78px; }
+.deck-row:has(.deck-stack:not([hidden])) .deck-bar { margin-top: 26px; }
+@keyframes stk-twinkle { 0% { visibility: visible; } 50% { visibility: hidden; } }
+body.reduce-motion .deck-stack::before, body.reduce-motion .deck-stack::after { animation: none; }
+/* 오른 순간: 남색 면 + 흰 글자 → 노랑 글자 → 노랑 면 */
+.deck-stack.up { animation: stk-up 360ms steps(1) both; }
+@keyframes stk-up { 0% { background: var(--k1); color: var(--k5); } 34% { background: var(--k1); color: var(--g3); } 67% { background: var(--k5); color: var(--k1); } }
+body.reduce-motion .deck-stack.up { animation: none; background: var(--k5); }
+.deck-slot.on.stack-up { box-shadow: 0 0 0 4px var(--g3), 0 6px 0 0 var(--k1); }
+.deck-x.stack-plus { color: var(--g3); margin-top: -30px; }
+/* 넘침 막대: 노랑으로 다시 차오른다(처음 채우는 파랑과 구분) */
+.deck-bar.ov i, .deck-bar.ov.res i { background: var(--g2); animation: none; }
+/* 덱 줄 옆: 제목 줄 끝에 스택 합 */
+.deck-ss { margin-left: var(--s1); color: var(--g2); }
+.deck-ss[hidden] { display: none; }
+.deck-ss.pop, .deck-mult.pop { color: var(--k5); }
+/* 패널 */
+.dp-stack { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); padding: var(--s2) var(--s3); margin: 0 2px; --face: var(--p1); --line: var(--k1); font-family: var(--f-bold); font-synthesis: none; font-size: var(--fs-s); line-height: var(--lh-s); color: var(--dim); }
+.dp-stack b { font-size: var(--fs-m); line-height: var(--lh-m); color: var(--g0); white-space: nowrap; }
+.pr-stack { display: flex; flex-wrap: wrap; gap: 0 var(--s2); margin-top: var(--s1); font-family: var(--f-bold); font-synthesis: none; font-size: var(--fs-s); line-height: var(--lh-s); color: var(--dim); }
+.pr-stack b { color: var(--dim); }
+.pr-stack b.has { color: var(--g0); }
+.deck-card .deck-bar.ov i { background: var(--g1); }
+.deck-pick .pcard.boostopt .pc-lv { color: var(--g0); }
+.deck-pick .pcard.boostopt .pick-btn { --face: var(--g3); --line: var(--g1); --fg: var(--k1); }
+.od-stack { color: var(--g0); }
+
+.deck-pick .pc-lv span { display: block; white-space: nowrap; }

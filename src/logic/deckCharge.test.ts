@@ -13,11 +13,11 @@ import { endlessHp, heavyHit, rushTap, tapAndHit } from './unpack';
 const never = () => 0.99;
 const withDeck = (over: Partial<DeckState>, extra: Partial<GameState> = {}): GameState => {
   const s = defaultState();
-  return { ...s, moves: 1, ...extra, deck: { ...s.deck, ...over } };
+  return { ...s, moves: 0, ...extra, deck: { ...s.deck, ...over } };
 };
-const slot = (id: string, charge = 0, star = 1) => ({ id, star, charge });
+const slot = (id: string, charge = 0, star = 1) => ({ id, star, charge, stacks: 0 });
 const charges = (s: GameState) => s.deck.slots.map((x) => x.charge);
-const NEED = cardChargeNeed(1);
+const NEED = cardChargeNeed(0);
 const ev = { chain: 0, specials: 0, feverBefore: false, feverAfter: false };
 
 describe('공구함 배율: 충전 조건', () => {
@@ -47,15 +47,16 @@ describe('공구함 배율: 충전 조건', () => {
     expect(charges(chargeOnPerfect(s, 1))).toEqual([CHARGE_RULES.precise]);
     expect(charges(chargeOnStrike(s, { ...ev, feverBefore: true, feverAfter: true }))).toEqual([CHARGE_RULES.feverStrike]);
   });
-  it('필요 눈금에서 멈추고 꽉 찬 카드·덱 전체 결과를 알려 준다', () => {
+  it('필요 눈금에 닿으면 넘쳐 스택이 오르고(눈금 이어서), 꽉 찬 카드·덱 전체 결과를 알려 준다', () => {
     const s = withDeck({ slots: [slot('P3', NEED - 1), slot('C1', NEED), slot('S1', NEED), slot('S3', NEED)] });
     const t = chargeOnPerfect(s, 1);
-    expect(charges(t)).toEqual([NEED, NEED, NEED, NEED]);
+    expect(charges(t)).toEqual([CHARGE_RULES.precise - 1, NEED, NEED, NEED]);
+    expect(t.deck.slots[0].stacks).toBe(1);
     const r = deckChargeResult(s, t);
     expect(r.full).toEqual(['P3']);
     expect(r.allFull).toBe(true);
     expect(r.before).toBeCloseTo(4 * 4 * 4 * (1 + 3 * ((NEED - 1) / NEED)));
-    expect(r.after).toBe(256);
+    expect(r.after).toBeCloseTo(256 * 1.15);
     expect(deckChargeResult(t, chargeOnPerfect(t, 1)).allFull).toBe(false);
     expect(deckAllFull(withDeck({ slots: [slot('P3', NEED), slot('C1', NEED)] }))).toBe(false);
   });
@@ -129,6 +130,13 @@ describe('집 목표 보정', () => {
     expect(markThreshold(s, 1)).toBeCloseTo(markThreshold({ ...s, deck: { ...s.deck, targetScale: 1 } }, 1) * 4);
     expect(moveStatus({ ...s, earned: houseInfo(1).target * 4 }).ok).toBe(true);
   });
+  it('진행 중인 집의 targetScale은 저장된 값 그대로다(표를 바꿔도 이사 전까지 목표가 안 바뀐다)', () => {
+    const s = withDeck({ targetScale: 123 }, { moves: 3 });
+    const back = parseSave(serialize(s, 1)).state;
+    expect(back.deck.targetScale).toBe(123);
+    expect(houseTarget(back)).toBeCloseTo(houseInfo(3).target * 123);
+    expect(DECK_TARGET_SCALE[3]).not.toBe(123);
+  });
   it('이사하면 새 집의 표 값을 고정한다(표가 바뀌어도 이미 정한 집은 그대로)', () => {
     const s = withDeck({ targetScale: 1 }, { moves: 0, earned: houseInfo(0).target });
     const n = move(s)!;
@@ -148,8 +156,8 @@ describe('저장 v12 -> v13', () => {
     const r = parseSave(v12({ slots: [{ id: 'P3', star: 1 }, { id: 'C1', star: 1 }], offers: [['S1', 'S3', 'F1']], rerolls: 1, mark: 3, seen: ['P3'] }));
     expect(r.kind).toBe('ok');
     const s = r.state;
-    expect(s.version).toBe(15);
-    expect(s.deck.slots).toEqual([{ id: 'P3', star: 1, charge: 0 }, { id: 'C1', star: 1, charge: 0 }]);
+    expect(s.version).toBe(16);
+    expect(s.deck.slots).toEqual([{ id: 'P3', star: 1, charge: 0, stacks: 0 }, { id: 'C1', star: 1, charge: 0, stacks: 0 }]);
     expect(s.deck.targetScale).toBe(1);
     expect(s.deck.mark).toBe(7);
     expect(s.deck.offers).toEqual([['S1', 'S3', 'F1']]);

@@ -288,7 +288,7 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
 
   // ---- 공구함 덱 1단계(PC) ----
   {
-    const deckSet = (pg, slots, offers, moves = 1) => pg.evaluate(([sl, of, mv]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: mv, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1, charge: 0 })), offers: of } }); }, [slots, offers, moves]);
+    const deckSet = (pg, slots, offers, moves = 1) => pg.evaluate(([sl, of, mv]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: mv, unlocked: ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk', 'deck'], deck: { ...s.deck, slots: sl.map((id) => ({ id, star: 1, charge: 0, stacks: 0 })), offers: of } }); }, [slots, offers, moves]);
     const fit = (pg) => pg.evaluate(() => { const r = document.querySelector('.deck-row')?.getBoundingClientRect(); const m = document.querySelector('.move-row')?.getBoundingClientRect(); return { rowH: r && Math.round(r.height), gap: r && m ? Math.round(m.top - r.bottom) : null, scrollH: document.documentElement.scrollHeight, innerH: innerHeight, hs: document.documentElement.scrollWidth > document.documentElement.clientWidth }; });
     for (const size of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
       const { ctx, page } = await open(size);
@@ -347,6 +347,38 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
       check(`덱(PC ${size.width}x${size.height}): 알림 2개가 한 줄에 떠도 세로 스크롤이 없고 이사 줄·게이지와 안 겹친다`, a.both && a.sh <= a.ih && !a.hs && a.apart && a.aboveMove && a.belowCharge, JSON.stringify(a));
       await ctx.close();
     }
+  }
+
+  // ---- 덱 스택(PC) ----
+  {
+    const UN = [...ALL, 'deck', 'fever', 'special'];
+    const stackSet = (pg, slots, ex = {}) => pg.evaluate(([sl, ex2, un]) => { window.__ajd.guide('done'); const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, unlocked: un, deck: { ...s.deck, offers: [], boostPacks: 0, ...ex2, slots: sl.map(([id, stacks, charge = 0]) => ({ id, star: 1, charge, stacks })) } }); window.__ajd.rush(0); }, [slots, ex, UN]);
+    const badges = (pg) => pg.evaluate(() => [...document.querySelectorAll('.deck-slot')].map((s) => { const b = s.querySelector('.deck-stack'); return b && !b.hidden ? `${b.textContent}/${b.dataset.tier}` : ''; }));
+    const { ctx, page } = await open();
+    await page.waitForTimeout(500);
+    await stackSet(page, [['P2', 3], ['P3', 12], ['C1', 27], ['S3', 0, 5]]);
+    await page.waitForTimeout(800);
+    const b = await badges(page);
+    check('스택(PC): 배지 숫자·단계가 맞게 보인다(3·12·27)', b.join('|') === '×3/0|×12/1|×27/2|', b.join('|'));
+    check('스택(PC): 덱 줄 옆에 스택 합(42)', (await text(page, '.deck-ss')).includes('42'));
+    await page.screenshot({ path: path.join(__dirname, '..', 'screenshots', 's1-1440-row.png') });
+    await stackSet(page, [['P2', 300], ['P3', 99], ['C1', 30], ['S3', 1]]);
+    await page.waitForTimeout(600);
+    const geo = await page.evaluate(() => [...document.querySelectorAll('.deck-slot')].map((s) => { const bb = s.querySelector('.deck-stack').getBoundingClientRect(); const r = s.getBoundingClientRect(); return bb.left >= r.left - 2 && bb.right <= r.right + 4; }));
+    check('스택(PC): 스택 300도 배지가 칸 밖으로 안 나간다', geo.every(Boolean), JSON.stringify(geo));
+    await stackSet(page, [['P2', 3], ['P3', 12], ['C1', 27], ['S3', 0, 5]], { boostPacks: 1, boostMade: 1, chargedStacks: 6 });
+    await page.waitForTimeout(700);
+    check('강화(PC): 알림 버튼이 뜨고 가로 넘침이 없다', (await text(page, '.deck-alert')).includes('강화 고르기') && !(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
+    await page.locator('.deck-alert').click();
+    await page.waitForSelector('.modal.deck-pick .pcard');
+    await page.waitForTimeout(1400);
+    const before = (await gs(page)).deck.slots.map((x) => x.stacks);
+    await page.locator('.deck-pick .pcard.boostopt').first().click();
+    await page.waitForTimeout(2200);
+    const after = (await gs(page)).deck;
+    const diff = after.slots.map((x, i) => x.stacks - before[i]);
+    check('강화(PC): 고르면 한 카드에 스택 +2, 묶음 0, 창 닫힘', diff.filter((d) => d === 2).length === 1 && diff.filter((d) => d !== 0 && d !== 2).length === 0 && after.boostPacks === 0 && (await page.locator('.modal').count()) === 0, JSON.stringify(diff));
+    await ctx.close();
   }
 
   // ---- 특별 상자 설명 창 + 처음 만날 때 토스트(PC) ----

@@ -13,7 +13,7 @@ import type { GameState } from './state';
 import { chainBonus, heavyHit, hitBox, boxSpecial } from './unpack';
 
 const never = () => 0.99;
-const slot = (id: string, charge = 0, star = 1) => ({ id, star, charge });
+const slot = (id: string, charge = 0, star = 1) => ({ id, star, charge, stacks: 0 });
 const withDeck = (over: Partial<DeckState>, extra: Partial<GameState> = {}): GameState => {
   const s = defaultState();
   return { ...s, moves: 1, ...extra, deck: { ...s.deck, ...over } };
