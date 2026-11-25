@@ -241,7 +241,7 @@ describe('교체·이사·저장', () => {
     const r = parseSave(JSON.stringify({ ...raw, version: 15, moves: 2, deck: old }));
     expect(r.kind).toBe('ok');
     const d = r.state.deck;
-    expect(r.state.version).toBe(16);
+    expect(r.state.version).toBe(17);
     expect(d.slots.map((x) => x.stacks)).toEqual([0, 0, 0]);
     expect(d.slots.map((x) => [x.star, x.charge])).toEqual([[2, n / 2], [1, need('C1', 2)], [1, 3]]);
     expect([d.chargedStacks, d.boostPacks, d.boostMade, d.mark, d.targetScale]).toEqual([0, 0, 0, 4, 330]);

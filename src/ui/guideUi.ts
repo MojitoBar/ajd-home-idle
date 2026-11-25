@@ -1,5 +1,6 @@
 // 가이드 줄: 새 게임에서 "지금 할 일"을 보여 주는 한 칸(방 아래 띠와 이사 줄 사이). 가이드가 끝나면 사라진다. 상태는 읽기만 한다.
 import { guideView, type GuideFeature } from '../logic/guide';
+import { guide2View } from '../logic/guide2';
 import { formatNumber } from '../logic/format';
 import type { GameState } from '../logic/state';
 import { el, setText, toggleClass } from './dom';
@@ -97,13 +98,43 @@ export function celebrateFlash(): void {
   holdTimer = window.setTimeout(release, 1000);
 }
 
+/** 2부 보조 한 줄(문구 뒤에 붙는다, 자리가 모자라면 빠진다). 화면(app)이 지금 단계에 맞춰 정한다 */
+let hint2 = '';
+export function setGuideHint(h: string): void {
+  hint2 = h;
+}
+
+/** 2부 줄: 1부와 같은 칸·같은 높이를 쓴다 */
+function syncGuide2(state: GameState): boolean {
+  const v = guide2View(state);
+  if (!v) return false;
+  const k = ['2', v.no, v.n, v.goal, hint2].join('|');
+  if (k !== key) {
+    key = k;
+    row.hidden = false;
+    setText(chip, `가이드 2부 ${v.no}/${v.total}`);
+    setText(count, `${formatNumber(v.n)}/${formatNumber(v.goal)}`);
+    setText(reward, '');
+    toggleClass(row, 'waiting', false);
+    fill.style.width = `${((v.n / v.goal) * 100).toFixed(1)}%`;
+    fits = [
+      ...(hint2 ? [{ text: `${v.text} · ${hint2}`, size: 12 as const }] : []),
+      { text: v.text, size: 15 },
+      { text: v.text, size: 12 },
+      { text: v.text, size: 12, tight: true },
+    ];
+    fit();
+  }
+  return true;
+}
+
 /** 지금 단계를 줄에 그린다. 가이드가 끝났으면 줄을 접는다 */
 export function syncGuide(state: GameState): void {
   lastState = state;
   if (holds) return;
   const v = guideView(state);
   if (!v) {
-    if (!row.hidden) row.hidden = true;
+    if (!syncGuide2(state) && !row.hidden) row.hidden = true;
     return;
   }
   const waiting = v.n >= v.goal && !v.gateMet;
@@ -111,8 +142,9 @@ export function syncGuide(state: GameState): void {
   const pct = v.gate > 0 ? Math.min(1, state.earned / v.gate) : 1;
   const ratio = waiting ? pct : v.n / v.goal;
   const rewardText = v.rewardBoxes > 0 ? `선물 상자 ${v.rewardBoxes}개` : v.rewardPoints > 0 ? `+${formatNumber(v.rewardPoints)} P` : '';
-  const goalText = waiting ? `누적 ${earned} P까지 모으면 다음 단계가 열려요` : v.text;
-  const k = [v.no, v.text, waiting, rewardText, waiting ? '' : v.n, earned, Math.floor(ratio * 50)].join('|');
+  const hintText = v.hint === 'upgrade' ? '강타가 약하면 공구·오함마를 강화해요' : v.hint === 'aim' ? '노란 칸에 놓으면 더 세요' : '';
+  const goalText = waiting ? `공구를 강화하며 누적 ${earned} P를 모아요` : hintText || v.text;
+  const k = [v.no, v.text, waiting, v.hint, rewardText, waiting ? '' : v.n, earned, Math.floor(ratio * 50)].join('|');
   if (k === key) return;
   key = k;
   row.hidden = false;
@@ -125,7 +157,7 @@ export function syncGuide(state: GameState): void {
     ? [
         { text: goalText, size: 15 },
         { text: goalText, size: 12 },
-        { text: `누적 ${earned} P까지 모으면 열려요`, size: 12 },
+        { text: `강화하며 누적 ${earned} P를 모아요`, size: 12 },
         { text: `누적 ${earned} P를 모아요`, size: 12 },
         { text: `누적 ${earned} P를 모아요`, size: 12, tight: true },
       ]

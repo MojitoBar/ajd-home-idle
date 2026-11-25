@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GUIDE_SPECIAL_RATE, GUIDE_STEPS, featureOpen, finishedGuide, guideEvent, guideView, type GuideFeature } from './guide';
+import { GUIDE_SPECIAL_RATE, GUIDE_STEPS, chainHint, featureOpen, finishedGuide, guideEvent, guideView, type GuideFeature } from './guide';
 import { defaultState } from './state';
 import { buyStrikeUpgrade, tapStable } from './economy';
 import { tapWithRng } from './variety';
@@ -268,5 +268,32 @@ describe('특전 상자 단계', () => {
     expect(featureOpen(at(idx('perkBox')), 'perkBox')).toBe(true);
     expect(featureOpen({ ...defaultState(0, 1), guide: finishedGuide() }, 'perkBox')).toBe(true);
     expect(featureOpen({ ...at(0), moves: 1 }, 'perkBox')).toBe(true);
+  });
+});
+
+describe('연쇄 단계 보조 안내', () => {
+  const strike = { type: 'strike' } as const;
+  const twice = (s: ReturnType<typeof at>) => guideEvent(guideEvent(s, strike).state, strike).state;
+  it('강타를 2번 했는데 3개에 못 미치면 안내가 뜬다(살 수 있으면 강화, 못 사면 노란 칸)', () => {
+    const base = at(idx('chain'), { earned: 1e6 });
+    const one = guideEvent(base, strike).state;
+    expect(chainHint(one)).toBeNull();
+    const weak = twice({ ...base, points: 1e6 });
+    expect(chainHint(weak)).toBe('upgrade');
+    expect(guideView(weak)!.hint).toBe('upgrade');
+    expect(chainHint({ ...weak, points: 0 })).toBe('aim');
+  });
+  it('다른 단계에서는 강타를 몇 번 해도 안내가 안 바뀐다', () => {
+    for (const id of ['strike', 'weak', 'fever', 'streak']) {
+      const s = twice(at(idx(id), { points: 1e6, earned: 1e7 }));
+      expect(chainHint(s)).toBeNull();
+      expect(guideView(s)!.hint).toBeNull();
+    }
+  });
+  it('3개를 터뜨려 단계를 끝내면 안내가 사라진다', () => {
+    const weak = twice(at(idx('chain'), { points: 1e6, earned: 1e6 }));
+    const r = guideEvent(weak, { type: 'chain', value: 3 });
+    expect(r.completed).toBe(true);
+    expect(chainHint(r.state)).toBeNull();
   });
 });

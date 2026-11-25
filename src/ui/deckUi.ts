@@ -26,7 +26,7 @@ const TAG_NAME: Record<CardTag, string> = { precise: '정밀', chain: '연쇄', 
 const RARITY_NAME = { common: '일반', rare: '레어', legend: '전설' } as const;
 /** 충전 방법(로직 `CHARGE_RULES`의 조건과 같다: 정밀 = 퍼펙트 강타, 연쇄 = 50연쇄마다, 특별 = 터진 특별 상자, 피버 = 피버 중 강타) */
 const HOW: Partial<Record<CardTag, string>> = { precise: '퍼펙트 강타로 충전', chain: '긴 연쇄로 충전', special: '특별 상자를 터뜨려 충전', fever: '피버 중 강타로 충전' };
-const howText = (d: CardDef): string => d.tags.map((t) => HOW[t]).filter(Boolean).join(' · ') || '어떤 강타로든 충전';
+export const howText = (d: CardDef): string => d.tags.map((t) => HOW[t]).filter(Boolean).join(' · ') || '어떤 강타로든 충전';
 /** 배수 글자: 10 미만은 소수 한 자리(.0은 뗀다), 그 이상은 정수 */
 const fmtMult = (v: number): string => (v >= 10 ? formatNumber(Math.round(v)) : String(Math.round(v * 10) / 10));
 const pow10 = (v: number): number => (v >= 1 ? Math.floor(Math.log10(v) + 1e-9) : 0);

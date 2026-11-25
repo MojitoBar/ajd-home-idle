@@ -2,8 +2,9 @@ import { BOX_KINDS, UNPACK_HP_BASE } from '../data/unpack';
 import type { GearId } from '../data/gear';
 import { emptyDeck, type DeckState } from './deck';
 import { initialFever, initialParcel } from './fever';
+import { initialStory, type StoryState } from './story';
 
-export const CURRENT_VERSION = 16;
+export const CURRENT_VERSION = 17;
 
 export interface CollectionSlot {
   base: number;
@@ -50,6 +51,14 @@ export interface GuideState {
   step: number;
   n: number;
   done: boolean;
+  /** 연쇄 단계에서 강타(굿·퍼펙트)를 했는데도 3개에 못 미친 횟수(저장 안 함, 단계가 바뀌면 사라진다) */
+  miss?: number;
+}
+
+/** 가이드 2부(첫 이사 뒤 공구함 안내, logic/guide2.ts) 진행(저장됨). step = 지금 단계 번호(0부터), done = 끝(이사 2회 이상·끝까지 마침) */
+export interface Guide2State {
+  step: number;
+  done: boolean;
 }
 
 export const HOME_SLOTS = 8;
@@ -88,6 +97,10 @@ export interface GameState {
   bestChain: number;
   /** 첫 가이드: 손맛 요소가 하나씩 열리는 순서(logic/guide.ts). 이사하면 끝난다 */
   guide: GuideState;
+  /** 가이드 2부: 첫 이사 뒤 공구함 안내. 두 번째 이사를 하면 끝난다 */
+  guide2: Guide2State;
+  /** 이야기: 인트로·도착 쪽지·엔딩을 봤는지(다시 보기 목록도 이걸 쓴다) */
+  story: StoryState;
   /** 열린 화면 요소 id(단계적 공개). 없으면 예전 저장이라 조건에서 유도해 조용히 채운다. 한번 열리면 이사해도 유지 */
   unlocked?: string[];
   /** 저장 개편 안내(한 번 띄운 뒤 지운다). boxes = 서비스 보상으로 받은 무료 상자 수 */
@@ -119,5 +132,7 @@ export function defaultState(savedAt = 0, salt = 0): GameState {
     bestCombo: 0,
     bestChain: 0,
     guide: { step: 0, n: 0, done: false },
+    guide2: { step: 0, done: false },
+    story: initialStory(),
   };
 }

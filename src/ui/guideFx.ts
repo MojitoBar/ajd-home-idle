@@ -114,13 +114,13 @@ function highlight(h: GuideFxHost, f: GuideFeature): void {
 }
 
 /** 단계 하나 완료(상태는 이미 다음 단계로 넘어감, 화면 갱신 전). update는 요소가 열린 뒤 부르는 화면 갱신 */
-export function stepDone(h: GuideFxHost, r: GuideResult, no: number, update: () => void): void {
+export function stepDone(h: GuideFxHost, r: GuideResult, no: number, update: () => void, label = `가이드 ${no}`): void {
   celebrateHold();
   update();
   afterScenes(() => {
     celebrateFlash();
     sfx.milestone();
-    say(h, `가이드 ${no} 완료!`, r.opened ? OPEN_CHIP[r.opened] : undefined);
+    say(h, `${label} 완료!`, r.opened ? OPEN_CHIP[r.opened] : undefined);
     if (r.opened) {
       window.setTimeout(() => {
         sfx.newItem();
@@ -147,9 +147,10 @@ function giftSoon(h: GuideFxHost, results: BoxResult[], title: string, ms: numbe
 }
 
 /** 가이드 끝(첫 이사 연출이 끝난 뒤): 크게 한 번 */
-export function guideEnd(h: GuideFxHost): void {
+export function guideEnd(h: GuideFxHost, part2 = false): void {
   sfx.milestone();
-  say(h, '가이드 완료!', '이제 전부 열렸어요');
+  if (part2) say(h, '가이드 끝!', '이제 우주 끝까지 가 보세요');
+  else say(h, '가이드 완료!', '이제 전부 열렸어요');
   const rr = h.room.getBoundingClientRect();
   if (!fx.isReduced()) fx.burst(rr.left + rr.width / 2, rr.top + rr.height * 0.4, { n: 14, kind: 'star', colors: ['#ff8a1f', '#ffc83d', '#ffffff'], size: 8, speed: 220, gravity: 0, life: 0.5 });
 }

@@ -16,6 +16,7 @@ import './m11-charge.css';
 import './m12-weak.css';
 import './m13-deck.css';
 import './guide.css';
+import './m14-story.css';
 import './px/room.css';
 import { TAP_MILESTONES } from '../data/tap';
 import { HOUSES, MOON_STAGE } from '../data/houses';
@@ -63,6 +64,9 @@ import { exportString, importString, parseSave, serialize } from '../logic/save'
 import type { GameState } from '../logic/state';
 import { defaultState } from '../logic/state';
 import { houseIcon, iconImg, preloadIcons, setLabel, type IconName } from './icons';
+import * as storyUi from './storyUi';
+import { NOTES } from '../data/story';
+import { endingDue, introDue, noteDue, seeEnding, seeIntro, seeNote } from '../logic/story';
 import { desktopMq, el, glyph, openModal, setDisabled, setText, toggleClass } from './dom';
 import { initKeys } from './keys';
 import { clearSave, readSave, writeBackup, writeSave } from './storage';
@@ -72,7 +76,8 @@ import { getPrefs, hapticsSupported, setPrefs, vibrate } from './prefs';
 import { boxAnchor, boxCenter, chainVisible, dockToolEl, initUnpack, makeToolEl, roomStrip, syncUnpack, chainFinish, chainFinishing, chainHurry, chainInfo, chainPlaying, unpackHeavy, unpackHit, unpackRush } from './unpackUi';
 import { textBoxes } from './clutter';
 import { fresh, markFresh, type UiCtx } from './collectUi';
-import { row as guideRow, syncGuide } from './guideUi';
+import { row as guideRow, setGuideHint, syncGuide } from './guideUi';
+import { guide2Update, guide2View, type Guide2Result } from '../logic/guide2';
 import { initGuidePoint, syncGuidePoint } from './guidePoint';
 import { canBuyBox, canBuyPerkBoxUi, initBox, openBtn as boxOpenBtn, perkBuyBtn, panel as boxPanel, playGifts, updateBox } from './box';
 import { initDex, panel as dexPanel, renderDex, updateDex } from './dex';
@@ -345,7 +350,8 @@ function build(): void {
   setLabel(refs.moveBtn, 'ui-move', 32, '이사');
   refs.moveBtn.type = 'button';
   refs.moveBtn.addEventListener('click', openMoveConfirm);
-  const infoBtn = button('btn step-btn', '집 단계', openHouseTable);
+  const infoBtn = button('btn step-btn', houseBtnLabel(state.moves), openHouseTable);
+  houseBtn = infoBtn;
   infoBtn.setAttribute('aria-label', '집 단계 표');
   infoBtn.title = '집 단계 표';
   const moveRow = el(
@@ -440,7 +446,7 @@ function build(): void {
   refs.badge.append(refs.badgeVal);
   refs.badge.addEventListener('click', () => strat.toggleMult(refs.points));
   for (const n of [refs.speed, refs.ptsRate, multBtn]) n.addEventListener('click', () => strat.toggleMult(refs.points));
-  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { v9: showV9Notice, returnToast: () => { returnRush = true; announceReturn(); }, textBoxes, special: debugSpecial, rush: (sec: number) => { state = { ...state, unpack: { ...state.unpack, rushSec: sec } }; update(); }, say: (g: 'perfect' | 'good' | 'miss', streak = 0, gain = 1234, power = 1, chain = 0) => chargeUi.say(g, streak, gain, power, chain), fever: () => { state = { ...state, fever: { gauge: 0, activeSec: 10, cooldownSec: 0 } }; update(); }, particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = asDebug(s); }, guideEv: (ev: GuideEvent) => guideSay(ev), guide: (step: number | 'done') => { guideDebug = true; state = { ...state, guide: step === 'done' ? finishedGuide() : { step: step - 1, n: 0, done: false } }; update(); }, combo: (n: number) => { combo = { n, lastMs: performance.now(), earned: n * 100 }; comboBest0 = state.bestCombo; }, getCombo: () => combo, chain: (n: number) => { const r = refs.room.getBoundingClientRect(); applyCharge(0.5, r.left + r.width / 2, r.top + r.height / 2, n); }, getChain: chainInfo, holdAt: chargeUi.holdAt, release: chargeUi.releaseHeld, charge: (pos: number) => { chargeUi.holdAt(pos); chargeUi.releaseHeld(); }, streak: (n: number) => { chargeStreak = n; }, tip: chargeUi.showTip, keep: () => { if (combo.n) combo = { ...combo, lastMs: performance.now() }; }, weak: showWeakAt, weakHit: () => { const r = document.querySelector('.weak:not([hidden])')?.getBoundingClientRect(); if (r) applyWeak(r.left + r.width / 2, r.top + r.height / 2); }, weakAuto: (on: boolean) => { weakAuto = on; }, weakTip: () => weakUi.showTip(), getWeak: () => weak, heatAuto: (on: boolean) => { heatAuto = on; }, zoneAuto: (on: boolean) => { zoneAuto = on; }, heat: (v: number) => setHeat(v >= 100 ? heatAdd(initialHeat(), 100) : { heat: { v, overMs: 0 }, overheated: false }), getHeat: () => heat, zone: (center: number) => { chargeZone = chargeZoneAt(center, zoneHalf); chargeUi.setZone(chargeZone); }, home: (id: string | number, lv: number) => { const i = typeof id === 'number' ? id : ROOM_ITEMS.findIndex((x) => x.id === id); state = { ...state, homeLv: state.homeLv.map((x, j) => (j === i ? lv : x)) }; update(); }, gear: (id: GearId, lv: number) => { state = { ...state, gear: { ...state.gear, [id]: lv } }; update(); }, shield: (n: number, toNext = shield.toNext) => { shield = { n, toNext }; chargeUi.syncShield(shieldMax, shield, deckEffects(state).shieldChargePerfects); }, save: () => chargeUi.shieldSave(Math.max(0, shield.n - 1), streakMult(chargeStreak, perkEffects(state).streakBonus), refs.room, true), getZone: () => chargeZone, deckCharge: (n: number) => { state = { ...state, deck: { ...state.deck, slots: state.deck.slots.map((sl) => ({ ...sl, charge: n })) } }; update(); }, deck: (ids: string[]) => { state = { ...state, deck: { ...state.deck, slots: ids.map((id) => ({ id, star: 1, charge: 0, stacks: 0 })) } }; update(); }, offer: (ids?: string[]) => { state = { ...state, deck: { ...state.deck, offers: [...state.deck.offers, ids ?? rollCardOffer(state.deck.slots, Date.now())] } }; update(); }, offerRarity: (r: 'common' | 'rare' | 'legend') => { const pick = (x: string) => { const l = CARDS.filter((c) => c.rarity === x); return l[Math.floor(Math.random() * l.length)].id; }; const ids = [pick(r), pick('rare'), pick('common')]; state = { ...state, deck: { ...state.deck, offers: [...state.deck.offers, [...new Set(ids)].length === 3 ? ids : [pick(r), 'C1', 'P1']] } }; update(); } };
+  if (location.search.includes('debug')) (window as unknown as { __ajd: unknown }).__ajd = { cards: () => CARDS.map((c) => c.id), v9: showV9Notice, returnToast: () => { returnRush = true; announceReturn(); }, textBoxes, special: debugSpecial, rush: (sec: number) => { state = { ...state, unpack: { ...state.unpack, rushSec: sec } }; update(); }, say: (g: 'perfect' | 'good' | 'miss', streak = 0, gain = 1234, power = 1, chain = 0) => chargeUi.say(g, streak, gain, power, chain), fever: () => { state = { ...state, fever: { gauge: 0, activeSec: 10, cooldownSec: 0 } }; update(); }, particles: fx.particleCount, toast: showToast, get: () => state, set: (s: GameState) => { state = asDebug(s); }, guideEv: (ev: GuideEvent) => guideSay(ev), guide: (step: number | 'done') => { guideDebug = true; state = { ...state, guide: step === 'done' ? finishedGuide() : { step: step - 1, n: 0, done: false } }; update(); }, combo: (n: number) => { combo = { n, lastMs: performance.now(), earned: n * 100 }; comboBest0 = state.bestCombo; }, getCombo: () => combo, chain: (n: number) => { const r = refs.room.getBoundingClientRect(); applyCharge(0.5, r.left + r.width / 2, r.top + r.height / 2, n); }, getChain: chainInfo, holdAt: chargeUi.holdAt, release: chargeUi.releaseHeld, charge: (pos: number) => { chargeUi.holdAt(pos); chargeUi.releaseHeld(); }, streak: (n: number) => { chargeStreak = n; }, tip: chargeUi.showTip, keep: () => { if (combo.n) combo = { ...combo, lastMs: performance.now() }; }, weak: showWeakAt, weakHit: () => { const r = document.querySelector('.weak:not([hidden])')?.getBoundingClientRect(); if (r) applyWeak(r.left + r.width / 2, r.top + r.height / 2); }, weakAuto: (on: boolean) => { weakAuto = on; }, weakTip: () => weakUi.showTip(), getWeak: () => weak, heatAuto: (on: boolean) => { heatAuto = on; }, zoneAuto: (on: boolean) => { zoneAuto = on; }, heat: (v: number) => setHeat(v >= 100 ? heatAdd(initialHeat(), 100) : { heat: { v, overMs: 0 }, overheated: false }), getHeat: () => heat, zone: (center: number) => { chargeZone = chargeZoneAt(center, zoneHalf); chargeUi.setZone(chargeZone); }, home: (id: string | number, lv: number) => { const i = typeof id === 'number' ? id : ROOM_ITEMS.findIndex((x) => x.id === id); state = { ...state, homeLv: state.homeLv.map((x, j) => (j === i ? lv : x)) }; update(); }, gear: (id: GearId, lv: number) => { state = { ...state, gear: { ...state.gear, [id]: lv } }; update(); }, shield: (n: number, toNext = shield.toNext) => { shield = { n, toNext }; chargeUi.syncShield(shieldMax, shield, deckEffects(state).shieldChargePerfects); }, save: () => chargeUi.shieldSave(Math.max(0, shield.n - 1), streakMult(chargeStreak, perkEffects(state).streakBonus), refs.room, true), getZone: () => chargeZone, deckCharge: (n: number) => { state = { ...state, deck: { ...state.deck, slots: state.deck.slots.map((sl) => ({ ...sl, charge: n })) } }; update(); }, deck: (ids: string[]) => { state = { ...state, deck: { ...state.deck, slots: ids.map((id) => ({ id, star: 1, charge: 0, stacks: 0 })) } }; update(); }, offer: (ids?: string[]) => { state = { ...state, deck: { ...state.deck, offers: [...state.deck.offers, ids ?? rollCardOffer(state.deck.slots, Date.now())] } }; update(); }, offerRarity: (r: 'common' | 'rare' | 'legend') => { const pick = (x: string) => { const l = CARDS.filter((c) => c.rarity === x); return l[Math.floor(Math.random() * l.length)].id; }; const ids = [pick(r), pick('rare'), pick('common')]; state = { ...state, deck: { ...state.deck, offers: [...state.deck.offers, [...new Set(ids)].length === 3 ? ids : [pick(r), 'C1', 'P1']] } }; update(); } };
 
   const keyHint = el('p', { cls: 'key-hint' });
   for (const [keys, label] of [[['Space'], '상자 치기 · 꾹 강타'], [['1~4'], '탭 전환'], [['Esc'], '닫기']] as [string[], string][]) {
@@ -1008,10 +1014,70 @@ function onGuideStep(r: GuideResult): void {
   guideFx.stepDone(guideFxHost, r, r.step ? GUIDE_STEPS.indexOf(r.step) + 1 : 0, update);
 }
 
+/** 두 번째 이사로 2부가 끝났다: 이사 연출이 끝나면 끝 머리글을 띄운다 */
+let guide2EndPending = false;
+
+/** 가이드 2부: 지금 단계가 끝났는지 본다(0.5초마다·이사 직후). 끝난 단계는 1부와 같은 완료 연출(보상 없음), 이미 끝난 단계는 조용히 건너뛴다 */
+function guide2Check(force = false): void {
+  if (state.guide2.done || (moving && !force)) return;
+  const r: Guide2Result = guide2Update(state);
+  if (r.state === state) return;
+  state = r.state;
+  save();
+  if (r.finished) {
+    // 이사 장면 중이면 이사 연출 뒤에 끝 머리글, 그 밖(저장 불러오기 등)은 조용히 끝낸다
+    guide2EndPending = force;
+    update();
+    return;
+  }
+  if (!r.completed) {
+    update();
+    return;
+  }
+  const res: GuideResult = { state, completed: true, step: null, reward: 0, rewardBoxes: 0, boxResults: [], opened: null };
+  guideFx.stepDone(guideFxHost, res, r.no, update, `가이드 2부 ${r.no}`);
+}
+
+/** 처음 나타날 때 한 줄 설명(토스트): 봤는지는 UI 설정(prefs.tips)에 적는다. 한 번에 하나, 창·머리글·이사 장면이 있으면 기다린다 */
+interface Tip {
+  id: string;
+  when: () => boolean;
+  text: () => string;
+}
+const TIPS: Tip[] = [
+  { id: 'rush', when: () => state.unpack.rushSec > 0, text: () => `자동 연타예요 · ${Math.ceil(state.unpack.rushSec)}초 동안 알아서 쳐요` },
+  { id: 'badge', when: () => document.body.classList.contains('ux-badge') && guideEnded(state), text: () => '오른쪽 위 x배율을 누르면 내역을 봐요' },
+  { id: 'stack', when: () => state.deck.slots.some((s) => s.stacks > 0), text: () => '스택 하나마다 카드 배수가 올라요' },
+  { id: 'move', when: () => moveStatus(state).ok && state.moves > 0, text: () => '이사하면 강화는 처음부터, 배율은 남아요' },
+];
+let tipAt = 0;
+
+function tipTick(): void {
+  const now = performance.now();
+  if (now - tipAt < 4000 || moving || !guideEnded(state)) return;
+  if (document.querySelector('.overlay, .box-scene, .move-scene, .story-ov') || fx.headBusy() || guideRow.classList.contains('done') || guideEndPending || guide2EndPending) return;
+  const seen = getPrefs().tips;
+  const tip = TIPS.find((x) => !seen.includes(x.id) && x.when());
+  if (!tip) return;
+  tipAt = now;
+  setPrefs({ tips: [...seen, tip.id] });
+  showToast(tip.text());
+}
+
+/** 2부 2단계의 보조 한 줄: 낀 카드가 무엇으로 충전되는지 */
+function guide2Hint(): string {
+  const v = guide2View(state);
+  if (!v || v.id !== 'stack') return '';
+  const sl = state.deck.slots.find((s) => s.stacks === 0) ?? state.deck.slots[0];
+  const d = sl ? CARDS.find((c) => c.id === sl.id) : undefined;
+  return d ? deckUi.howText(d) : '';
+}
+
 const GUIDE_FEATURES: GuideFeature[] = ['combo', 'charge', 'weak', 'fever', 'chain', 'streak', 'special', 'gear'];
 /** 가이드가 아직 열지 않은 요소는 body 클래스(g-no-<요소>, guide.css)로 접고, 가이드 줄을 그린다 */
 function syncGuideUi(): void {
   for (const f of GUIDE_FEATURES) toggleClass(document.body, `g-no-${f}`, !featureOpen(state, f));
+  setGuideHint(guide2Hint());
   syncGuide(state);
   toggleClass(document.body, 'guiding', !guideRow.hidden);
 }
@@ -1137,6 +1203,10 @@ function announceReturn(): void {
   showToast('다녀오셨어요! 15초 동안 자동으로 쳐 줘요', true);
 }
 
+/** 이사 줄의 집 단계 버튼 글자: `집 N/9`, 9번째 집을 넘으면 `N차` */
+const houseBtnLabel = (moves: number): string => (moves < HOUSES.length ? `집 ${moves + 1}/${HOUSES.length}` : `${moves - HOUSES.length + 1}차`);
+let houseBtn: HTMLElement | null = null;
+
 function update(): void {
   if (!tabOpen(activeTab)) {
     selectTab('tap');
@@ -1144,6 +1214,13 @@ function update(): void {
   }
   syncGearState();
   const house = houseInfo(state.moves);
+  if (houseBtn) {
+    const hl = houseBtnLabel(state.moves);
+    if (houseBtn.textContent !== hl) {
+      houseBtn.textContent = hl;
+      houseBtn.setAttribute('aria-label', `집 단계 표, 지금 ${hl}`);
+    }
+  }
   document.body.dataset.theme = house.theme;
   if (refs.houseName.textContent !== house.name) {
     refs.houseName.textContent = house.name;
@@ -1368,7 +1445,8 @@ function openMoveConfirm(): void {
   showModal(
     '이사 갈까요?',
     [
-      p('포인트와 공구 강화가 처음으로 돌아가요.'),
+      p('처음부터: 포인트 · 공구 강화 Lv · 공구함 카드'),
+      p('남는 것: 영구 배율 · 영구 공구 · 살림 · 도감 · 특전'),
       el(
         'div',
         { cls: 'mv-box pf' },
@@ -1379,9 +1457,60 @@ function openMoveConfirm(): void {
     ],
     [
       { label: '취소', onClick: dismissModal },
-      { label: '이사하기', primary: true, onClick: doMove },
+      { label: '이사하기', primary: true, onClick: moveOrEnding },
     ],
     { icon: iconImg('ui-move', { size: 32, cls: 'title-ico' }) },
+  );
+}
+
+/** 엔딩을 아직 안 봤으면 엔딩을 보여 준 뒤(계속 까기) 평소 이사로 이어진다 */
+function moveOrEnding(): void {
+  if (moving || !moveStatus(state).ok) return;
+  if (!endingDue(state)) {
+    doMove();
+    return;
+  }
+  dismissModal();
+  storyUi.playEnding({ moves: state.moves, bestChain: state.bestChain, totalEarned: state.stats.totalEarned }, false, () => {
+    state = seeEnding(state);
+    save();
+    doMove();
+  });
+}
+
+/** 새 게임 첫 화면: 인트로를 한 번 보여 준다. 닫히면 말풍선·가이드 1단계가 그대로 이어진다 */
+function maybeIntro(): void {
+  if (!introDue(state) || document.querySelector('.overlay, .box-scene, .move-scene')) return;
+  storyUi.playIntro(() => {
+    state = seeIntro(state);
+    save();
+    update();
+  });
+}
+
+/** 설정 > 이야기 다시 보기: 지금까지 본 것만 목록으로. 다시 봐도 저장·진행은 그대로 */
+function openStoryList(): void {
+  const row = (icon: Node, name: string, sub: string, play: () => void): HTMLElement => {
+    const b = el('button', { cls: 'btn sn-rp', attrs: { type: 'button' } }, icon, el('span', { cls: 'sn-rp-t' }, el('b', { text: name }), el('span', { text: sub })));
+    b.addEventListener('click', () => {
+      dismissModal();
+      play();
+    });
+    return b;
+  };
+  const rows: HTMLElement[] = [];
+  if (state.story.intro) rows.push(row(iconImg(houseIcon(HOUSES[0].theme), { size: 48, alt: '' }), storyUi.introTitle, '원룸', () => storyUi.playIntro(openStoryList)));
+  for (const n of state.story.notes) {
+    const h = HOUSES[n];
+    if (!h || !NOTES[n]) continue;
+    rows.push(row(iconImg(houseIcon(h.theme), { size: 48, alt: '' }), h.name, '상자에 붙은 쪽지', () => storyUi.playNote(n, h.name, openStoryList)));
+  }
+  if (state.story.ending) rows.push(row(iconImg('box/normal-1', { size: 40, alt: '' }), storyUi.endingTitle, '우주 끝 신도시', () => storyUi.playEnding({ moves: state.moves, bestChain: state.bestChain, totalEarned: state.stats.totalEarned }, true, openStoryList)));
+  showModal(
+    '이야기 다시 보기',
+    [rows.length ? el('div', { cls: 'sn-list' }, ...rows) : p('아직 본 이야기가 없어요.', 'dim')],
+    [{ label: '닫기', onClick: dismissModal }],
+    { icon: iconImg('box/normal-1', { size: 32, cls: 'title-ico' }) },
   );
 }
 
@@ -1405,6 +1534,7 @@ function doMove(): void {
       const next = move(state, () => Math.random());
       if (next) state = next;
       guideSay({ type: 'move' });
+      guide2Check(true);
       shield = initialShield(gearEffects(state).shieldMax, deckEffects(state).shieldChargePerfects);
       shieldMax = shield.n;
       snapNext = true;
@@ -1414,13 +1544,24 @@ function doMove(): void {
     },
     onDone: () => {
       moving = false;
-      const after = state.moves === MOON_STAGE ? openMoonPopup : strat.afterMove;
-      if (guideEndPending) {
-        // 가이드 끝 머리글을 먼저 보여 주고, 창·특전 고르기는 그 뒤에
-        guideEndPending = false;
-        guideFx.guideEnd(guideFxHost);
-        window.setTimeout(after, 2400);
-      } else after();
+      const proceed = (): void => {
+        const after = state.moves === MOON_STAGE ? openMoonPopup : strat.afterMove;
+        if (guideEndPending || guide2EndPending) {
+          // 가이드 끝 머리글을 먼저 보여 주고, 창·특전 고르기는 그 뒤에
+          guideFx.guideEnd(guideFxHost, !guideEndPending);
+          guideEndPending = false;
+          guide2EndPending = false;
+          window.setTimeout(after, 2400);
+        } else after();
+      };
+      // 도착 쪽지가 먼저: 한 번 보여 주고 닫히면 위의 기존 흐름(가이드 끝 연출·달 기지 창·특전 상자·카드 고르기)이 그대로 이어진다
+      const note = noteDue(state);
+      if (note === null) proceed();
+      else {
+        state = seeNote(state, note);
+        save();
+        storyUi.playNote(note, houseInfo(note).name, proceed);
+      }
     },
   });
 }
@@ -1465,8 +1606,14 @@ function openHouseTable(): void {
         el('div', { cls: 'hr-mult' }, el('b', { text: `x${formatNumber(permMult(s))}` }), el('span', { text: '영구 배율' })),
       ),
     );
+    if (s === HOUSES.length - 1) {
+      const seen = state.story.ending;
+      const last = el('b', { cls: 'fb', text: '마지막 상자' });
+      if (seen) last.append(document.createTextNode(' '), el('span', { cls: 'tag', text: '엔딩 봄' }));
+      rows.push(el('div', { cls: `house-row pf last${seen ? ' done' : ''}` }, iconImg('box/big-1', { size: 48, alt: '' }), el('div', { cls: 'hr-main' }, last, el('span', { cls: 'hr-goal', text: seen ? '엔딩을 봤어요' : `${houseInfo(s).name}에서 이사하면 열려요` })), el('span')));
+    }
   }
-  showModal('집 단계', [p('목표 포인트를 모으면 이사할 수 있어요.', 'dim'), el('div', { cls: 'house-table' }, ...rows)], [{ label: '닫기', onClick: dismissModal }], { icon: iconImg(houseIcon(houseInfo(state.moves).theme), { size: 32, cls: 'title-ico' }) });
+  showModal('집 단계', [p(`${houseBtnLabel(state.moves)} · 목표 포인트를 모으면 이사할 수 있어요.`, 'dim'), el('div', { cls: 'house-table' }, ...rows)], [{ label: '닫기', onClick: dismissModal }], { icon: iconImg(houseIcon(houseInfo(state.moves).theme), { size: 32, cls: 'title-ico' }) });
 }
 
 function settingRow(label: string, on: boolean, onChange: (v: boolean) => void, disabled = false): HTMLElement {
@@ -1482,6 +1629,26 @@ function settingLabel(label: string, box: HTMLInputElement, onChange: (v: boolea
   sync();
   box.addEventListener('change', () => { sync(); onChange(box.checked); });
   return el('label', { cls: 'setting-row' }, el('span', { cls: 'setting-name', text: label }), box, st);
+}
+
+const pcLike = (): boolean => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+/** 도움말: 아이콘 + 한 줄 10개. 길면 창 안에서 스크롤된다 */
+function openHelp(): void {
+  const pc = pcLike();
+  const lines: [IconName, string][] = [
+    ['tool/hammer', pc ? '상자를 클릭하거나 Space를 눌러요' : '상자를 탭해서 까요'],
+    ['tool/sledge', '꾹 눌렀다 놓으면 강타, 노란 칸이 퍼펙트'],
+    ['crit', '반짝이는 급소를 누르면 큰 타격'],
+    ['box/big-1', '강타가 상자를 뚫으면 연쇄 보너스'],
+    ['fever', '피버 중엔 수익이 크게 올라요'],
+    ['box/gold-normal-1', '황금·폭탄·시계 상자가 가끔 나와요'],
+    ['tool/crowbar', '포인트로 공구를 강화해요'],
+    ['ui-dex', '살림·상자·도감 탭도 배율을 키워요'],
+    ['ui-tools', '카드 눈금이 차면 스택이 쌓여요'],
+    ['ui-move', '목표를 채우면 이사해요'],
+  ];
+  showModal('도움말', [el('div', { cls: 'help-list' }, ...lines.map(([ic, tx]) => el('div', { cls: 'help-row pf' }, iconImg(ic, { size: 32, alt: '' }), el('span', { text: tx }))))], [{ label: '닫기', onClick: dismissModal }], { icon: iconImg('ui-settings', { size: 32, cls: 'title-ico' }) });
 }
 
 function openSettings(): void {
@@ -1527,6 +1694,7 @@ function openSettings(): void {
             save();
             dismissModal();
             update();
+            maybeIntro();
           },
         },
       ],
@@ -1542,6 +1710,7 @@ function openSettings(): void {
       }),
       settingRow('효과음', getPrefs().sound, (v) => setPrefs({ sound: v })),
       settingRow(hapticsSupported ? '진동' : '진동 (지원하지 않는 기기예요)', getPrefs().haptics, (v) => setPrefs({ haptics: v }), !hapticsSupported),
+      el('div', { cls: 'row' }, button('btn', '도움말', openHelp), button('btn', '이야기 다시 보기', openStoryList)),
       el('div', { cls: 'backup-zone' }, el('span', { cls: 'backup-chip', text: '저장 백업' }), p('복사해 두면 다른 기기에서 이어서 해요', 'backup-hint'), box, el('div', { cls: 'row' }, exportBtn, importBtn), msg),
       p('모든 금액·요금·사은품은 허구이며 실제와 무관해요.', 'dim small'),
       p('글꼴: 갈무리(SIL OFL 1.1)', 'dim small'),
@@ -1641,6 +1810,8 @@ function frame(now: number): void {
     if (guideTickAcc >= 0.5) {
       guideTickAcc = 0;
       guideSay({ type: 'tick' });
+      if (state.moves >= 1 && !state.guide2.done && !guideEndPending) guide2Check();
+      tipTick();
     }
     update();
   }
@@ -1653,7 +1824,10 @@ snapNext = true;
 lastReady = null;
 update();
 if (state.notice?.kind === 'v9') showV9Notice(state.notice.boxes);
-else announceReturn();
+else {
+  announceReturn();
+  maybeIntro();
+}
 document.addEventListener('visibilitychange', onVisibility);
 window.addEventListener('beforeunload', save);
 setInterval(save, 10_000);

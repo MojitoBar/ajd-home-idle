@@ -1,5 +1,6 @@
 // 가이드 화살표: 지금 단계에서 눌러야 할 화면 요소 옆에 도트 화살표를 띄운다. 상태는 읽기만 하고, 누를 수 있는 요소를 가리지 않는다(pointer-events: none).
-import { GUIDE_STEPS, guideEnded } from '../logic/guide';
+import { GUIDE_STEPS, chainHint, guideEnded } from '../logic/guide';
+import { GUIDE2_STEPS, guide2Active } from '../logic/guide2';
 import { canBuyGear, gearUnlocked } from '../logic/gear';
 import { strikeCost, tapCost } from '../logic/economy';
 import type { GameState } from '../logic/state';
@@ -94,6 +95,8 @@ interface Spot {
   prefer: Dir[];
   /** 탭 내용 영역 안의 요소: 스크롤 밖이면 영역 가장자리에 붙인다 */
   clip?: boolean;
+  /** 위에서 내려오는 화살표가 넘으면 안 되는 윗선(가이드 줄 아랫변) */
+  minTop?: number;
 }
 
 export function initGuidePoint(h: PointHost): void {
@@ -128,10 +131,62 @@ function viaTab(tab: PointTab, btn: HTMLElement | null, can: boolean): Spot | nu
   return r && { ...r, clip: true };
 }
 
+/** 1부 가이드 중이거나 2부 가이드 중이면 화살표가 돈다 */
+const pointing = (s: GameState): boolean => !guideEnded(s) || guide2Active(s);
+
+const shownEl = (sel: string): HTMLElement | null => Array.from(document.querySelectorAll<HTMLElement>(sel)).find((n) => n.getBoundingClientRect().width > 0) ?? null;
+
+/** 2부: 공구함 카드 줄과 고르기 버튼, 이사 버튼 */
+function target2(s: GameState): Spot | null {
+  const t = target2raw(s);
+  if (!t) return t;
+  const g = shownEl('.guide-row');
+  // 가이드 줄이 대상 바로 위에 붙어 있으면 위에서 내려오는 화살표가 줄을 덮는다: 줄 아래에 자리가 없으면 옆·아래에서 가리킨다
+  if (g && g.getBoundingClientRect().bottom <= t.y + 2 && t.prefer[0] === 'down') return { ...t, minTop: g.getBoundingClientRect().bottom, prefer: ['down', 'left', 'up'] };
+  return t;
+}
+
+function target2raw(s: GameState): Spot | null {
+  const id = GUIDE2_STEPS[s.guide2.step]?.id;
+  const alert = shownEl('.deck-alert');
+  switch (id) {
+    case 'pick':
+    case 'boost': {
+      if (alert) return rectOf(alert);
+      const t = host.tab('dex');
+      return id === 'boost' || !t ? null : rectOf(t);
+    }
+    case 'stack': {
+      const slot = shownEl('.deck-slot.on');
+      if (!slot) return null;
+      const r = slot.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height + 12, prefer: ['down', 'up'] };
+    }
+    case 'cards': {
+      if (alert) return rectOf(alert);
+      const slot = shownEl('.deck-slot:not(.on)');
+      return slot ? rectOf(slot) : null;
+    }
+    case 'move': {
+      const b = host.moveBtn as HTMLButtonElement;
+      return b.disabled ? null : rectOf(b);
+    }
+  }
+  return null;
+}
+
 function target(s: GameState): Spot | null {
+  if (guideEnded(s)) return guide2Active(s) ? target2(s) : null;
   const id = GUIDE_STEPS[s.guide.step]?.id;
   if (!id) return null;
+  // 행동은 다 했는데 누적 포인트(gate)만 모자라 기다리는 중: 공구 강화를 누르라고 가리킨다(수익이 빨라진다)
+  const def = GUIDE_STEPS[s.guide.step];
+  if (def.gate > 0 && s.earned < def.gate && !def.progress && s.guide.n >= def.goal) return viaTab('tap', host.tapBtn, tapCost(s.tapLevel) <= s.points);
   switch (id) {
+    case 'chain': {
+      if (chainHint(s) !== 'upgrade') break;
+      return strikeCost(s.strikeLevel) <= s.points ? viaTab('tap', host.strikeBtn, true) : viaTab('tap', host.tapBtn, tapCost(s.tapLevel) <= s.points);
+    }
     case 'upgrade':
     case 'tapLv':
       return viaTab('tap', host.tapBtn, tapCost(s.tapLevel) <= s.points);
@@ -172,7 +227,7 @@ function hide(): void {
 
 function frame(): void {
   const s = host.state();
-  if (guideEnded(s)) {
+  if (!pointing(s)) {
     hide();
     loop = 0;
     return;
@@ -192,7 +247,7 @@ function place(t: Spot): void {
   const size = (d: Dir): { w: number; h: number } => ({ w: arrows[d].width.baseVal.value, h: arrows[d].height.baseVal.value });
   const fits = (d: Dir): boolean => {
     const { w, h } = size(d);
-    if (d === 'down') return t.y - gap - h >= 0;
+    if (d === 'down') return t.y - gap - h >= (t.minTop ?? 0);
     if (d === 'up') return t.y + t.h + gap + h <= vh;
     if (d === 'right') return t.x - gap - w >= 0;
     return t.x + t.w + gap + w <= vw;
@@ -234,7 +289,7 @@ function place(t: Spot): void {
 
 /** 화면이 갱신될 때마다 부른다. 가이드 중이면 위치를 매 프레임 따라가고, 끝났으면 멈춘다 */
 export function syncGuidePoint(): void {
-  if (guideEnded(host.state())) {
+  if (!pointing(host.state())) {
     if (loop) cancelAnimationFrame(loop);
     loop = 0;
     hide();

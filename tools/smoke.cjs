@@ -19,7 +19,15 @@ function check(name, ok, detail = '') {
 
 const IGNORE = /Extension context invalidated|Receiving end does not exist/;
 /** 새 컨텍스트·페이지. seed가 있으면 첫 로드 때만 저장 칸에 넣는다(새로고침은 그대로 이어짐) */
-async function newPage(browser, seed, query = '?debug', opts = MOBILE) {
+/** 새 게임 인트로가 떠 있으면 건너뛰기로 닫는다 */
+async function skipIntro(page) {
+  const sk = page.locator('.story-ov .sn-skip');
+  if ((await sk.count()) === 0) return;
+  await sk.click();
+  await page.waitForSelector('.story-ov', { state: 'detached' });
+}
+
+async function newPage(browser, seed, query = '?debug', opts = MOBILE, keepIntro = false) {
   const ctx = await browser.newContext(opts);
   await ctx.addInitScript((p) => localStorage.setItem('ajd-home-idle:ui-prefs', JSON.stringify(p)), PREFS);
   if (seed) {
@@ -35,6 +43,7 @@ async function newPage(browser, seed, query = '?debug', opts = MOBILE) {
   await page.goto(URL + query);
   await page.waitForSelector('.phone');
   await page.evaluate(() => document.fonts.ready);
+  if (!keepIntro) await skipIntro(page);
   return { ctx, page };
 }
 
@@ -228,7 +237,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       await page.locator('.modal .btn.primary').click();
       await page.waitForTimeout(400);
       const sv = await save(page);
-      check('안내를 닫으면 notice가 지워지고 현재 version 16으로 저장', sv.version === 16 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
+      check('안내를 닫으면 notice가 지워지고 현재 version 17로 저장', sv.version === 17 && !sv.notice && (await page.locator('.modal').count()) === 0, `v${sv.version}`);
       await page.reload();
       await page.waitForSelector('.phone');
       await page.waitForTimeout(800);
@@ -690,7 +699,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await setS(page, { guide: { step: 2, n: 1, done: false }, earned: 100, points: 100 });
         await page.waitForTimeout(400);
         let g = await guideRowInfo(page);
-        check('가이드: 누적 P 문턱 대기 문구', g.text.includes('누적') && g.text.includes('모으면') && g.chip === '가이드 3/18', `${g.chip} ${g.text}`);
+        check('가이드: 누적 P 문턱 대기 문구', g.text.includes('누적') && g.text.includes('모아요') && g.chip === '가이드 3/18', `${g.chip} ${g.text}`);
         await setS(page, { earned: 5000 });
         await waitChip(page, '가이드 4/18');
         g = await guideRowInfo(page);
@@ -719,7 +728,7 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.waitForFunction(() => window.__ajd.get().moves === 1, null, { timeout: 15000 }).catch(() => {});
         await page.waitForTimeout(2500);
         g = await guideRowInfo(page);
-        check('가이드: 이사하면 줄이 사라지고 가이드 완료로 저장', !g.vis && (await gs(page)).guide.done === true);
+        check('가이드: 이사하면 1부는 완료로 저장되고 줄은 2부로 바뀐다', g.vis && g.chip.startsWith('가이드 2부') && (await gs(page)).guide.done === true, g.chip);
         await ctx.close();
       }
       // 가이드 완료 저장·기본 ?debug에는 줄이 없다
@@ -829,6 +838,14 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
       check('가이드 2단계: 화살표가 강화 버튼 바로 위', !!a && Math.abs(a.cx - b.cx) < 30 && b.top - a.bot >= 0 && b.top - a.bot < 12, JSON.stringify({ a, b }));
       await setG(page, 1, { points: 0 }); await page.waitForTimeout(500);
       check('가이드 2단계: 포인트가 모자라면 화살표 없음', (await arrowBox(page)) === null);
+      await setG(page, 7, { points: 1e6, earned: 3e6 }); await page.waitForTimeout(500);
+      const gtxt = () => page.evaluate(() => document.querySelector('.guide-row .gd-text')?.textContent || '');
+      await page.evaluate(() => window.__ajd.guideEv({ type: 'strike' })); await page.waitForTimeout(400);
+      const t1 = await gtxt();
+      await page.evaluate(() => window.__ajd.guideEv({ type: 'strike' })); await page.waitForTimeout(700);
+      const t2 = await gtxt();
+      a = await arrowBox(page); b = await btnBox(page, '.strike-card .btn.buy');
+      check('가이드 8단계: 약한 강타 2번 뒤 보조 안내로 바뀌고 화살표가 오함마 강화 버튼에 있다', t1.includes('3개') && t2.includes('강타가 약하면') && !!a && Math.abs(a.cx - b.cx) < 30 && Math.abs(b.top - a.bot) < 14, JSON.stringify({ t1, t2, a, b }));
       await setG(page, 9, { points: 1e13, earned: 1e13 }); await page.waitForTimeout(600);
       a = await arrowBox(page); b = await page.evaluate(() => { const r = [...document.querySelectorAll('.tab')].find((x) => x.textContent.includes('상자')).getBoundingClientRect(); return { cx: r.left + r.width / 2, top: r.top, bot: r.bottom }; });
       check('가이드 10단계: 화살표가 상자 탭 버튼 바로 위', !!a && Math.abs(a.cx - b.cx) < 30 && Math.abs(b.top - a.bot) < 12, JSON.stringify({ a, b }));
@@ -1503,6 +1520,375 @@ const layoutIssues = (page, root) => page.evaluate((r) => {
         await page.screenshot({ path: path.join(SHOTS, `s1-${w}-row.png`) });
         await ctx.close();
       }
+    }
+
+
+    // 이야기(인트로·도착 쪽지·엔딩·다시 보기)
+    {
+      const UNL = ['tap', 'home', 'box', 'dex', 'mult', 'badge', 'perk'];
+      const seedAt = (moves) => ({ version: 9, unlocked: UNL, points: 5e9, earned: 1e60, moves, tapLevel: 12, strikeLevel: 4, gear: { level: 3 }, homeLv: [3, 2, 1, 0, 0, 0, 0, 0], unpack: { box: 40, damage: 0, roomDone: false, hp: 1e15, salt: 5, rushSec: 0 } });
+      const clickMove = async (page) => { await page.locator('.move-btn').click(); await page.waitForSelector('.modal'); await page.locator('.modal .btn.primary').click(); };
+      /** 이사 장면을 눌러 건너뛰며 selector가 뜰 때까지 기다린다 */
+      const through = async (page, sel) => {
+        for (let i = 0; i < 40; i++) {
+          if (await page.locator(sel).count()) return true;
+          if (await page.locator('.move-scene').count()) await page.mouse.click(100, 400).catch(() => {});
+          await page.waitForTimeout(350);
+        }
+        return false;
+      };
+      const advance = (page) => page.evaluate(() => { document.querySelector('.story-ov .sn-next')?.click(); });
+      const typed = (page) => page.waitForFunction(() => { const c = document.querySelector('.sn-pg.cur'); return !!c && c.querySelectorAll('.sn-off').length > 0 && [...c.querySelectorAll('.sn-off')].every((n) => n.textContent === ''); }, null, { timeout: 3000 });
+
+      // 인트로(새 게임, 가이드 시작 전)
+      for (const w of [390, 360]) {
+        const { ctx, page } = await newPage(browser, null, '?debug&guide', { ...MOBILE, viewport: { width: w, height: 844 } }, true);
+        await page.waitForSelector('.story-ov .sn-note');
+        await typed(page);
+        const info = await page.evaluate(() => { const n = document.querySelector('.sn-note').getBoundingClientRect(); const sk = document.querySelector('.sn-skip').getBoundingClientRect(); return { title: document.querySelector('.sn-title').textContent, txt: document.querySelector('.sn-pg.cur').textContent, bottom: n.bottom, h: innerHeight, skipH: sk.height, overW: document.documentElement.scrollWidth > document.documentElement.clientWidth }; });
+        check(`인트로(${w}): 제목 "이삿날"·첫 문단, 창이 화면 안, 건너뛰기 44px 이상`, info.title === '이삿날' && info.txt.includes('오늘 원룸으로 이사 왔어요.') && info.bottom <= info.h + 1 && info.skipH >= 44 && !info.overW, JSON.stringify(info));
+        if (w === 390) {
+          const m = await mid(page);
+          const s0 = await gs(page);
+          await page.mouse.click(m.x, m.y);
+          await page.mouse.click(m.x, m.y - 60);
+          await page.waitForTimeout(200);
+          const s1 = await gs(page);
+          check('인트로 중 방을 눌러도 상자를 치지 않는다', s1.stats.totalTaps === 0 && s1.points === s0.points && s1.unpack.damage === 0, `taps=${s1.stats.totalTaps}`);
+          check('인트로 중 머리글·토스트 층이 숨는다', await page.evaluate(() => { const l = document.querySelector('.fx-layer'); return !l || getComputedStyle(l).visibility === 'hidden'; }));
+          // 위의 두 탭은 가림막에 닿아 문단을 넘겼다: 첫 탭 = 다음 문단, 둘째 탭 = 즉시 다 찍기
+          await page.waitForTimeout(100);
+          check('인트로: 가림막 탭으로 문단 2가 뜨고 보기 점 2번째', (await text(page, '.sn-pg.cur')).includes('보낸 사람 칸은 비어 있고요') && (await page.locator('.sn-dots i:nth-child(2).on').count()) === 1);
+          await page.locator('.story-ov').click({ position: { x: 100, y: 120 } });
+          await page.locator('.story-ov').click({ position: { x: 100, y: 120 } });
+          await page.waitForTimeout(100);
+          check('인트로: 마지막 문단 버튼은 "까 보기"', (await text(page, '.sn-next')) === '까 보기' && (await text(page, '.sn-pg.cur')).includes('일단 까 볼까요?'));
+          await page.locator('.sn-next').click();
+          await page.waitForSelector('.story-ov', { state: 'detached' });
+          await page.waitForTimeout(500);
+          const gd = await page.evaluate(() => ({ chip: document.querySelector('.guide-row .gd-chip')?.textContent, tip: document.body.innerText.includes('상자를 눌러서 열어요') }));
+          const gs2 = await gs(page);
+          check('인트로 닫힘: 가이드 1/18과 "상자를 눌러서 열어요" 말풍선이 이어진다', gd.chip === '가이드 1/18' && gd.tip && gs2.guide.step === 0 && gs2.story.intro === true, JSON.stringify(gd));
+          await page.reload();
+          await page.waitForSelector('.phone');
+          await page.waitForTimeout(500);
+          check('인트로는 한 번만(새로고침해도 안 뜬다)', (await page.locator('.story-ov').count()) === 0 && (await gs(page)).story.intro === true);
+        } else {
+          await page.locator('.sn-next').click();
+          await page.locator('.sn-next').click();
+          await typed(page);
+          const fit = await page.evaluate(() => { const n = document.querySelector('.sn-note').getBoundingClientRect(); const p = document.querySelector('.sn-pg.cur .sn-p').getBoundingClientRect(); return p.right <= n.right && p.left >= n.left && n.bottom <= innerHeight + 1; });
+          check('인트로(360): 문단이 창 안에 다 들어간다', fit);
+        }
+        await ctx.close();
+      }
+
+      // v16 저장을 불러와도 인트로가 안 뜬다
+      {
+        const { page: p0, ctx: c0 } = await newPage(browser);
+        const base = await gs(p0);
+        await c0.close();
+        const { story, ...rest } = base;
+        void story;
+        const seed = { ...rest, version: 16, stats: { ...rest.stats, totalTaps: 20 }, guide: { step: 3, n: 0, done: false } };
+        const { ctx, page } = await newPage(browser, seed, '?debug&guide', MOBILE, true);
+        await page.waitForTimeout(500);
+        const g = await gs(page);
+        check('v16 저장(탭 20번, 가이드 3단계)을 불러오면 인트로가 안 뜨고 진행이 그대로', (await page.locator('.story-ov').count()) === 0 && g.story.intro === true && g.guide.step === 3 && g.stats.totalTaps === 20 && g.version === 17, JSON.stringify(g.story));
+        await ctx.close();
+      }
+
+      // 이사 뒤 도착 쪽지가 특전 상자·카드 고르기보다 먼저, 닫으면 기존 흐름
+      {
+        const { ctx, page } = await newPage(browser, seedAt(0));
+        await page.waitForTimeout(600);
+        await clickMove(page);
+        const got = await through(page, '.story-ov .sn-note');
+        await page.waitForTimeout(700);
+        const first = await page.evaluate(() => ({ modals: document.querySelectorAll('.modal').length, title: document.querySelector('.sn-title')?.textContent, kick: document.querySelector('.sn-kick')?.textContent, txt: document.querySelector('.sn-pg.cur')?.textContent, btn: document.querySelector('.sn-next')?.textContent }));
+        check('이사 뒤 도착 쪽지(투룸)가 먼저 뜬다: 특전 창 없음', got && first.modals === 0 && first.title === '투룸' && first.kick === '상자에 붙은 쪽지' && first.txt.includes('이사 축하해요. 상자는 먼저 보내 뒀어요.') && first.txt.includes('보낸 사람: (빈칸)') && first.btn === '상자 까러 가기', JSON.stringify(first));
+        check('도착 쪽지가 뜬 동안 그 집은 이미 본 것으로 저장', (await gs(page)).story.notes.includes(1) && (await save(page)).story.notes.includes(1));
+        await page.locator('.sn-next').click();
+        await page.waitForSelector('.story-ov', { state: 'detached' });
+        await page.waitForTimeout(900);
+        const after = await page.evaluate(() => ({ modal: document.querySelector('.modal h2')?.textContent || '', ov: document.querySelectorAll('.overlay').length }));
+        check('쪽지를 닫으면 기존 흐름(특전 상자 고르기 창)이 이어진다', after.modal !== '' && after.ov === 1, JSON.stringify(after));
+        const s = await gs(page);
+        check('이사 규칙은 그대로(집 1, 특전 상자 대기 2개)', s.moves === 1 && s.perkOffers.length === 2, `moves=${s.moves} offers=${s.perkOffers.length}`);
+        await ctx.close();
+      }
+      // 달 기지: 쪽지 -> 달 기지 창
+      {
+        const { ctx, page } = await newPage(browser, seedAt(3));
+        await page.waitForTimeout(600);
+        await clickMove(page);
+        await through(page, '.story-ov .sn-note');
+        await page.waitForTimeout(600);
+        check('달 기지 도착: 먼저 쪽지(달 기지)가 뜨고 달 기지 창은 아직 없다', (await text(page, '.sn-title')) === '달 기지' && (await page.locator('.modal').count()) === 0);
+        await page.locator('.sn-next').click();
+        await page.waitForSelector('.modal');
+        check('쪽지 뒤에 "달 기지 도착!" 창이 그대로 뜬다', (await text(page, '.modal h2')).includes('달 기지 도착!'));
+        await ctx.close();
+      }
+      // 우주 끝 신도시 쪽지
+      {
+        const { ctx, page } = await newPage(browser, seedAt(7));
+        await page.waitForTimeout(600);
+        await clickMove(page);
+        await through(page, '.story-ov .sn-note');
+        await page.waitForTimeout(700);
+        const t = await text(page, '.sn-pg.cur');
+        check('우주 끝 신도시 쪽지 문구', t.includes('더 보낼 곳이 없어요. 마지막 상자는 맨 뒤에 있어요.'), t);
+        await ctx.close();
+      }
+
+      // 엔딩: 이사 8회 저장에서 이사
+      for (const w of [390, 360]) {
+        const { ctx, page } = await newPage(browser, seedAt(8), '?debug', { ...MOBILE, viewport: { width: w, height: 844 } });
+        await page.waitForTimeout(600);
+        await clickMove(page);
+        await page.waitForSelector('.story-ov.ending');
+        const cine = await page.evaluate(() => ({ modals: document.querySelectorAll('.modal').length, moveScene: document.querySelectorAll('.move-scene').length, bands: document.querySelectorAll('.sn-band').length, box: !!document.querySelector('.sn-box') }));
+        await page.waitForSelector('.story-ov .sn-note', { timeout: 6000 });
+        check(`엔딩(${w}): 시선 연출(띠·상자) 뒤 쪽지 창, 아직 이사 전`, cine.bands === 2 && cine.box && cine.moveScene === 0 && (await gs(page)).moves === 8, JSON.stringify(cine));
+        check(`엔딩(${w}): 제목 "마지막 상자"`, (await text(page, '.sn-title')) === '마지막 상자');
+        let ok = true;
+        const seen = [];
+        for (let i = 0; i < 4; i++) {
+          await typed(page);
+          const r = await page.evaluate(() => { const n = document.querySelector('.sn-note').getBoundingClientRect(); const c = document.querySelector('.sn-pg.cur'); const cr = c.getBoundingClientRect(); const rows = [...c.querySelectorAll('.sn-p, .sn-inv')].every((q) => { const b = q.getBoundingClientRect(); return b.right <= n.right + 1 && b.left >= n.left - 1; }); return { t: c.innerText.replace(/\n/g, ' / '), fit: rows && n.bottom <= innerHeight + 1 && cr.bottom <= n.bottom }; });
+          seen.push(r.t);
+          if (!r.fit) ok = false;
+          if (i === 2) await page.waitForTimeout(1000);
+          if (i < 3) await advance(page);
+        }
+        check(`엔딩(${w}): 문단 4개가 창 안에 다 들어가고 문구가 맞다`, ok && seen[0].includes('빈 송장 한 묶음과 펜') && seen[1].includes('아직 안 썼던 거예요') && seen[2].includes('받는 사람: 원룸의 나') && seen[2].includes('보낸 사람: 우주 끝의 나') && seen[3].includes('저쪽의 나도 일단 까 보겠죠'), seen.join(' | '));
+        check(`엔딩(${w}): 송장이 찍힌 뒤 상자가 날아가 사라진다`, await page.evaluate(() => getComputedStyle(document.querySelector('.sn-box')).visibility === 'hidden'));
+        await advance(page);
+        await page.waitForSelector('.story-ov.end');
+        let peak = 0;
+        for (let k = 0; k < 6; k++) { await page.waitForTimeout(100); peak = Math.max(peak, await page.evaluate(() => window.__ajd.particles())); }
+        await page.waitForTimeout(2200);
+        const end = await page.evaluate(() => ({ fin: document.querySelector('.sn-fin')?.textContent, lit: document.querySelectorAll('.sn-h.lit').length, rows: [...document.querySelectorAll('.sn-rec div')].map((d) => d.textContent), credit: document.querySelector('.sn-credit')?.textContent, go: document.querySelector('.sn-go')?.textContent, goVis: getComputedStyle(document.querySelector('.sn-go')).visibility, within: (() => { const b = document.querySelector('.sn-go').getBoundingClientRect(); return b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth; })(), over: [...document.querySelectorAll('.sn-end *')].some((e) => e.getBoundingClientRect().right > innerWidth + 1), moves: window.__ajd.get().moves }));
+        check(`끝 화면(${w}): 끝·집 9개 켜짐·기록 3줄·작은 글씨·버튼 "계속 까기", 넘침 없음`, end.fin === '끝' && end.lit === 9 && end.rows.length === 3 && end.rows[0].includes('이사 횟수') && end.rows[0].includes('8번') && end.rows[1].includes('최고 연쇄') && end.rows[2].includes('누적 수익') && end.credit === '우리 집 키우기' && end.go === '계속 까기' && end.goVis === 'visible' && end.within && !end.over && end.moves === 8, JSON.stringify(end));
+        check(`끝 화면(${w}): 폭죽 최고점 입자 수가 400 이하이고 터지고 있다(50 이상)`, peak <= 400 && peak >= 50, `peak=${peak}`);
+        await page.locator('.sn-go').click();
+        await page.waitForSelector('.story-ov', { state: 'detached' });
+        await through(page, '.modal');
+        await page.waitForTimeout(800);
+        const s = await gs(page);
+        const hn = await text(page, '.house-name');
+        check(`계속 까기(${w}): 평소 이사가 이어져 "우주 끝 신도시 1차", 엔딩은 본 것, 특전 상자 대기`, s.moves === 9 && s.story.ending === true && hn === '우주 끝 신도시 1차' && s.perkOffers.length >= 1 && (await page.locator('.story-ov').count()) === 0, `moves=${s.moves} ${hn}`);
+        await ctx.close();
+      }
+      // 엔딩은 한 번만: 엔딩을 본 v17 저장(이사 9회)에서는 곧바로 이사 장면
+      {
+        const { page: p0, ctx: c0 } = await newPage(browser);
+        const base = await gs(p0);
+        await c0.close();
+        const seed = { ...base, version: 17, moves: 9, earned: 1e90, points: 1e90, unlocked: UNL, story: { intro: true, notes: [1, 2, 3, 4, 5, 6, 7, 8], ending: true } };
+        const { ctx, page } = await newPage(browser, seed);
+        await page.waitForTimeout(600);
+        await clickMove(page);
+        await page.waitForSelector('.move-scene', { timeout: 6000 });
+        check('엔딩은 한 번만: 본 저장에서는 이사 장면으로 바로 간다', (await page.locator('.story-ov').count()) === 0 && (await gs(page)).story.ending === true);
+        await ctx.close();
+      }
+      // 엔딩 중 건너뛰기를 눌러도 끝 화면은 본다
+      {
+        const { ctx, page } = await newPage(browser, seedAt(8));
+        await page.waitForTimeout(600);
+        await clickMove(page);
+        await page.waitForSelector('.story-ov .sn-skip', { timeout: 6000 });
+        await page.locator('.sn-skip').click();
+        await page.waitForSelector('.story-ov.end', { timeout: 3000 });
+        await page.waitForTimeout(2800);
+        check('엔딩 건너뛰기: 끝 화면은 그대로 보여 준다', (await page.locator('.sn-h.lit').count()) === 9 && (await page.locator('.sn-go.on').count()) === 1);
+        await ctx.close();
+      }
+      // 설정 > 이야기 다시 보기, 움직임 줄이기
+      {
+        const { ctx, page } = await newPage(browser, seedAt(2));
+        await page.waitForTimeout(500);
+        await setS(page, { settings: { reduceMotion: true } });
+        await page.waitForTimeout(300);
+        await page.locator('.icon-btn[aria-label="설정"]').click();
+        await page.waitForSelector('.modal');
+        await page.locator('.modal .btn', { hasText: '이야기 다시 보기' }).click();
+        await page.waitForSelector('.sn-list');
+        const rows = await page.locator('.sn-rp').count();
+        check('설정 > 이야기 다시 보기: 본 것(인트로·쪽지 2개)만 목록으로', rows === 3, String(rows));
+        await page.screenshot({ path: path.join(SHOTS, 'st-390-replay.png') });
+        const pick = async () => { const g = await gs(page); return JSON.stringify({ story: g.story, moves: g.moves, perkOffers: g.perkOffers, perks: g.perks, homeLv: g.homeLv, gear: g.gear, deck: g.deck }); };
+        const before = await pick();
+        await page.locator('.sn-rp').nth(2).click();
+        await page.waitForSelector('.story-ov .sn-note');
+        const instant = await page.evaluate(() => [...document.querySelectorAll('.sn-pg.cur .sn-off')].every((n) => n.textContent === ''));
+        check('움직임 줄이기: 쪽지 글이 한 번에 보인다', instant);
+        await page.locator('.sn-next').click();
+        await page.waitForSelector('.sn-list');
+        check('다시 보기: 닫으면 목록으로 돌아오고 저장·진행은 그대로', (await pick()) === before);
+        await ctx.close();
+      }
+    }
+
+
+    // 13. 가이드 2부·한 줄 설명·집 N/9·도움말(2차 가이드 강화)
+    {
+      const DECK_ALL = [...ALL, 'deck'];
+      const GUIDE_DONE = { step: 18, n: 0, done: true };
+      const g2 = async (page) => page.evaluate(() => ({ chip: document.querySelector('.guide-row .gd-chip')?.textContent || '', vis: !document.querySelector('.guide-row')?.hidden, text: document.querySelector('.guide-row .gd-text')?.textContent || '', done: !!document.querySelector('.guide-row.done') }));
+      const wait2 = (page, c) => page.waitForFunction((x) => document.querySelector('.guide-row .gd-chip')?.textContent === x && !document.querySelector('.guide-row.done'), c, { timeout: 6000 }).catch(() => {});
+      const deckSet = (page, deck, over = {}) => page.evaluate(([d, o]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, ...o, deck: { ...s.deck, ...d } }); }, [deck, over]);
+      const { ctx, page } = await newPage(browser, null, '?debug');
+      await page.evaluate(() => window.__ajd.set({ ...window.__ajd.get(), moves: 1, guide2: { step: 0, done: false }, deck: { ...window.__ajd.get().deck, slots: [], offers: [] } }));
+      await page.waitForTimeout(700);
+      let g = await g2(page);
+      check('2부: 이사 1회에 가이드 2부 1/5 줄이 뜬다', g.vis && g.chip === '가이드 2부 1/5' && g.text.includes('공구함 카드를 하나'), `${g.chip} ${g.text}`);
+      const mk = (id, stacks = 0) => ({ id, star: 1, charge: 0, stacks });
+      const c3 = await page.evaluate(() => window.__ajd.cards());
+      check('2부: 디버그 훅으로 카드 id를 얻는다', c3.length >= 3, String(c3.length));
+      await page.waitForTimeout(1800);
+      await page.screenshot({ path: path.join(SHOTS, 'g2-390-part2-1.png') });
+      await deckSet(page, { slots: [mk(c3[0])] });
+      await wait2(page, '가이드 2부 2/5');
+      g = await g2(page);
+      check('2부: 카드를 끼우면 2/5(카드 눈금)', g.chip === '가이드 2부 2/5' && g.text.includes('눈금'), `${g.chip} ${g.text}`);
+      await page.waitForTimeout(1800);
+      await page.screenshot({ path: path.join(SHOTS, 'g2-390-part2-2.png') });
+      const ar390 = await page.evaluate(() => { const a = document.querySelector('.gd-point'), g = document.querySelector('.guide-row'); if (!a || a.hidden) return { none: true }; const x = a.getBoundingClientRect(), y = g.getBoundingClientRect(); return { ov: x.left < y.right && x.right > y.left && x.top < y.bottom && x.bottom > y.top, a: [x.top, x.bottom], g: [y.top, y.bottom] }; });
+      check('2부: 390에서 화살표가 가이드 줄(막대 포함)을 덮지 않는다', ar390.none !== true && ar390.ov === false, JSON.stringify(ar390));
+      await page.setViewportSize({ width: 360, height: 800 });
+      await page.waitForTimeout(800);
+      await page.screenshot({ path: path.join(SHOTS, 'g2-360-part2.png') });
+      const o360 = await page.evaluate(() => { const r = document.querySelector('.guide-row'); return { fit: r.getBoundingClientRect().right <= innerWidth && document.documentElement.scrollWidth <= innerWidth, over: [...r.querySelectorAll('.gd-head, .gd-text')].filter((e) => e.scrollWidth > e.clientWidth + 1).length }; });
+      check('2부: 360 폭에서도 가이드 줄이 안 넘친다', o360.fit && o360.over === 0, JSON.stringify(o360));
+      await page.setViewportSize({ width: 390, height: 844 });
+      await deckSet(page, { slots: [mk(c3[0], 1)] });
+      await wait2(page, '가이드 2부 3/5');
+      g = await g2(page);
+      check('2부: 스택이 1이 되면 3/5(카드 2장 더)', g.chip === '가이드 2부 3/5' && g.text.includes('2장'), `${g.chip} ${g.text}`);
+      await page.waitForTimeout(1800);
+      await page.screenshot({ path: path.join(SHOTS, 'g2-390-part2-3.png') });
+      await deckSet(page, { slots: [mk(c3[0], 1), mk(c3[1]), mk(c3[2])] });
+      await wait2(page, '가이드 2부 4/5');
+      g = await g2(page);
+      check('2부: 카드 3장이면 4/5(강화 고르기)', g.chip === '가이드 2부 4/5' && g.text.includes('강화 고르기'), `${g.chip} ${g.text}`);
+      await page.waitForTimeout(1800);
+      await page.screenshot({ path: path.join(SHOTS, 'g2-390-part2-4.png') });
+      await deckSet(page, { boostMade: 1, boostPacks: 0, chargedStacks: 6 });
+      await wait2(page, '가이드 2부 5/5');
+      g = await g2(page);
+      check('2부: 강화 고르기를 끝내면 5/5(이사)', g.chip === '가이드 2부 5/5' && g.text.includes('이사'), `${g.chip} ${g.text}`);
+      await page.waitForTimeout(1800);
+      await page.screenshot({ path: path.join(SHOTS, 'g2-390-part2-5.png') });
+      const lay = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); const b = e && e.getBoundingClientRect(); return b && b.width > 0 ? { t: b.top, b: b.bottom } : null; }; return { charge: r('.charge'), deck: r('.deck-row'), move: r('.move-row'), guide: r('.guide-row'), h: innerHeight }; });
+      check('2부: 줄이 있어도 390x844에서 게이지·덱 줄·이사 줄이 화면 안', lay.charge && lay.deck && lay.move && lay.charge.b <= lay.h && lay.deck.b <= lay.h && lay.move.b <= lay.h && lay.guide.b <= lay.deck.t + 1, JSON.stringify(lay));
+      // 이사하면 2부 끝
+      await setS(page, { moves: 2 });
+      await page.waitForTimeout(1200);
+      g = await g2(page);
+      check('2부: 이사 2회가 되면 줄이 사라지고 끝으로 저장', !g.vis && (await gs(page)).guide2.done === true, JSON.stringify(g));
+      await ctx.close();
+    }
+    const DECK_ALL = [...ALL, 'deck'];
+    const GUIDE_DONE = { step: 18, n: 0, done: true };
+    {
+      // 이사 2회 저장에는 2부가 안 뜬다(v16 저장 이전 포함)
+      const v16 = (moves) => ({ version: 16, moves, guide: GUIDE_DONE, unlocked: DECK_ALL });
+      for (const mv of [2, 3]) {
+        const { ctx, page } = await newPage(browser, v16(mv));
+        await page.waitForTimeout(600);
+        check(`2부: 이사 ${mv}회 저장은 줄이 없다`, !(await page.evaluate(() => !document.querySelector('.guide-row')?.hidden)) && (await gs(page)).guide2.done === true);
+        await ctx.close();
+      }
+      const { ctx, page } = await newPage(browser, v16(1));
+      await page.waitForTimeout(600);
+      check('2부: 이사 1회 저장은 2부 1단계부터(카드 없음)', (await page.locator('.guide-row .gd-chip').innerText()).startsWith('가이드 2부 1/5'));
+      await ctx.close();
+    }
+    {
+      // 한 줄 설명은 한 번만: 스택 배지
+      const { ctx, page } = await newPage(browser, { version: 16, moves: 1, guide: GUIDE_DONE, unlocked: DECK_ALL });
+      await page.evaluate(() => localStorage.setItem('ajd-home-idle:ui-prefs', JSON.stringify({ sound: false, music: false, haptics: false, chargeDone: true, weakDone: true, tips: [] })));
+      await page.reload();
+      await page.waitForSelector('.phone');
+      await skipIntro(page);
+      const REAL = await page.evaluate(() => window.__ajd.cards());
+      const mk = (id, stacks = 0) => ({ id, star: 1, charge: 0, stacks });
+      await page.evaluate(([c]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, guide2: { step: 0, done: true }, deck: { ...s.deck, slots: [c], offers: [] } }); }, [mk(REAL[0], 2)]);
+      const toasts = async () => (await page.locator('.toast').allInnerTexts()).join(' ');
+      let seen = false;
+      for (let i = 0; i < 40 && !seen; i++) { await page.waitForTimeout(250); seen = (await toasts()).includes('스택 하나마다'); }
+      if (seen) await page.screenshot({ path: path.join(SHOTS, 'g2-390-tip-stack.png') });
+      check('한 줄 설명: 스택이 처음 붙으면 토스트', seen);
+      const n1 = (await page.evaluate(() => JSON.parse(localStorage.getItem('ajd-home-idle:ui-prefs')).tips)).filter((x) => x === 'stack').length;
+      await page.evaluate(([c]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, deck: { ...s.deck, slots: [{ ...c, stacks: 0 }] } }); }, [mk(REAL[0], 0)]);
+      await page.waitForTimeout(1200);
+      await page.evaluate(([c]) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, deck: { ...s.deck, slots: [c] } }); }, [mk(REAL[0], 3)]);
+      await page.waitForTimeout(5500);
+      const after = await page.evaluate(() => JSON.parse(localStorage.getItem('ajd-home-idle:ui-prefs')).tips.filter((x) => x === 'stack').length);
+      check('한 줄 설명: 같은 설명은 다시 안 뜬다', n1 === 1 && after === 1 && !(await toasts()).includes('스택 하나마다'), `${n1},${after}`);
+      // 자동 칩
+      await page.evaluate(() => { const s = window.__ajd.get(); window.__ajd.set({ ...s, unpack: { ...s.unpack, rushSec: 12 } }); });
+      let rush = false;
+      for (let i = 0; i < 40 && !rush; i++) { await page.waitForTimeout(250); rush = (await toasts()).includes('자동 연타'); }
+      if (rush) await page.screenshot({ path: path.join(SHOTS, 'g2-390-tip-auto.png') });
+      check('한 줄 설명: 자동 칩이 처음 뜨면 토스트', rush);
+      await ctx.close();
+    }
+    {
+      // 집 N/9 버튼, 집 단계 창, 도움말
+      const { ctx, page } = await newPage(browser, { version: 16, moves: 1, guide: GUIDE_DONE, unlocked: DECK_ALL });
+      await page.waitForTimeout(600);
+      const lbl = await page.locator('.step-btn').innerText();
+      check('집 단계 버튼: 집 2/9', lbl.trim() === '집 2/9', lbl);
+      await setS(page, { moves: 8 });
+      await page.waitForTimeout(500);
+      check('집 단계 버튼: 9번째 집은 집 9/9', (await page.locator('.step-btn').innerText()).trim() === '집 9/9');
+      await setS(page, { moves: 10 });
+      await page.waitForTimeout(500);
+      check('집 단계 버튼: 9번째 이후는 N차', (await page.locator('.step-btn').innerText()).trim() === '2차', await page.locator('.step-btn').innerText());
+      await setS(page, { moves: 8 });
+      await page.waitForTimeout(400);
+      await page.setViewportSize({ width: 360, height: 800 });
+      await page.waitForTimeout(500);
+      const fit360 = await page.evaluate(() => { const rs = ['.move-row .bar', '.step-btn', '.move-row .move-btn'].map((s) => document.querySelector(s).getBoundingClientRect()); return { ok: rs[0].right <= rs[1].left + 1 && rs[1].right <= rs[2].left + 1 && rs[2].right <= innerWidth && document.querySelector('.step-btn').scrollWidth <= document.querySelector('.step-btn').clientWidth + 1 }; });
+      check('집 단계 버튼: 360px에서 안 넘치고 겹치지 않는다', fit360.ok, JSON.stringify(fit360));
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.locator('.step-btn').click();
+      await page.waitForSelector('.house-table');
+      const last = await page.locator('.house-row.last').innerText();
+      check('집 단계 창: 마지막 상자 줄(엔딩 전)', last.includes('마지막 상자') && !last.includes('엔딩 봄') && (await page.locator('.house-row.current').count()) === 1, last);
+      await page.waitForTimeout(900);
+      await page.evaluate(() => document.querySelector('.house-row.last')?.scrollIntoView({ block: 'center' }));
+      await page.screenshot({ path: path.join(SHOTS, 'g2-390-house-table.png') });
+      await page.locator('.overlay .btn').last().click();
+      await setS(page, { story: { ...(await gs(page)).story, ending: true } });
+      await page.locator('.step-btn').click();
+      await page.waitForSelector('.house-table');
+      check('집 단계 창: 엔딩을 봤으면 엔딩 봄', (await page.locator('.house-row.last').innerText()).includes('엔딩 봄'));
+      await page.locator('.overlay .btn').last().click();
+      // 이사 확인 창
+      await setS(page, { moves: 1, points: 1e30, earned: 1e30 });
+      await page.waitForTimeout(500);
+      await page.locator('.move-btn').click();
+      await page.waitForSelector('.mv-box');
+      const mvTxt = await page.locator('.overlay').innerText();
+      check('이사 확인 창: 남는 것과 처음부터가 적혀 있다', mvTxt.includes('처음부터') && mvTxt.includes('남는 것'), mvTxt.slice(0, 80));
+      await page.waitForTimeout(900);
+      await page.screenshot({ path: path.join(SHOTS, 'g2-390-move-confirm.png') });
+      await page.locator('.overlay .btn').first().click();
+      // 도움말
+      await page.locator('button[aria-label="설정"]').click();
+      await page.waitForSelector('.overlay');
+      await page.getByText('도움말', { exact: true }).click();
+      await page.waitForSelector('.help-list');
+      await page.waitForTimeout(900);
+      const hp = await page.evaluate(() => { const rows = [...document.querySelectorAll('.help-row')]; const ov = document.querySelector('.help-list').getBoundingClientRect(); return { n: rows.length, over: rows.filter((r) => r.scrollWidth > r.clientWidth + 1 || r.getBoundingClientRect().right > ov.right + 1).length, imgs: rows.every((r) => r.querySelector('img') && r.querySelector('img').naturalWidth > 0), h: document.documentElement.scrollWidth <= innerWidth }; });
+      check('도움말: 줄 10개·아이콘·가로 넘침 없음', hp.n === 10 && hp.over === 0 && hp.imgs && hp.h, JSON.stringify(hp));
+      await page.screenshot({ path: path.join(SHOTS, 'g2-390-help.png') });
+      await ctx.close();
     }
 
     check('콘솔 오류 0건', errors.length === 0, errors.slice(0, 3).join(' | '));

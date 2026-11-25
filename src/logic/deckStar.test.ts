@@ -145,7 +145,7 @@ describe('저장 v14 -> v15', () => {
     const r = parseSave(v14);
     expect(r.kind).toBe('ok');
     const s = r.state;
-    expect(s.version).toBe(16);
+    expect(s.version).toBe(17);
     const m = deckMult(s);
     expect(m).toBeCloseTo((1 + 3 * 0.5) * 4);
     expect(s.deck.slots[0].charge).toBeCloseTo(need('P2', moves) / 2);

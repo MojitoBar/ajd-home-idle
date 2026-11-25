@@ -1,6 +1,6 @@
 /** 첫 가이드: 손맛 요소가 하나씩 열리는 순서. 처음에는 탭과 공구 강화만 있고, 단계를 끝낼 때마다 요소가 하나 열려 수익이 한 계단씩 가팔라진다(J 커브). 첫 이사를 하면 끝나고 그 뒤는 전부 열린다. */
 import { addToCollection, rollBox, type BoxResult } from './gacha';
-import { multBreakdown, tapStable } from './economy';
+import { multBreakdown, strikeCost, tapCost, tapStable } from './economy';
 import { seededRng } from './perks';
 import type { GameState, GuideState } from './state';
 
@@ -77,17 +77,17 @@ const totalMult = (s: GameState): number => {
 export const GUIDE_STEPS: readonly GuideStepDef[] = [
   { id: 'tap', text: '상자를 10번 쳐 보세요', event: 'tap', goal: 10, gate: 0, rewardTaps: 40 },
   { id: 'upgrade', text: '공구를 강화해 보세요', event: 'upgrade', goal: 1, gate: 0, rewardTaps: 30 },
-  { id: 'unbox', text: '큰 상자를 터뜨려 살림을 꺼내요', event: 'unbox', goal: 1, gate: 4e3, rewardTaps: 60 },
+  { id: 'unbox', text: '계속 쳐서 큰 상자를 터뜨려요', event: 'unbox', goal: 1, gate: 4e3, rewardTaps: 60 },
   { id: 'combo', text: '쉬지 않고 10번 이어 쳐 보세요', event: 'combo', goal: 10, opens: 'combo', gate: 7e4, rewardTaps: 60 },
   { id: 'strike', text: '꾹 눌렀다 놓아 강타해 보세요', event: 'strike', goal: 1, opens: 'charge', gate: 1.2e5, rewardTaps: 100 },
-  { id: 'weak', text: '떠오른 급소를 맞혀 보세요', event: 'weak', goal: 1, opens: 'weak', gate: 2.5e5, rewardTaps: 100 },
-  { id: 'fever', text: '피버를 터뜨려 보세요', event: 'fever', goal: 1, opens: 'fever', gate: 7e5, rewardTaps: 150 },
-  { id: 'chain', text: '한 번에 상자 3개를 터뜨려 보세요', event: 'chain', goal: 3, opens: 'chain', gate: 8e6, rewardTaps: 200 },
-  { id: 'streak', text: '퍼펙트를 2번 이어서 맞혀 보세요', event: 'perfect', goal: 2, opens: 'streak', gate: 2.5e7, rewardTaps: 0, rewardBoxes: 2 },
+  { id: 'weak', text: '반짝이는 급소를 눌러 보세요', event: 'weak', goal: 1, opens: 'weak', gate: 2.5e5, rewardTaps: 100 },
+  { id: 'fever', text: '게이지를 채워 피버를 터뜨려요', event: 'fever', goal: 1, opens: 'fever', gate: 7e5, rewardTaps: 150 },
+  { id: 'chain', text: '강타로 한 번에 상자 3개를 터뜨려요', event: 'chain', goal: 3, opens: 'chain', gate: 1e6, rewardTaps: 200 },
+  { id: 'streak', text: '노란 칸에 놓아 퍼펙트를 2번 이어요', event: 'perfect', goal: 2, opens: 'streak', gate: 2.5e7, rewardTaps: 0, rewardBoxes: 2 },
   { id: 'boxBuy', text: '상자 탭에서 상자를 뽑아 보세요', event: 'boxBuy', goal: 1, gate: 1e8, rewardTaps: 0, rewardBoxes: 2 },
-  { id: 'special', text: '특별 상자를 터뜨려 보세요', event: 'special', goal: 1, opens: 'special', gate: 1.8e8, rewardTaps: 0, rewardBoxes: 2 },
-  { id: 'gear', text: '영구 공구를 하나 사 보세요', event: 'gearBuy', goal: 1, opens: 'gear', gate: 0, rewardTaps: 0, rewardBoxes: 3 },
-  { id: 'perkBox', text: '특전 상자를 뽑아 보세요', event: 'perkBoxBuy', goal: 1, opens: 'perkBox', gate: 0, rewardTaps: 0, rewardBoxes: 3 },
+  { id: 'special', text: '황금·폭탄·시계 상자를 터뜨려요', event: 'special', goal: 1, opens: 'special', gate: 1.8e8, rewardTaps: 0, rewardBoxes: 2 },
+  { id: 'gear', text: '강화 탭에서 영구 공구를 하나 사요', event: 'gearBuy', goal: 1, opens: 'gear', gate: 0, rewardTaps: 0, rewardBoxes: 3 },
+  { id: 'perkBox', text: '상자 탭에서 특전 상자를 뽑아요', event: 'perkBoxBuy', goal: 1, opens: 'perkBox', gate: 0, rewardTaps: 0, rewardBoxes: 3 },
   { id: 'tapLv', text: '공구를 Lv 68까지 강화해요', event: 'tick', goal: 68, progress: (s) => s.tapLevel, gate: 0, rewardTaps: 0, rewardBoxes: 4 },
   { id: 'home', text: '살림 레벨 합계를 250까지 올려요', event: 'tick', goal: 250, progress: (s) => s.homeLv.reduce((a, b) => a + b, 0), gate: 0, rewardTaps: 0, rewardBoxes: 6 },
   { id: 'strikeLv', text: '오함마를 Lv 62까지 강화해요', event: 'tick', goal: 62, progress: (s) => s.strikeLevel, gate: 0, rewardTaps: 0, rewardBoxes: 6 },
@@ -152,6 +152,8 @@ export interface GuideView {
   opens: GuideFeature | null;
   /** 이 단계가 기다리는 사건 */
   event: GuideEventType;
+  /** 연쇄 단계 보조 안내(강타가 약할 때). 없으면 null */
+  hint: 'upgrade' | 'aim' | null;
 }
 
 /** 화면용: 지금 단계. 가이드가 끝났으면 null */
@@ -171,7 +173,19 @@ export function guideView(state: GameState): GuideView | null {
     rewardBoxes: def.rewardBoxes ?? 0,
     opens: def.opens ?? null,
     event: def.event,
+    hint: chainHint(state),
   };
+}
+
+/** 연쇄 단계에서 강타가 이만큼 모자라면 보조 안내를 띄운다 */
+export const CHAIN_WEAK_MISSES = 2;
+
+/** 강타가 약해 3개를 못 터뜨리는 중이면 보조 안내 종류: 살 수 있는 강화가 있으면 'upgrade', 없으면 'aim'(노란 칸). 아니면 null */
+export function chainHint(state: GameState): 'upgrade' | 'aim' | null {
+  if (guideEnded(state)) return null;
+  const def = GUIDE_STEPS[state.guide.step];
+  if (def?.id !== 'chain' || state.guide.n >= def.goal || (state.guide.miss ?? 0) < CHAIN_WEAK_MISSES) return null;
+  return strikeCost(state.strikeLevel) <= state.points || tapCost(state.tapLevel) <= state.points ? 'upgrade' : 'aim';
 }
 
 export interface GuideResult {
@@ -206,6 +220,7 @@ export function guideEvent(state: GameState, ev: GuideEvent): GuideResult {
   if (state.moves > 0) return ENDED(state);
   const def = GUIDE_STEPS[g.step];
   if (!def) return ENDED(state);
+  if (def.id === 'chain' && ev.type === 'strike') return { ...ENDED(state), state: { ...state, guide: { ...g, miss: (g.miss ?? 0) + 1 } } };
   let n = g.n;
   if (def.progress) n = stepN(def, state);
   else if (def.event === ev.type) n = Math.min(def.goal, VALUE_EVENTS.includes(ev.type) ? Math.max(g.n, 'value' in ev ? ev.value : 0) : g.n + 1);

@@ -8,8 +8,10 @@ import { boxHp, endlessHp } from './unpack';
 import { addToCollection, rollBox } from './gacha';
 import { houseInfo } from './house';
 import { GUIDE_STEPS, finishedGuide, initialGuide } from './guide';
+import { GUIDE2_STEPS, finishedGuide2, guide2Settle, initialGuide2 } from './guide2';
 import { UNLOCK_IDS } from './unlock';
-import { CURRENT_VERSION, HOME_SLOTS, defaultState, type CollectionSlot, type GameState } from './state';
+import { NOTE_STAGES, type StoryState } from './story';
+import { CURRENT_VERSION, HOME_SLOTS, defaultState, type CollectionSlot, type GameState, type Guide2State } from './state';
 
 export const SAVE_KEY = 'ajd-home-idle:save';
 export const BACKUP_KEY = 'ajd-home-idle:save:backup';
@@ -169,7 +171,17 @@ const MIGRATIONS: Migrations = {
     const slots = Array.isArray(d.slots) ? d.slots.map((o) => (isObj(o) ? { ...o, stacks: 0 } : o)) : [];
     return { ...s, version: 16, deck: { ...d, slots, chargedStacks: 0, boostPacks: 0, boostMade: 0 } };
   },
+  // 16 -> 17: 가이드 2부(이사 2회 이상은 끝난 것, 나머지는 불러올 때 지금 상태에 맞는 단계로 건너뜀) + 이야기(인트로·도착 쪽지·엔딩). 이미 플레이한 저장은 인트로를 본 것으로, 지금 집까지의 쪽지는 본 것으로 넣는다. 엔딩은 안 본 것. 진행·배수·카드는 건드리지 않는다
+  16: (s) => ({ ...s, version: 17, story: v16Story(s), guide2: { step: 0, done: num(s.moves, 0, true) >= 2 } }),
 };
+
+function v16Story(s: Raw): StoryState {
+  const stats = isObj(s.stats) ? s.stats : {};
+  const guide = isObj(s.guide) ? s.guide : {};
+  const moves = num(s.moves, 0, true);
+  const played = moves > 0 || num(stats.totalTaps, 0) > 0 || num(stats.boxesOpened, 0) > 0 || num(guide.step, 0) > 0;
+  return { intro: played, notes: NOTE_STAGES.filter((n) => n <= moves), ending: false };
+}
 
 export type LoadResult =
   | { kind: 'ok'; state: GameState }
@@ -311,6 +323,8 @@ export function sanitize(raw: Raw): GameState {
     bestCombo: num(raw.bestCombo, 0, true),
     bestChain: num(raw.bestChain, 0, true),
     guide: finishedGuide(),
+    guide2: sanitizeGuide2(raw.guide2, moves),
+    story: sanitizeStory(raw.story),
     ...(isObj(raw.notice) && raw.notice.kind === 'v9' ? { notice: { kind: 'v9' as const, boxes: num(raw.notice.boxes, 0, true) } } : {}),
     ...(Array.isArray(raw.unlocked) ? { unlocked: UNLOCK_IDS.filter((id) => (raw.unlocked as unknown[]).includes(id)) } : {}),
   };
@@ -320,7 +334,19 @@ export function sanitize(raw: Raw): GameState {
   const k = out.unpack.box;
   const hp = out.unpack.hp >= 1 ? out.unpack.hp : k < ROOM_BOXES ? boxHp(k) : endlessHp(out, k);
   out.unpack = { ...out.unpack, hp, damage: Math.min(out.unpack.damage, hp - 1) };
-  return out;
+  return guide2Settle(out);
+}
+
+function sanitizeGuide2(raw: unknown, moves: number): Guide2State {
+  const r = isObj(raw) ? raw : {};
+  if (moves !== 1 || r.done === true) return moves >= 2 || r.done === true ? finishedGuide2() : initialGuide2();
+  return { step: Math.min(GUIDE2_STEPS.length - 1, num(r.step, 0, true)), done: false };
+}
+
+function sanitizeStory(raw: unknown): StoryState {
+  const r = isObj(raw) ? raw : {};
+  const notes = Array.isArray(r.notes) ? NOTE_STAGES.filter((n) => (r.notes as unknown[]).includes(n)) : [];
+  return { intro: r.intro === true, notes, ending: r.ending === true };
 }
 
 export function parseSave(raw: string | null): LoadResult {

@@ -17,7 +17,7 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
 
 (async () => {
   const browser = await chromium.connectOverCDP('http://127.0.0.1:9333');
-  const open = async (size = { width: 1440, height: 900 }) => {
+  const open = async (size = { width: 1440, height: 900 }, keepIntro = false) => {
     const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: 1 });
     await ctx.addInitScript((p) => localStorage.setItem('ajd-home-idle:ui-prefs', JSON.stringify(p)), PREFS);
     const page = await ctx.newPage();
@@ -26,6 +26,13 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
     await page.goto(URL + '?debug');
     await page.waitForSelector('.phone');
     await page.evaluate(() => document.fonts.ready);
+    if (!keepIntro) {
+      const sk = page.locator('.story-ov .sn-skip');
+      if ((await sk.count()) > 0) {
+        await sk.click();
+        await page.waitForSelector('.story-ov', { state: 'detached' });
+      }
+    }
     return { ctx, page };
   };
 
@@ -408,6 +415,106 @@ const IGNORE = /Extension context invalidated|Receiving end does not exist/;
     await page.waitForFunction(() => Array.from(document.querySelectorAll('.toast')).some((e) => e.textContent.includes('폭탄 상자 ·')), null, { timeout: 4000 }).catch(() => {});
     const t1 = await page.evaluate(() => Array.from(document.querySelectorAll('.toast')).map((e) => e.textContent).join('|'));
     check('특별 상자(PC): 처음 터질 때 토스트 "폭탄 상자 · 상자 5개 연쇄"', t1.includes('폭탄 상자 · 상자 5개 연쇄'), t1);
+    await ctx.close();
+  }
+
+
+  // ---- 이야기(PC): 인트로 Space 진행, 도착 쪽지, 끝 화면 ----
+  {
+    const { ctx, page } = await (async () => {
+      const c = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+      await c.addInitScript((p) => localStorage.setItem('ajd-home-idle:ui-prefs', JSON.stringify(p)), PREFS);
+      const pg = await c.newPage();
+      pg.on('pageerror', (e) => !IGNORE.test(e.message) && errors.push(`pageerror: ${e.message}`));
+      await pg.goto(URL + '?debug&guide');
+      await pg.waitForSelector('.phone');
+      await pg.evaluate(() => document.fonts.ready);
+      return { ctx: c, page: pg };
+    })();
+    await page.waitForSelector('.story-ov .sn-note');
+    await page.waitForTimeout(700);
+    const nb = await page.evaluate(() => { const b = document.querySelector('.sn-note').getBoundingClientRect(); return { w: b.width, inside: b.left >= 0 && b.right <= innerWidth && b.bottom <= innerHeight }; });
+    check('인트로(PC): 창이 화면 안, 폭 480 이하', nb.inside && nb.w <= 520, JSON.stringify(nb));
+    for (let i = 0; i < 3; i++) await page.keyboard.press('Space');
+    await page.waitForTimeout(150);
+    const s1 = await gs(page);
+    check('인트로(PC): Space는 문단을 넘기고 상자를 치지 않는다', (await page.locator('.story-ov').count()) === 1 && s1.stats.totalTaps === 0 && s1.unpack.damage === 0, (await text(page, '.sn-pg.cur')));
+    for (let i = 0; i < 6 && (await page.locator('.story-ov').count()) > 0; i++) { await page.keyboard.press('Enter'); await page.waitForTimeout(80); }
+    await page.waitForTimeout(400);
+    const s2 = await gs(page);
+    check('인트로(PC): Space·Enter로 끝까지 넘기면 닫히고 탭은 0, 인트로 봄', (await page.locator('.story-ov').count()) === 0 && s2.stats.totalTaps === 0 && s2.story.intro === true, `taps=${s2.stats.totalTaps}`);
+    await ctx.close();
+  }
+  {
+    const seed = { version: 9, unlocked: ALL, points: 5e9, earned: 1e60, moves: 7, tapLevel: 12, strikeLevel: 4, gear: { level: 3 }, homeLv: [3, 2, 1, 0, 0, 0, 0, 0], unpack: { box: 40, damage: 0, roomDone: false, hp: 1e15, salt: 5, rushSec: 0 } };
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+    await ctx.addInitScript((p) => localStorage.setItem('ajd-home-idle:ui-prefs', JSON.stringify(p)), PREFS);
+    await ctx.addInitScript(([key, s]) => { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.setItem(key, JSON.stringify({ ...s, savedAt: Date.now() })); }, [KEY, seed]);
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => !IGNORE.test(e.message) && errors.push(`pageerror: ${e.message}`));
+    await page.goto(URL + '?debug');
+    await page.waitForSelector('.phone');
+    await page.waitForTimeout(600);
+    const through = async (sel) => { for (let i = 0; i < 40; i++) { if (await page.locator(sel).count()) return; if (await page.locator('.move-scene').count()) await page.mouse.click(100, 400).catch(() => {}); await page.waitForTimeout(350); } };
+    await page.locator('.move-btn').click();
+    await page.waitForSelector('.modal');
+    await page.locator('.modal .btn.primary').click();
+    await through('.story-ov .sn-note');
+    await page.waitForTimeout(800);
+    const n = await page.evaluate(() => { const b = document.querySelector('.sn-note').getBoundingClientRect(); return { title: document.querySelector('.sn-title').textContent, txt: document.querySelector('.sn-pg.cur').textContent, inside: b.left >= 0 && b.right <= innerWidth && b.bottom <= innerHeight, modals: document.querySelectorAll('.modal').length }; });
+    check('도착 쪽지(PC): 우주 끝 신도시 쪽지가 창 안에, 특전 창은 아직 없다', n.title === '우주 끝 신도시' && n.txt.includes('마지막 상자는 맨 뒤에 있어요') && n.inside && n.modals === 0, JSON.stringify(n));
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+    await page.waitForSelector('.modal');
+    check('쪽지를 Enter로 닫으면 기존 특전 창이 이어진다', (await page.locator('.story-ov').count()) === 0 && (await page.locator('.modal').count()) === 1);
+    // 이제 이사 8회 상태에서 엔딩 끝 화면(PC): 집 9개 한 줄
+    await page.evaluate(() => { document.querySelectorAll('.overlay').forEach((o) => o.remove()); });
+    await setS(page, { earned: 1e60, points: 1e60, perkOffers: [] });
+    await page.waitForTimeout(400);
+    await page.locator('.move-btn').click();
+    await page.waitForSelector('.modal');
+    await page.locator('.modal .btn.primary').click();
+    await page.waitForSelector('.story-ov.ending');
+    await page.waitForSelector('.story-ov .sn-note', { timeout: 6000 });
+    for (let i = 0; i < 12 && (await page.locator('.story-ov.end').count()) === 0; i++) { await page.keyboard.press('Space'); await page.waitForTimeout(120); }
+    await page.waitForSelector('.story-ov.end');
+    await page.waitForTimeout(2800);
+    const e = await page.evaluate(() => ({ tops: [...new Set([...document.querySelectorAll('.sn-h')].map((q) => Math.round(q.getBoundingClientRect().top)))].length, lit: document.querySelectorAll('.sn-h.lit').length, go: getComputedStyle(document.querySelector('.sn-go')).visibility, over: document.documentElement.scrollWidth > document.documentElement.clientWidth }));
+    check('끝 화면(PC): 집 아이콘 9개가 한 줄로 모두 켜지고 버튼이 보인다', e.tops === 1 && e.lit === 9 && e.go === 'visible' && !e.over, JSON.stringify(e));
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(300);
+    await page.waitForSelector('.story-ov', { state: 'detached' });
+    await through('.modal');
+    await page.waitForTimeout(600);
+    const sx = await gs(page);
+    check('계속 까기(PC): 평소 이사 -> 우주 끝 신도시 1차', sx.moves === 9 && sx.story.ending === true && (await text(page, '.house-name')) === '우주 끝 신도시 1차', `moves=${sx.moves}`);
+    await ctx.close();
+  }
+
+  // ---- 가이드 2부·도움말(PC) ----
+  {
+    const SHOTS = path.join(__dirname, '..', 'screenshots');
+    const { ctx, page } = await open();
+    const ids = await page.evaluate(() => window.__ajd.cards());
+    await page.evaluate((c) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, moves: 1, guide2: { step: 0, done: false }, deck: { ...s.deck, slots: [{ id: c[0], star: 1, charge: 0, stacks: 1 }], offers: [] } }); }, ids);
+    await page.waitForTimeout(3500);
+    const row = await page.evaluate(() => { const r = document.querySelector('.guide-row'); const b = r && r.getBoundingClientRect(); return { vis: !!r && !r.hidden && b.width > 0, chip: document.querySelector('.gd-chip')?.textContent, fit: !!r && [...r.querySelectorAll('.gd-head, .gd-text')].every((e) => e.scrollWidth <= e.clientWidth + 1), in: !!b && b.bottom <= innerHeight && b.right <= innerWidth }; });
+    check('2부(PC): 가이드 줄이 보이고 안 넘친다', row.vis && row.fit && row.in && /^가이드 2부 [2-3]\/5$/.test(row.chip || ''), JSON.stringify(row));
+    await page.screenshot({ path: path.join(SHOTS, 'g2-1440-part2.png') });
+    const ar = await page.evaluate(() => { const a = document.querySelector('.gd-point'), g = document.querySelector('.guide-row'); if (!a || a.hidden) return { none: true }; const x = a.getBoundingClientRect(), y = g.getBoundingClientRect(); return { ov: x.left < y.right && x.right > y.left && x.top < y.bottom && x.bottom > y.top, a: [x.top, x.bottom], g: [y.top, y.bottom] }; });
+    check('2부(PC): 화살표가 가이드 줄을 덮지 않는다', ar.none !== true && ar.ov === false, JSON.stringify(ar));
+    const fit = await page.evaluate(() => { const b = document.querySelector('.move-btn').getBoundingClientRect(); const l = document.querySelector('.deck-label').getBoundingClientRect(), g = document.querySelector('.guide-row').getBoundingClientRect(); return { bb: b.bottom, ih: innerHeight, sh: document.documentElement.scrollHeight, gap: l.top - g.bottom }; });
+    check('2부(PC): 이사 버튼 아랫변이 화면 안이고 세로 스크롤 없음', fit.bb <= fit.ih && fit.sh <= fit.ih, JSON.stringify(fit));
+    await page.evaluate((c) => { const s = window.__ajd.get(); window.__ajd.set({ ...s, deck: { ...s.deck, slots: [{ id: c[0], star: 1, charge: 0, stacks: 1 }, { id: c[1], star: 1, charge: 0, stacks: 0 }, { id: c[2], star: 1, charge: 0, stacks: 0 }] } }); }, ids);
+    await page.waitForTimeout(3500);
+    await page.screenshot({ path: path.join(SHOTS, 'g2-1440-part2-b.png') });
+    await page.locator('button[aria-label="설정"]').click();
+    await page.getByText('도움말', { exact: true }).click();
+    await page.waitForSelector('.help-list');
+    await page.waitForTimeout(900);
+    const hp = await page.evaluate(() => { const rows = [...document.querySelectorAll('.help-row')]; const ov = document.querySelector('.help-list').getBoundingClientRect(); return { n: rows.length, pc: rows[0].textContent, over: rows.filter((r) => r.scrollWidth > r.clientWidth + 1 || r.getBoundingClientRect().right > ov.right + 1).length, h: document.documentElement.scrollWidth <= innerWidth }; });
+    check('도움말(PC): 10줄·가로 넘침 없음·조작 줄에 Space·클릭', hp.n === 10 && hp.over === 0 && hp.h && hp.pc.includes('Space') && hp.pc.includes('클릭'), JSON.stringify(hp));
+    await page.screenshot({ path: path.join(SHOTS, 'g2-1440-help.png') });
     await ctx.close();
   }
 

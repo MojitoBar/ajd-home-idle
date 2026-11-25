@@ -156,7 +156,7 @@ describe('저장 v12 -> v13', () => {
     const r = parseSave(v12({ slots: [{ id: 'P3', star: 1 }, { id: 'C1', star: 1 }], offers: [['S1', 'S3', 'F1']], rerolls: 1, mark: 3, seen: ['P3'] }));
     expect(r.kind).toBe('ok');
     const s = r.state;
-    expect(s.version).toBe(16);
+    expect(s.version).toBe(17);
     expect(s.deck.slots).toEqual([{ id: 'P3', star: 1, charge: 0, stacks: 0 }, { id: 'C1', star: 1, charge: 0, stacks: 0 }]);
     expect(s.deck.targetScale).toBe(1);
     expect(s.deck.mark).toBe(7);
